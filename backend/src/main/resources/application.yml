@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: epsilon-brokerage
+  datasource:
+    url: ${MIS_DB_URL:jdbc:postgresql://localhost:5432/mis}
+    username: ${MIS_DB_USER:mis}
+    password: ${MIS_DB_PASSWORD:mis}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  session:
+    jdbc:
+      initialize-schema: never   # tables come from Flyway (V6)
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+
+server:
+  servlet:
+    session:
+      timeout: 8h
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: ${MIS_COOKIE_SECURE:false}
+
+mis:
+  # Creates the first ADMIN when the user table is empty. Ignored once any user exists.
+  bootstrap-admin:
+    username: ${MIS_BOOTSTRAP_ADMIN_USERNAME:}
+    password: ${MIS_BOOTSTRAP_ADMIN_PASSWORD:}
+  jobs:
+    pool-size: ${MIS_JOB_POOL_SIZE:2}
+  # Business time zone: decides what "today" is.
+  zone: ${MIS_ZONE:Asia/Kolkata}
+  # Uploaded files (master imports; later, income files).
+  storage:
+    dir: ${MIS_STORAGE_DIR:./data/files}
+  # How partner %s combine (PROVISIONAL rule R5, applied when brokerage is attributed): partners are paid in this
+  # order, and each % is taken from what is left after the ones before it. Net 100, sub-broker 50%, referral 20%
+  # -> sub-broker 50, referral 20% of the remaining 50 = 10, Epsilon 40. Shares are on NET, excl. GST (R4).
+  sharing:
+    order: ${MIS_SHARING_ORDER:SUB_BROKER,REFERRAL,POSP}
+    # Negative net (clawback), PROVISIONAL rule R10: SAME_PERCENT = partners give back their %; EPSILON_ABSORBS = they don't.
+    negative-net: ${MIS_SHARING_NEGATIVE_NET:SAME_PERCENT}
+  # PAN encryption (AES-256-GCM) and lookup-hash keys: base64 of 32 random bytes each. No defaults on purpose.
+  # Generate with: openssl rand -base64 32
+  pan:
+    key: ${MIS_PAN_KEY:}
+    hash-key: ${MIS_PAN_HASH_KEY:}

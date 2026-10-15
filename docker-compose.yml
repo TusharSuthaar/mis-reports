@@ -1,0 +1,48 @@
+name: epsilon-brokerage
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: mis
+      POSTGRES_USER: ${MIS_DB_USER:-mis}
+      POSTGRES_PASSWORD: ${MIS_DB_PASSWORD:-mis}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "${MIS_DB_PORT:-5442}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d mis"]
+      interval: 5s
+      retries: 20
+
+  api:
+    build: ./backend
+    environment:
+      MIS_DB_URL: jdbc:postgresql://db:5432/mis
+      MIS_DB_USER: ${MIS_DB_USER:-mis}
+      MIS_DB_PASSWORD: ${MIS_DB_PASSWORD:-mis}
+      MIS_BOOTSTRAP_ADMIN_USERNAME: ${MIS_BOOTSTRAP_ADMIN_USERNAME:-}
+      MIS_BOOTSTRAP_ADMIN_PASSWORD: ${MIS_BOOTSTRAP_ADMIN_PASSWORD:-}
+      MIS_COOKIE_SECURE: ${MIS_COOKIE_SECURE:-false}
+      MIS_PAN_KEY: ${MIS_PAN_KEY:?Set MIS_PAN_KEY in .env (see .env.example)}
+      MIS_PAN_HASH_KEY: ${MIS_PAN_HASH_KEY:?Set MIS_PAN_HASH_KEY in .env (see .env.example)}
+      MIS_STORAGE_DIR: /data/files
+    volumes:
+      - file-store:/data/files
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${MIS_API_PORT:-8090}:8080"
+
+  ui:
+    build: ./frontend
+    depends_on:
+      - api
+    ports:
+      - "${MIS_UI_PORT:-5180}:80"
+
+volumes:
+  db-data:
+  file-store:

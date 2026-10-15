@@ -1,3 +1,23 @@
+# Build output
+backend/target/
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+
+# Local settings and secrets
+.env
+
+# Real client data (Investwell files, master lists). Never commit.
+private-data/
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# From the repository's original Java template
 # Compiled class file
 *.class
 
