@@ -65,7 +65,7 @@ describe('setup navigation', () => {
     await userEvent.selectOptions(await screen.findByLabelText('Merge into'), 'TEST PARTNER AGARWAL');
     await userEvent.click(screen.getByRole('button', { name: 'Merge' }));
     expect(merged).toMatchObject({ intoId: 19 });
-    expect(await screen.findByText('Inactive')).toBeInTheDocument();
+    expect(await screen.findByRole('cell', { name: 'Inactive' })).toBeInTheDocument();
   });
 
   it('keeps Setup away from an RM', async () => {

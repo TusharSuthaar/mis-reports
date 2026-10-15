@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.function.Function;
 import money.epsilon.brokerage.client.service.ClientService.ClientKey;
 import money.epsilon.brokerage.partner.domain.PartnerType;
+import money.epsilon.brokerage.sharing.domain.Product;
 import money.epsilon.brokerage.sharing.load.MasterShareReader.MasterRow;
 import money.epsilon.brokerage.sharing.load.MasterShareReader.PartnerCell;
 import money.epsilon.brokerage.sharing.load.SharePlan.Action;
@@ -36,7 +37,7 @@ class SharePlanTest {
     }
 
     private static SharePlan plan(List<MasterRow> rows, List<ClientKey> clients) {
-        return SharePlan.build(rows, clients, HASH, List.of(), Map.of(), NO_ALIAS);
+        return SharePlan.build(rows, clients, HASH, List.of(), Map.of(), NO_ALIAS, Map.of(), Map.of());
     }
 
     @Test
@@ -49,18 +50,18 @@ class SharePlanTest {
             assertThat(c.clientId()).isEqualTo(1);
             assertThat(c.action()).isEqualTo(Action.SET);
             assertThat(c.role()).isEqualTo(PartnerType.SUB_BROKER);
-            assertThat(c.desired().fraction()).isEqualByComparingTo("0.8");
+            assertThat(c.fraction()).isEqualByComparingTo("0.8");
         });
         assertThat(plan.newPartners.values()).singleElement().satisfies(p -> assertThat(p.name()).isEqualTo("ALPHA WEALTH "));
     }
 
     @Test
     void aMergedSpellingGoesToThePartnerItWasMergedInto() {
-        List<SharePlan.Existing> partners = List.of(new SharePlan.Existing(19, PartnerType.REFERRAL, "TEST PARTNER AGARWAL"),
-                new SharePlan.Existing(59, PartnerType.REFERRAL, "TEST PARTNER AGRAWAL")); // merged into 19, still on file
+        List<SharePlan.Existing> partners = List.of(new SharePlan.Existing(19, PartnerType.REFERRAL, "TEST PARTNER AGARWAL", false),
+                new SharePlan.Existing(59, PartnerType.REFERRAL, "TEST PARTNER AGRAWAL", false)); // merged into 19, still on file
         SharePlan plan = SharePlan.build(List.of(row(2, "A", "AAAAA1111A", partner("Test Partner Agrawal", "Referral Partner", "0.2"))),
                 List.of(client(1, "A", "AAAAA1111A")), HASH, partners, java.util.Map.of(),
-                name -> name.trim().replaceAll("\s+", " ").equalsIgnoreCase("TEST PARTNER AGRAWAL") ? 19L : null);
+                name -> name.trim().replaceAll("\s+", " ").equalsIgnoreCase("TEST PARTNER AGRAWAL") ? 19L : null, Map.of(), Map.of());
         assertThat(plan.changes).singleElement().satisfies(c -> assertThat(c.partnerId()).isEqualTo(19L));
         assertThat(plan.newPartners).isEmpty();
     }
@@ -74,7 +75,7 @@ class SharePlanTest {
 
         assertThat(plan.bothRoles).isEqualTo(2);
         assertThat(plan.zeroPct).isEqualTo(1);
-        assertThat(plan.changes).extracting(Change::clientId, Change::role, c -> c.desired().fraction().stripTrailingZeros().toPlainString())
+        assertThat(plan.changes).extracting(Change::clientId, Change::role, c -> c.fraction().stripTrailingZeros().toPlainString())
                 .containsExactlyInAnyOrder(
                         tuple(1L, PartnerType.SUB_BROKER, "0"), tuple(1L, PartnerType.REFERRAL, "0.5"),
                         tuple(2L, PartnerType.SUB_BROKER, "0.5"), tuple(2L, PartnerType.REFERRAL, "0.2"));
@@ -133,7 +134,7 @@ class SharePlanTest {
     @Test
     void comparesWithTodaysSharesRoleByRole() {
         List<ClientKey> clients = List.of(client(1, "SAME", "AAAAA1111A"), client(2, "NEW PCT", "BBBBB2222B"), client(3, "DROPPED", "CCCCC3333C"));
-        List<Existing> partners = List.of(new Existing(50, PartnerType.SUB_BROKER, "Alpha Wealth"), new Existing(60, PartnerType.REFERRAL, "Partner Two"));
+        List<Existing> partners = List.of(new Existing(50, PartnerType.SUB_BROKER, "Alpha Wealth", false), new Existing(60, PartnerType.REFERRAL, "Partner Two", false));
         Map<Long, Map<PartnerType, Current>> now = Map.of(
                 1L, Map.of(PartnerType.SUB_BROKER, new Current(50, new BigDecimal("0.800000"))),
                 2L, Map.of(PartnerType.SUB_BROKER, new Current(50, new BigDecimal("0.500000"))),
@@ -143,7 +144,7 @@ class SharePlanTest {
                         row(2, "SAME", "AAAAA1111A", partner("ALPHA WEALTH", "Sub broker", "0.8")),
                         row(3, "NEW PCT", "BBBBB2222B", partner("ALPHA WEALTH", "Sub broker", "0.75")),
                         row(4, "DROPPED", "CCCCC3333C", partner("PARTNER TWO", "Referral Partner", "0.2"))),
-                clients, HASH, partners, now, NO_ALIAS);
+                clients, HASH, partners, now, NO_ALIAS, Map.of(), Map.of());
 
         assertThat(plan.unchanged).isEqualTo(1);
         assertThat(plan.newPartners).isEmpty();
@@ -155,10 +156,10 @@ class SharePlanTest {
 
     @Test
     void aSpellingConfirmedBeforeUsesTheExistingPartner() {
-        List<Existing> partners = List.of(new Existing(77, PartnerType.SUB_BROKER, "ZEDD XAVIER"));
+        List<Existing> partners = List.of(new Existing(77, PartnerType.SUB_BROKER, "ZEDD XAVIER", false));
         SharePlan plan = SharePlan.build(List.of(row(2, "A", "AAAAA1111A", partner("Zedd Quillon Xavier", "Sub broker", "0.5"))),
                 List.of(client(1, "A", "AAAAA1111A")), HASH, partners, Map.of(),
-                name -> name.equalsIgnoreCase("zedd quillon xavier") ? 77L : null);
+                name -> name.equalsIgnoreCase("zedd quillon xavier") ? 77L : null, Map.of(), Map.of());
         assertThat(plan.newPartners).isEmpty();
         assertThat(plan.changes).singleElement().satisfies(c -> assertThat(c.partnerId()).isEqualTo(77L));
     }
@@ -172,5 +173,51 @@ class SharePlanTest {
         assertThat(plan.conflicts).isEqualTo(1);
         assertThat(plan.changes).isEmpty();
         assertThat(plan.problems).anyMatch(p -> p.contains("disagree"));
+    }
+
+    // ---- product rate cards (R-54) ---------------------------------------------------------------------------
+
+    private static final Map<Product, BigDecimal> REFERRAL_CARD = Map.of(Product.MF, new BigDecimal("0"), Product.EQUITY,
+            new BigDecimal("0.5"), Product.FD, new BigDecimal("0.5"), Product.INS, new BigDecimal("0"));
+    private static final Map<Product, BigDecimal> SUB_BROKER_CARD = Map.of(Product.MF, new BigDecimal("0.8"), Product.EQUITY,
+            new BigDecimal("0.8"), Product.INS, new BigDecimal("0"));
+
+    @Test
+    void aRowPercentIsAClientExceptionOnlyWhenItDiffersFromThePartnersRates() {
+        // Repeats the partner's MF % or its general % on other products: follows the partner.
+        assertThat(SharePlan.clientException(new BigDecimal("0.8"), SUB_BROKER_CARD)).isNull();
+        assertThat(SharePlan.clientException(new BigDecimal("0.5"), REFERRAL_CARD)).isNull();
+        // A blank % follows the partner.
+        assertThat(SharePlan.clientException(null, REFERRAL_CARD)).isNull();
+        // Anything else is the client's own %, 0 included.
+        assertThat(SharePlan.clientException(new BigDecimal("0.6"), SUB_BROKER_CARD)).isEqualByComparingTo("0.6");
+        assertThat(SharePlan.clientException(BigDecimal.ZERO, SUB_BROKER_CARD)).isEqualByComparingTo("0");
+        // Without any rate card the row's % is the client's, blank = 0 (as before rate cards).
+        assertThat(SharePlan.clientException(new BigDecimal("0.5"), null)).isEqualByComparingTo("0.5");
+        assertThat(SharePlan.clientException(null, Map.of())).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void referralRowsRepeatingTheNonMfPercentFollowThePartnersMfRate() {
+        SharePlan plan = SharePlan.build(List.of(
+                        row(2, "A", "AAAAA1111A", partner("REFERRAL B", "Referral Partner", "0.5")),
+                        row(3, "B", "BBBBB2222B", partner("SUB BROKER A", "Sub broker", "0.6"))),
+                List.of(client(1, "A", "AAAAA1111A"), client(2, "B", "BBBBB2222B")), HASH, List.of(), Map.of(), NO_ALIAS,
+                Map.of("REFERRAL|REFERRAL B", REFERRAL_CARD, "SUB_BROKER|SUB BROKER A", SUB_BROKER_CARD), Map.of());
+
+        assertThat(plan.followsPartner).isEqualTo(1);
+        assertThat(plan.exceptions).isEqualTo(1);
+        assertThat(plan.changes).extracting(Change::clientId, c -> c.fraction() == null ? "partner" : c.fraction().stripTrailingZeros().toPlainString())
+                .containsExactlyInAnyOrder(org.assertj.core.groups.Tuple.tuple(1L, "partner"), org.assertj.core.groups.Tuple.tuple(2L, "0.6"));
+    }
+
+    @Test
+    void aPartnerMarkedUnderProcessIsPending() {
+        SharePlan plan = SharePlan.build(List.of(
+                        row(2, "A", "AAAAA1111A", partner("NEW REFERRER", "Referral Partner (Under Process)", "0.5"))),
+                List.of(client(1, "A", "AAAAA1111A")), HASH, List.of(), Map.of(), NO_ALIAS, Map.of(), Map.of());
+
+        assertThat(plan.pendingKeys).containsExactly("REFERRAL|NEW REFERRER");
+        assertThat(plan.changes).singleElement().satisfies(c -> assertThat(c.role()).isEqualTo(PartnerType.REFERRAL));
     }
 }

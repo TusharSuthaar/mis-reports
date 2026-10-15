@@ -41,19 +41,20 @@ public final class SplitCalculator {
     }
 
     public static List<Part> split(BigDecimal net, List<Share> shares, List<PartnerType> order, NegativeNet negative) {
-        Map<PartnerType, Share> byRole = shares.stream().collect(Collectors.toMap(Share::role, Function.identity()));
+        if (shares.stream().anyMatch(s -> !order.contains(s.role()))) {
+            throw new IllegalStateException("A partner role is missing from mis.sharing.order: " + shares);
+        }
         List<Part> parts = new ArrayList<>();
         BigDecimal remaining = net;
         boolean partnersExcused = net.signum() < 0 && negative == NegativeNet.EPSILON_ABSORBS;
+        // Roles in the configured order; two partners of one role (a branch rule's and the client's own) in list order.
         for (PartnerType role : order) {
-            Share s = byRole.get(role);
-            if (s == null) continue;
-            BigDecimal amount = partnersExcused ? BigDecimal.ZERO.setScale(2) : remaining.multiply(s.fraction()).setScale(2, RoundingMode.HALF_UP);
-            parts.add(new Part(s, remaining, amount));
-            remaining = remaining.subtract(amount);
-        }
-        if (byRole.keySet().stream().anyMatch(r -> !order.contains(r))) {
-            throw new IllegalStateException("A partner role is missing from mis.sharing.order: " + byRole.keySet());
+            for (Share s : shares) {
+                if (s.role() != role) continue;
+                BigDecimal amount = partnersExcused ? BigDecimal.ZERO.setScale(2) : remaining.multiply(s.fraction()).setScale(2, RoundingMode.HALF_UP);
+                parts.add(new Part(s, remaining, amount));
+                remaining = remaining.subtract(amount);
+            }
         }
         parts.add(new Part(null, net, remaining));
         BigDecimal total = parts.stream().map(Part::amount).reduce(BigDecimal.ZERO, BigDecimal::add);

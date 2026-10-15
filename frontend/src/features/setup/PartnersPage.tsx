@@ -1,6 +1,19 @@
 import { useCallback, useMemo, useState, type FormEvent } from 'react';
 import { api } from '../../api/client';
-import { PARTNER_TYPE_LABEL, PARTNER_TYPES, type Employee, type Partner, type PartnerLink, type PartnerType } from '../../api/types';
+import {
+  PARTNER_STATUS_LABEL,
+  PARTNER_TYPE_LABEL,
+  PARTNER_TYPES,
+  PRODUCTS,
+  type Employee,
+  type Partner,
+  type PartnerLink,
+  type PartnerStatus,
+  type PartnerType,
+  type Product,
+  type ProductShare,
+} from '../../api/types';
+import { formatDate } from '../../format';
 import { useLoad } from '../../api/useLoad';
 import { useSubmit } from '../../api/useSubmit';
 import { useAuth } from '../../app/auth';
@@ -14,6 +27,7 @@ export function PartnersPage() {
   const canEdit = canEditMasters(user?.role);
   const partners = useLoad<Partner[]>('/api/partners');
   const counts = useLoad<Record<string, number>>('/api/shares/partner-counts');
+  const rates = useLoad<Record<string, Partial<Record<Product, number>>>>('/api/partners/product-percents');
   const [type, setType] = useState<PartnerType | ''>('');
   const [search, setSearch] = useState('');
   const [panel, setPanel] = useState<'new' | number | null>(null);
@@ -63,6 +77,7 @@ export function PartnersPage() {
               <th>PAN</th>
               <th>ARN / POSP code</th>
               <th>Clients now</th>
+              <th>MF %</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -74,7 +89,8 @@ export function PartnersPage() {
                 <td className="mono">{p.pan}</td>
                 <td>{p.arnOrPospCode}</td>
                 <td className="num">{counts.data?.[p.id] ?? 0}</td>
-                <td>{p.status === 'ACTIVE' ? 'Active' : <span className="muted">Inactive</span>}</td>
+                <td className="num">{rates.data?.[p.id]?.MF ?? <span className="muted">not set</span>}</td>
+                <td><StatusText status={p.status} /></td>
               </tr>
             ))}
           </tbody>
@@ -99,6 +115,7 @@ export function PartnersPage() {
             onChanged={() => {
               partners.reload();
               counts.reload();
+              rates.reload();
             }}
           />
         </SidePanel>
@@ -115,7 +132,7 @@ function PartnerForm({ partner, onDone }: { partner?: Partner; onDone: () => voi
   const [gstin, setGstin] = useState(partner?.gstin ?? '');
   const [code, setCode] = useState(partner?.arnOrPospCode ?? '');
   const [bankRef, setBankRef] = useState(partner?.bankRef ?? '');
-  const [active, setActive] = useState(partner ? partner.status === 'ACTIVE' : true);
+  const [status, setStatus] = useState<PartnerStatus>(partner?.status ?? 'ACTIVE');
   const { busy, error, run } = useSubmit();
 
   async function submit(e: FormEvent) {
@@ -126,7 +143,7 @@ function PartnerForm({ partner, onDone }: { partner?: Partner; onDone: () => voi
       gstin,
       arnOrPospCode: code,
       bankRef,
-      status: active ? 'ACTIVE' : 'INACTIVE',
+      status,
     };
     const ok = await run(() =>
       partner
@@ -173,10 +190,17 @@ function PartnerForm({ partner, onDone }: { partner?: Partner; onDone: () => voi
         Bank reference
         <input value={bankRef} onChange={(e) => setBankRef(e.target.value)} />
       </label>
-      <label className="check">
-        <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-        Active
+      <label>
+        Status
+        <select value={status} onChange={(e) => setStatus(e.target.value as PartnerStatus)}>
+          {(Object.keys(PARTNER_STATUS_LABEL) as PartnerStatus[]).map((s) => (
+            <option key={s} value={s}>
+              {PARTNER_STATUS_LABEL[s]}
+            </option>
+          ))}
+        </select>
       </label>
+      {status === 'PENDING' && <p className="muted">Pending approval: stays linked to its clients but is paid nothing until set to Active.</p>}
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={busy}>
         {partner ? 'Save details' : 'Create partner'}
@@ -205,6 +229,7 @@ function PartnerDetail({ partner, others, canEdit, onChanged }: { partner: Partn
           {PARTNER_TYPE_LABEL[partner.type]} · PAN {partner.pan ?? 'not set'} · GSTIN {partner.gstin ?? 'not set'}
         </p>
       )}
+      <RateCard partner={partner} canEdit={canEdit} onChanged={onChanged} />
       <h3>RMs this partner works with</h3>
       {links.error && <p className="error">{links.error}</p>}
       {links.data && (
@@ -218,7 +243,7 @@ function PartnerDetail({ partner, others, canEdit, onChanged }: { partner: Partn
           }
         />
       )}
-      {canEdit && partner.status === 'ACTIVE' && (
+      {canEdit && partner.status !== 'INACTIVE' && (
         <DatedChangeForm
           title="Link an RM"
           dateLabel="From"
@@ -245,6 +270,102 @@ function PartnerDetail({ partner, others, canEdit, onChanged }: { partner: Partn
       )}
       {canEdit && partner.status === 'ACTIVE' && others.length > 0 && <MergeForm partner={partner} others={others} onDone={onChanged} />}
     </>
+  );
+}
+
+function StatusText({ status }: { status: PartnerStatus }) {
+  if (status === 'ACTIVE') return <>Active</>;
+  if (status === 'PENDING') return <span className="badge warn-badge">Pending approval</span>;
+  return <span className="muted">Inactive</span>;
+}
+
+/**
+ * The partner's % per product, from a date. Its clients follow these unless a client has its own % (Clients screen).
+ * Insurance stays 0 for sub-brokers and referral partners: POSPs get the insurance share.
+ */
+function RateCard({ partner, canEdit, onChanged }: { partner: Partner; canEdit: boolean; onChanged: () => void }) {
+  const history = useLoad<ProductShare[]>(`/api/partners/${partner.id}/products`);
+  const [product, setProduct] = useState<Product>('MF');
+  const [percent, setPercent] = useState('');
+  const current = new Map((history.data ?? []).filter((s) => s.validTo === null).map((s) => [s.product, s]));
+  const past = (history.data ?? []).filter((s) => s.validTo !== null);
+
+  return (
+    <div className="card-block">
+      <h3>Sharing % by product</h3>
+      {history.error && <p className="error">{history.error}</p>}
+      <table className="compact">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th className="num">%</th>
+            <th>From</th>
+          </tr>
+        </thead>
+        <tbody>
+          {PRODUCTS.map((p) => {
+            const s = current.get(p.code);
+            return (
+              <tr key={p.code}>
+                <td>{p.label}</td>
+                <td className="num">{s ? `${s.percent}%` : <span className="muted">not set</span>}</td>
+                <td>{s ? formatDate(s.validFrom) : ''}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {past.length > 0 && (
+        <details>
+          <summary>Earlier %s ({past.length})</summary>
+          <table className="compact">
+            <tbody>
+              {past.map((s) => (
+                <tr key={s.id}>
+                  <td>{PRODUCTS.find((p) => p.code === s.product)?.label ?? s.product}</td>
+                  <td className="num">{s.percent}%</td>
+                  <td>
+                    {formatDate(s.validFrom)} – {formatDate(s.validTo)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      )}
+      {canEdit && (
+        <DatedChangeForm
+          title="Change a product %"
+          dateLabel="From"
+          submitLabel="Save %"
+          canSubmit={percent !== ''}
+          onSubmit={(from) =>
+            api(`/api/partners/${partner.id}/products`, { method: 'POST', body: { product, percent: Number(percent), from } })
+          }
+          onDone={() => {
+            setPercent('');
+            history.reload();
+            onChanged();
+          }}
+        >
+          <label>
+            Product
+            <select value={product} onChange={(e) => setProduct(e.target.value as Product)}>
+              {PRODUCTS.map((p) => (
+                <option key={p.code} value={p.code}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Sharing %
+            <input type="number" min="0" max="100" step="0.01" value={percent} onChange={(e) => setPercent(e.target.value)} required />
+          </label>
+          <p className="muted">Clients with their own % keep it. From the % row’s first day, the % is corrected instead.</p>
+        </DatedChangeForm>
+      )}
+    </div>
   );
 }
 

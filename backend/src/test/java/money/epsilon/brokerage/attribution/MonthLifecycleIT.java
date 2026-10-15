@@ -42,6 +42,8 @@ class MonthLifecycleIT extends IntegrationTestBase {
     String code1, code2;
     long client1Id, client2Id;
 
+    long branchId;
+
     @BeforeEach
     void setUp() throws Exception {
         admin = loginAdmin();
@@ -54,9 +56,9 @@ class MonthLifecycleIT extends IntegrationTestBase {
         rdName = "RD " + tag;
         String start = month.minusYears(1) + "-01";
         long region = postJson("/api/regions", Map.of("name", regionName), admin, 201).get("id").asLong();
-        long branch = postJson("/api/branches", Map.of("name", branchName, "regionId", region, "from", start), admin, 201).get("id").asLong();
-        rmId = postJson("/api/employees", Map.of("name", rmName, "type", "RM", "branchId", branch, "from", start), admin, 201).get("id").asLong();
-        long rd = postJson("/api/employees", Map.of("name", rdName, "type", "RM", "branchId", branch, "from", start), admin, 201).get("id").asLong();
+        branchId = postJson("/api/branches", Map.of("name", branchName, "regionId", region, "from", start), admin, 201).get("id").asLong();
+        rmId = postJson("/api/employees", Map.of("name", rmName, "type", "RM", "branchId", branchId, "from", start), admin, 201).get("id").asLong();
+        long rd = postJson("/api/employees", Map.of("name", rdName, "type", "RM", "branchId", branchId, "from", start), admin, 201).get("id").asLong();
         postJson("/api/regions/" + region + "/rd", Map.of("employeeId", rd, "from", start), admin, 204);
         sbId = postJson("/api/partners", Map.of("type", "SUB_BROKER", "name", "SB " + tag), admin, 201).get("id").asLong();
         refId = postJson("/api/partners", Map.of("type", "REFERRAL", "name", "REF " + tag), admin, 201).get("id").asLong();
@@ -165,6 +167,42 @@ class MonthLifecycleIT extends IntegrationTestBase {
         postJson("/api/months/" + periodId + "/unlock", Map.of("reason", ""), admin, 400);
         postJson("/api/months/" + periodId + "/unlock", Map.of("reason", "Finance asked to fix a %"), admin, 200);
         assertThat(monthRow(periodId).get("status").asText()).isEqualTo("PROCESSED");
+    }
+
+    @Test
+    void processingUsesTheRateCardUnlessTheClientHasItsOwnPercent() throws Exception {
+        long periodId = saveMonth(file(100));   // client 1: net 100, client 2: net 50
+        // Client 1 follows its sub-broker's rate card, which does not exist yet: Process stops and names the partner.
+        postJson("/api/clients/" + client1Id + "/partner", Map.of("partnerId", sbId, "from", month + "-01"), admin, 204);
+        JsonNode failed = runJob(postJson("/api/months/" + periodId + "/process", Map.of(), admin, 202).get("jobId").asLong());
+        assertThat(failed.get("status").asText()).isEqualTo("FAILED");
+        assertThat(failed.get("error").asText()).contains("no MF %").contains("SB " + tag);
+
+        postJson("/api/partners/" + sbId + "/products", Map.of("product", "MF", "percent", 50, "from", month + "-01"), admin, 204);
+        postJson("/api/partners/" + refId + "/products", Map.of("product", "MF", "percent", 0, "from", month + "-01"), admin, 204);
+        // Client 2: the referral partner's MF rate is 0%, but this client has its own 40%.
+        postJson("/api/clients/" + client2Id + "/partner", Map.of("partnerId", refId, "percent", 40, "from", month + "-01"), admin, 204);
+        assertThat(process(periodId).get("partners").decimalValue()).isEqualByComparingTo("70");   // 50 + 20
+
+        // A partner whose approval is pending is paid nothing.
+        patchJson("/api/partners/" + refId, Map.of("status", "PENDING"), admin, 200);
+        assertThat(process(periodId).get("partners").decimalValue()).isEqualByComparingTo("50");
+    }
+
+    @Test
+    void aBranchPartnerIsPaidFirstForEveryClientOfTheBranch() throws Exception {
+        long periodId = saveMonth(file(100));   // client 1: net 100, client 2: net 50, both under an RM of this branch
+        long branchSb = postJson("/api/partners", Map.of("type", "SUB_BROKER", "name", "BRANCH SB " + tag), admin, 201).get("id").asLong();
+        postJson("/api/partners/" + branchSb + "/products", Map.of("product", "MF", "percent", 55, "from", month + "-01"), admin, 204);
+        postJson("/api/branches/" + branchId + "/partner", Map.of("partnerId", branchSb, "from", month + "-01"), admin, 204);
+        // Client 1 also has a referral partner at 20%; client 2 its own sub-broker at 50%.
+        postJson("/api/clients/" + client1Id + "/partner", Map.of("partnerId", refId, "percent", 20, "from", month + "-01"), admin, 204);
+        postJson("/api/clients/" + client2Id + "/partner", Map.of("partnerId", sbId, "percent", 50, "from", month + "-01"), admin, 204);
+
+        // Client 1: 55 + 20% of 45 = 9 → 64. Client 2: 27.50 + 50% of 22.50 = 11.25 → 38.75.
+        assertThat(process(periodId).get("partners").decimalValue()).isEqualByComparingTo("102.75");
+        postJson("/api/branches/" + branchId + "/partner/end", Map.of("lastDay", month.minusMonths(1).atEndOfMonth().toString()), admin, 204);
+        assertThat(getJson("/api/branches/" + branchId + "/partner", admin, 200)).isEmpty();   // never took effect: removed
     }
 
     @Test

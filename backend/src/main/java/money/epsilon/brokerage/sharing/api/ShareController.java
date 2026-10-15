@@ -12,7 +12,11 @@ import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.sharing.service.PartnerMergeService;
 import money.epsilon.brokerage.sharing.service.PartnerMergeService.MergeResult;
 import money.epsilon.brokerage.sharing.service.ShareService;
+import money.epsilon.brokerage.sharing.service.ShareService.BranchPartnerView;
+import money.epsilon.brokerage.sharing.service.ShareService.ProductShareView;
 import money.epsilon.brokerage.sharing.service.ShareService.ShareView;
+import money.epsilon.brokerage.sharing.domain.Product;
+import money.epsilon.brokerage.platform.web.RuleViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -57,6 +61,61 @@ class ShareController {
         return service.clientCountsByPartner();
     }
 
+    /** Every partner's current % per product (0-100). */
+    @GetMapping("/api/partners/product-percents")
+    @PreAuthorize(Roles.MASTER_READ)
+    Map<Long, Map<Product, BigDecimal>> productPercents() {
+        return service.currentProductPercents();
+    }
+
+    @GetMapping("/api/partners/{id}/products")
+    @PreAuthorize(Roles.MASTER_READ)
+    List<ProductShareView> productHistory(@PathVariable long id) {
+        return service.productHistory(id);
+    }
+
+    @PostMapping("/api/partners/{id}/products")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize(Roles.MASTER_WRITE)
+    void setProductPercent(@PathVariable long id, @Valid @RequestBody SetProductPercentRequest req) {
+        if (!service.setProductPercent(id, req.product(), req.percent(), req.from(), req.reason())) {
+            throw new RuleViolationException("That is already the partner's % for " + req.product().heading());
+        }
+    }
+
+    /** Branch rules in force today (a partner for every client of the branch). */
+    @GetMapping("/api/branch-partners")
+    @PreAuthorize(Roles.MASTER_READ)
+    List<BranchPartnerView> branchPartners() {
+        return service.currentBranchPartners();
+    }
+
+    @GetMapping("/api/branches/{id}/partner")
+    @PreAuthorize(Roles.MASTER_READ)
+    List<BranchPartnerView> branchPartnerHistory(@PathVariable long id) {
+        return service.branchPartnerHistory(id);
+    }
+
+    @PostMapping("/api/branches/{id}/partner")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize(Roles.MASTER_WRITE)
+    void setBranchPartner(@PathVariable long id, @Valid @RequestBody BranchPartnerRequest req) {
+        service.setBranchPartner(id, req.partnerId(), req.from(), req.reason());
+    }
+
+    @PostMapping("/api/branches/{id}/partner/end")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize(Roles.MASTER_WRITE)
+    void endBranchPartner(@PathVariable long id, @Valid @RequestBody EndBranchPartnerRequest req) {
+        service.endBranchPartner(id, req.lastDay(), req.reason());
+    }
+
+    record BranchPartnerRequest(@NotNull Long partnerId, @NotNull LocalDate from, @Size(max = 500) String reason) {
+    }
+
+    record EndBranchPartnerRequest(@NotNull LocalDate lastDay, @Size(max = 500) String reason) {
+    }
+
     @GetMapping("/api/clients/{id}/partner")
     @PreAuthorize(Roles.MASTER_READ)
     List<ShareView> history(@PathVariable long id) {
@@ -77,7 +136,12 @@ class ShareController {
         service.end(id, req.role(), req.lastDay(), req.reason());
     }
 
-    record SetShareRequest(@NotNull Long partnerId, @NotNull BigDecimal percent, @NotNull LocalDate from, @Size(max = 500) String reason) {
+    /** {@code percent} null = the partner's own % per product applies (no exception for this client). */
+    record SetShareRequest(@NotNull Long partnerId, BigDecimal percent, @NotNull LocalDate from, @Size(max = 500) String reason) {
+    }
+
+    record SetProductPercentRequest(@NotNull Product product, @NotNull BigDecimal percent, @NotNull LocalDate from,
+                                    @Size(max = 500) String reason) {
     }
 
     record MergeRequest(@NotNull Long intoId, @Size(max = 500) String reason) {

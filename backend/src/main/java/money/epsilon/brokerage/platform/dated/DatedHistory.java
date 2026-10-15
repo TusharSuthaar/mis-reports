@@ -68,9 +68,19 @@ public final class DatedHistory {
         return saved;
     }
 
+    /**
+     * Ends the open row on {@code lastDay}. A row that would end before its first day never took effect (e.g. a master
+     * loaded again from the same date without that value): it is removed instead, audited CANCEL with what it was.
+     */
     public static <T extends DatedRow> void end(T open, LocalDate lastDay, JpaRepository<T, Long> repo, AuditService audit,
                                          String entity, Function<T, ?> view, String reason) {
         Object before = view.apply(open);
+        if (lastDay.isBefore(open.getValidFrom())) {
+            repo.delete(open);
+            repo.flush();
+            audit.record(entity, open.getId(), "CANCEL", before, closeAudit(null, reason));
+            return;
+        }
         Timeline.end(open, lastDay);
         repo.saveAndFlush(open);
         audit.record(entity, open.getId(), "CLOSE", before, closeAudit(view.apply(open), reason));

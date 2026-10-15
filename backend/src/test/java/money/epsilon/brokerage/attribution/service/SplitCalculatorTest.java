@@ -36,6 +36,15 @@ class SplitCalculatorTest {
     }
 
     @Test
+    void aBranchPartnerListedFirstIsPaidBeforeTheClientsOwnSubBrokerThenTheReferral() {
+        Share branch = new Share(PartnerType.SUB_BROKER, 9, "BRANCH SB", new BigDecimal("0.55"));
+        List<Part> parts = SplitCalculator.split(new BigDecimal("100"), List.of(branch, sb("0.5"), ref("0.2")), ORDER, NegativeNet.SAME_PERCENT);
+        // 55% of 100, then 50% of 45, then 20% of 22.50; Epsilon keeps the rest
+        assertThat(amounts(parts)).containsExactly("55", "22.5", "4.5", "18");
+        assertThat(parts.get(0).share().partnerName()).isEqualTo("BRANCH SB");
+    }
+
+    @Test
     void theUsualCaseSubBrokerAtZeroAndReferralPaid() {
         List<Part> parts = SplitCalculator.split(new BigDecimal("100"), List.of(sb("0"), ref("0.5")), ORDER, NegativeNet.SAME_PERCENT);
         assertThat(amounts(parts)).containsExactly("0", "50", "50");

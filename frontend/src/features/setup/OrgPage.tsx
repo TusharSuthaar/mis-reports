@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type FormEvent } from 'react';
 import { api } from '../../api/client';
-import type { Branch, Employee, HistoryEntry, OrgChart, Region } from '../../api/types';
+import type { Branch, BranchPartner, Employee, HistoryEntry, OrgChart, Partner, Region } from '../../api/types';
 import { useLoad } from '../../api/useLoad';
 import { useSubmit } from '../../api/useSubmit';
 import { useAuth } from '../../app/auth';
@@ -9,7 +9,7 @@ import { DatedChangeForm } from '../../components/DatedChangeForm';
 import { HistoryTable } from '../../components/HistoryTable';
 import { NameForm } from '../../components/NameForm';
 import { SidePanel } from '../../components/SidePanel';
-import { todayIso } from '../../format';
+import { formatDate, todayIso } from '../../format';
 
 /** One row per RM, shaped like the report: Region | RD | Branch | RM. Empty branches/regions get a row too. */
 export interface OrgRow {
@@ -323,7 +323,73 @@ function BranchPanel({ branch, regions, canEdit, onClose, onChanged }: { branch?
         </>
       )}
       <PastChanges path={`/api/branches/${branch.id}/region`} label="Region" />
+      <BranchPartnerBlock branchId={branch.id} branchName={branch.name} canEdit={canEdit} />
     </SidePanel>
+  );
+}
+
+/**
+ * A partner for every client of the branch (e.g. one sub-broker for all its clients): paid first, at its rate card;
+ * the client's own sub-broker and referral partner share what is left.
+ */
+function BranchPartnerBlock({ branchId, branchName, canEdit }: { branchId: number; branchName: string; canEdit: boolean }) {
+  const history = useLoad<BranchPartner[]>(`/api/branches/${branchId}/partner`);
+  const partners = useLoad<Partner[]>('/api/partners');
+  const [partnerId, setPartnerId] = useState('');
+  const [lastDay, setLastDay] = useState('');
+  const { busy, error, run } = useSubmit();
+  const now = (history.data ?? []).find((r) => r.validTo === null);
+  const options = (partners.data ?? []).filter((p) => p.status !== 'INACTIVE' && p.type !== 'POSP');
+
+  return (
+    <div className="card-block">
+      <h3>Partner for all clients of {branchName}</h3>
+      <p>{now ? `${now.partnerName}, from ${formatDate(now.validFrom)}` : <span className="muted">None</span>}</p>
+      <p className="muted">Paid first, at the partner’s product %. The client’s own partners then share what is left.</p>
+      {canEdit && (
+        <DatedChangeForm
+          title={now ? 'Change the partner' : 'Set a partner for all clients'}
+          dateLabel="From"
+          submitLabel="Save"
+          canSubmit={partnerId !== ''}
+          onSubmit={(from) => api(`/api/branches/${branchId}/partner`, { method: 'POST', body: { partnerId: Number(partnerId), from } })}
+          onDone={() => {
+            setPartnerId('');
+            history.reload();
+          }}
+        >
+          <Select label="Partner" value={partnerId} onChange={setPartnerId} options={options} />
+        </DatedChangeForm>
+      )}
+      {canEdit && now && (
+        <form
+          className="inline-form"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (await run(() => api(`/api/branches/${branchId}/partner/end`, { method: 'POST', body: { lastDay } }))) history.reload();
+          }}
+        >
+          <span>No branch partner after</span>
+          <input type="date" value={lastDay} onChange={(e) => setLastDay(e.target.value)} aria-label="Last day with the branch partner" required />
+          <button type="submit" className="secondary" disabled={busy || !lastDay}>
+            Remove
+          </button>
+          {error && <span className="error">{error}</span>}
+        </form>
+      )}
+      {(history.data ?? []).length > 1 && (
+        <details>
+          <summary>Earlier</summary>
+          <ul>
+            {(history.data ?? []).filter((r) => r.validTo !== null).map((r) => (
+              <li key={r.id}>
+                {r.partnerName}: {formatDate(r.validFrom)} – {formatDate(r.validTo)}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
   );
 }
 

@@ -62,6 +62,17 @@ class ShareLoadController {
     record RmSpellingRequest(@NotBlank String spelling, @NotNull Long rmId) {
     }
 
+    /** A new partner in the master that is really an existing one under another spelling. */
+    @PostMapping("/partner-spelling")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize(Roles.MASTER_WRITE)
+    void partnerSpelling(@Valid @RequestBody PartnerSpellingRequest req) {
+        service.rememberPartnerSpelling(req.spelling(), req.partnerId());
+    }
+
+    record PartnerSpellingRequest(@NotBlank String spelling, @NotNull Long partnerId) {
+    }
+
     record LoadRequest(@NotBlank String token, @NotBlank String fileName, @NotNull LocalDate from) {
     }
 }

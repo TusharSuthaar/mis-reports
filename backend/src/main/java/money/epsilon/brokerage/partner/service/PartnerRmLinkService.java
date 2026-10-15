@@ -56,7 +56,7 @@ public class PartnerRmLinkService {
     @Transactional
     public LinkView link(long partnerId, long rmId, LocalDate from, LocalDate to, String reason) {
         Partner partner = findPartner(partnerId);
-        if (partner.getStatus() != PartnerStatus.ACTIVE) throw new RuleViolationException(partner.getName() + " is inactive");
+        if (partner.getStatus() == PartnerStatus.INACTIVE) throw new RuleViolationException(partner.getName() + " is inactive");
         EmployeeView rm = employees.requireRmEmployedOn(rmId, from);
         Optional<PartnerRmLink> latest = links.findFirstByPartnerIdAndRmIdOrderByValidFromDesc(partnerId, rmId);
         if (latest.filter(l -> l.getValidTo() == null).isPresent()) {

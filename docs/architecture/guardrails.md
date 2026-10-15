@@ -22,7 +22,7 @@ checklist asks for it.
 | G-15 | Rules the business may change (GST rate, sharing order…) are settings, not constants in code. | Review (settings screen: Phase E) |
 | G-16 | Uploaded Excel is read only with `platform.excel.ExcelFile` (headers by name, exact amounts, dates, row-numbered errors). | `GuardrailsTest.onlyThePlatformExcelReaderOpensWorkbooks` |
 | G-17 | Every upload is checked with `UploadedFile.of`; every background job extends `TransactionalJob` (one transaction, all or nothing). | `GuardrailsTest.importsUseTheSharedPipeline` |
-| G-18 | A dated value (RM, share…) changes only through `DatedHistory.setFrom`: same value → nothing, same first day → corrected, otherwise a new row from the date. | Review, `ShareIT`, `TimelineTest` |
+| G-18 | A dated value (RM, share…) changes only through `DatedHistory.setFrom`: same value → nothing, same first day → corrected, otherwise a new row from the date; ended before its first day → removed (CANCEL). | Review, `ShareIT`, `TimelineTest` |
 | G-19 | Every request and job has a **reference**: in the `X-Request-Id` header, every error answer, the job record and every log line. | `ActivityIT` |
 | G-20 | Log only through SLF4J: JSON lines with requestId, user, module, action. No `System.out` / `printStackTrace`. | `GuardrailsTest.nothingPrintsToTheConsole`, `JsonLogFormatterTest` |
 | G-21 | No full PAN in logs or error records (the formatter masks PAN-shaped text as a safety net); query strings are never logged. | `JsonLogFormatterTest`, `ActivityIT`, review |

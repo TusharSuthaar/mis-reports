@@ -250,7 +250,8 @@ class MasterImportProcessor {
         return switch (Text.compact(s)) {
             case "ACTIVE" -> PartnerStatus.ACTIVE;
             case "INACTIVE" -> PartnerStatus.INACTIVE;
-            default -> throw new IllegalArgumentException("Status must be ACTIVE or INACTIVE, not '" + s + "'");
+            case "PENDING" -> PartnerStatus.PENDING;
+            default -> throw new IllegalArgumentException("Status must be ACTIVE, PENDING or INACTIVE, not '" + s + "'");
         };
     }
 

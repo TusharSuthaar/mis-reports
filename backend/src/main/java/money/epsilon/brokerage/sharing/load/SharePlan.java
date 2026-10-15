@@ -17,24 +17,34 @@ import money.epsilon.brokerage.client.service.ClientService.ClientKey;
 import money.epsilon.brokerage.partner.domain.PartnerType;
 import money.epsilon.brokerage.platform.crypto.PanCipher;
 import money.epsilon.brokerage.platform.text.Text;
+import money.epsilon.brokerage.sharing.domain.Product;
 import money.epsilon.brokerage.sharing.load.MasterShareReader.MasterRow;
 import money.epsilon.brokerage.sharing.load.MasterShareReader.PartnerCell;
 
 /**
  * Works out, without saving anything, what the master says each existing client's partners should be (one per role:
  * sub-broker, referral partner) and how that differs from today. Clients are matched by PAN + name (case and spaces
- * ignored); a client without PAN by name alone, only when that name is unique on both sides. A partner without a % gets 0.
- * A matched client whose row names no partner in a role has no partner in that role.
+ * ignored); a client without PAN by name alone, only when that name is unique on both sides. A matched client whose row
+ * names no partner in a role has no partner in that role.
+ * <p>
+ * The % on a client row (rule R-54): when the partner's % per product is known (partner sheets, or already in the app), the
+ * row's % is a <b>client exception</b> only if it is neither the partner's MF % nor one of the partner's other product %s
+ * (a row that repeats the partner's general %, e.g. a referral partner's 50% on non-MF products, is not an MF exception).
+ * Otherwise the link follows the partner's %. When no partner % is known, the row's % is the client's (blank = 0).
  */
 final class SharePlan {
 
     enum Action { SET, END }
 
-    record Desired(String partnerKey, PartnerType type, String partnerName, BigDecimal fraction) {
+    /** {@code rawPct}: the row's % (fraction), null when blank; {@code pending}: TYPE says "under process". */
+    record Desired(String partnerKey, PartnerType type, String partnerName, BigDecimal rawPct, boolean pending) {
     }
 
-    /** A change for one client in one role. For SET, {@code partnerId} is null when the partner will be created. */
-    record Change(long clientId, Action action, PartnerType role, Desired desired, Long partnerId) {
+    /**
+     * A change for one client in one role. For SET, {@code partnerId} is null when the partner will be created;
+     * {@code fraction} is the client exception, null = the partner's % applies.
+     */
+    record Change(long clientId, Action action, PartnerType role, Desired desired, Long partnerId, BigDecimal fraction) {
     }
 
     record Unmatched(int row, String clientName, String maskedPan, String reason) {
@@ -43,10 +53,11 @@ final class SharePlan {
     record NewPartner(String name, PartnerType type, int clients) {
     }
 
-    record Current(long partnerId, BigDecimal fraction) {
+    /** {@code clientFraction}: the client exception on the open link, null = follows the partner. */
+    record Current(long partnerId, BigDecimal clientFraction) {
     }
 
-    record Existing(long id, PartnerType type, String name) {
+    record Existing(long id, PartnerType type, String name, boolean pending) {
     }
 
     final List<Change> changes = new ArrayList<>();
@@ -58,6 +69,11 @@ final class SharePlan {
     int matchedClients;
     int unchanged;
     int zeroPct;
+    int followsPartner;
+    int exceptions;
+    /** Partners (type|name key) some row marks "under process", and those named on rows without it. */
+    final Set<String> pendingKeys = new HashSet<>();
+    final Set<String> approvedKeys = new HashSet<>();
     int bothRoles;
     int matchedByPanOnly; // PAN matched, name spelt differently
     int conflicts;
@@ -67,9 +83,12 @@ final class SharePlan {
      * @param partners   existing partners
      * @param current    client id → its current MF share per role
      * @param remembered partner spelling → partner id, from spellings confirmed before (null if none)
+     * @param sheetRates partner (type|name key) → % per product (fractions) from the workbook's partner sheets
+     * @param appRates   partner id → its current % per product (fractions) in the app
      */
     static SharePlan build(List<MasterRow> rows, List<ClientKey> clients, Function<String, String> hash, List<Existing> partners,
-                           Map<Long, Map<PartnerType, Current>> current, Function<String, Long> remembered) {
+                           Map<Long, Map<PartnerType, Current>> current, Function<String, Long> remembered,
+                           Map<String, Map<Product, BigDecimal>> sheetRates, Map<Long, Map<Product, BigDecimal>> appRates) {
         SharePlan plan = new SharePlan();
         plan.rows = rows.size();
 
@@ -112,8 +131,10 @@ final class SharePlan {
                     rowOk = false;
                     break;
                 }
-                BigDecimal fraction = (p.pct() == null ? BigDecimal.ZERO : p.pct()).setScale(6, RoundingMode.HALF_UP);
-                wanted.put(type, new Desired(Text.key(p.partner()), type, p.partner(), fraction));
+                BigDecimal raw = p.pct() == null ? null : p.pct().setScale(6, RoundingMode.HALF_UP);
+                boolean pending = Text.key(p.type()).contains("UNDER PROCESS");
+                wanted.put(type, new Desired(Text.key(p.partner()), type, p.partner(), raw, pending));
+                (pending ? plan.pendingKeys : plan.approvedKeys).add(type + "|" + Text.key(p.partner()));
             }
             if (!rowOk) continue;
             for (ClientKey c : found) {
@@ -146,21 +167,26 @@ final class SharePlan {
                 Desired d = wanted.get(role);
                 Current c = now.get(role);
                 if (d == null) {
-                    if (c != null) plan.changes.add(new Change(clientId, Action.END, role, null, null));
+                    if (c != null) plan.changes.add(new Change(clientId, Action.END, role, null, null, null));
                     continue;
                 }
-                if (d.fraction().signum() == 0) plan.zeroPct++;
                 // A remembered spelling wins over the exact name: a merged duplicate keeps its name but points elsewhere.
                 Long aliased = remembered.apply(d.partnerName());
                 Existing p = aliased == null ? null : existingById.get(aliased);
                 if (p == null || p.type() != d.type()) p = existing.get(d.type() + "|" + d.partnerKey());
+                Map<Product, BigDecimal> rates = sheetRates.get(d.type() + "|" + d.partnerKey());
+                if (rates == null && p != null) rates = appRates.get(p.id());
+                BigDecimal fraction = clientException(d.rawPct(), rates);
+                if (fraction == null) plan.followsPartner++;
+                else plan.exceptions++;
+                if (fraction != null && fraction.signum() == 0) plan.zeroPct++;
                 if (p == null) {
                     String key = d.type() + "|" + d.partnerKey();
                     newPartnerClients.merge(key, 1, Integer::sum);
                     plan.newPartners.putIfAbsent(key, new NewPartner(d.partnerName(), d.type(), 0));
-                    plan.changes.add(new Change(clientId, Action.SET, role, d, null));
-                } else if (c == null || c.partnerId() != p.id() || c.fraction().compareTo(d.fraction()) != 0) {
-                    plan.changes.add(new Change(clientId, Action.SET, role, d, p.id()));
+                    plan.changes.add(new Change(clientId, Action.SET, role, d, null, fraction));
+                } else if (c == null || c.partnerId() != p.id() || !same(c.clientFraction(), fraction)) {
+                    plan.changes.add(new Change(clientId, Action.SET, role, d, p.id(), fraction));
                 }
             }
             if (plan.changes.size() == before) plan.unchanged++;
@@ -197,6 +223,24 @@ final class SharePlan {
         return same;
     }
 
+    /**
+     * The client exception a row's % stands for (null = the partner's % applies), given the partner's % per product
+     * ({@code rates}, null / empty when unknown). Insurance is not a "general" % (it is 0 for partners: R-56).
+     */
+    static BigDecimal clientException(BigDecimal pct, Map<Product, BigDecimal> rates) {
+        if (rates == null || rates.isEmpty()) return pct == null ? BigDecimal.ZERO.setScale(6) : pct;
+        if (pct == null) return null;
+        BigDecimal mf = rates.get(Product.MF);
+        if (mf != null && mf.compareTo(pct) == 0) return null;
+        boolean general = rates.entrySet().stream()
+                .anyMatch(e -> e.getKey() != Product.MF && e.getKey() != Product.INS && e.getValue().compareTo(pct) == 0);
+        return general ? null : pct;
+    }
+
+    private static boolean same(BigDecimal a, BigDecimal b) {
+        return a == null ? b == null : b != null && a.compareTo(b) == 0;
+    }
+
     static PartnerType partnerType(String text) {
         String k = Text.key(text);
         if (k.contains("SUB")) return PartnerType.SUB_BROKER;
@@ -225,7 +269,7 @@ final class SharePlan {
         if (!a.keySet().equals(b.keySet())) return false;
         for (PartnerType t : a.keySet()) {
             Desired x = a.get(t), y = b.get(t);
-            if (!x.partnerKey().equals(y.partnerKey()) || x.fraction().compareTo(y.fraction()) != 0) return false;
+            if (!x.partnerKey().equals(y.partnerKey()) || !same(x.rawPct(), y.rawPct())) return false;
         }
         return true;
     }

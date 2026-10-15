@@ -90,6 +90,57 @@ export interface HistoryEntry {
   changedAt: string;
 }
 
+export type PartnerStatus = 'ACTIVE' | 'PENDING' | 'INACTIVE';
+
+export const PARTNER_STATUS_LABEL: Record<PartnerStatus, string> = {
+  ACTIVE: 'Active',
+  PENDING: 'Pending approval',
+  INACTIVE: 'Inactive',
+};
+
+/** Products a partner can share in (codes as the API sends them), in Master MIS column order. */
+export type Product = 'MF' | 'PREIPO' | 'FD' | 'BOND' | 'LOAN' | 'EQUITY' | 'PMS' | 'AIF' | 'ADVISORY' | 'GIFT' | 'INS';
+
+export const PRODUCTS: { code: Product; label: string }[] = [
+  { code: 'MF', label: 'MF' },
+  { code: 'PREIPO', label: 'Pre-IPO' },
+  { code: 'FD', label: 'FD' },
+  { code: 'BOND', label: 'Bonds' },
+  { code: 'LOAN', label: 'Loans' },
+  { code: 'EQUITY', label: 'Equity' },
+  { code: 'PMS', label: 'PMS' },
+  { code: 'AIF', label: 'AIF' },
+  { code: 'ADVISORY', label: 'Advisory' },
+  { code: 'GIFT', label: 'GIFT' },
+  { code: 'INS', label: 'Insurance' },
+];
+
+/** One dated % of a partner for one product; percent is 0–100 of net. */
+export interface ProductShare {
+  id: number;
+  partnerId: number;
+  product: Product;
+  percent: number;
+  validFrom: string;
+  validTo: string | null;
+  reason: string | null;
+  changedBy: string;
+  changedAt: string;
+}
+
+/** A partner for every client of a branch, from a date (paid first). */
+export interface BranchPartner {
+  id: number;
+  branchId: number;
+  partnerId: number;
+  partnerName: string;
+  validFrom: string;
+  validTo: string | null;
+  reason: string | null;
+  changedBy: string;
+  changedAt: string;
+}
+
 export interface Partner {
   id: number;
   type: PartnerType;
@@ -98,7 +149,8 @@ export interface Partner {
   gstin: string | null;
   arnOrPospCode: string | null;
   bankRef: string | null;
-  status: 'ACTIVE' | 'INACTIVE';
+  /** PENDING: approval under process — linked to clients but paid nothing. */
+  status: PartnerStatus;
   currentRmLinks: number;
 }
 
@@ -233,7 +285,13 @@ export interface Share {
   partnerId: number;
   partnerName: string;
   partnerRole: PartnerType;
+  /** The % that counts (0–100). */
   percent: number;
+  /** The client's own % (an exception); null = the partner's % for the product applies. */
+  clientPercent: number | null;
+  source: 'CLIENT' | 'PARTNER' | 'PENDING' | 'NO_PARTNER_PERCENT';
+  /** Set when this partner comes from the branch's rule (a partner for all its clients), not the client's own link. */
+  branch: string | null;
   validFrom: string;
   validTo: string | null;
   reason: string | null;
@@ -267,6 +325,15 @@ export interface ShareLoadPreview {
   clientsWithoutRm: number;
   rmChanges: { clientId: number; client: string; pan: string | null; fromRm: string | null; toRm: string }[];
   unknownRms: { spelling: string; note: string | null; clients: number }[];
+  /** What the workbook's partner sheets change; null when the file could not be read. */
+  partnerRates: {
+    sheetPartners: number;
+    percentChanges: number;
+    followsPartner: number;
+    clientExceptions: number;
+    pending: string[];
+    approved: string[];
+  } | null;
 }
 
 export interface ShareLoadResult {
@@ -279,6 +346,8 @@ export interface ShareLoadResult {
   partnersCreated: number;
   zeroPct: number;
   unmatched: number;
+  productPercentsSet: number;
+  clientExceptions: number;
 }
 
 export interface MoneyTotals {

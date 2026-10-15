@@ -117,6 +117,15 @@ public class AttributionService {
             List<Long> ids = e.getValue().stream().map(ActiveLine::clientId).distinct().toList();
             Map<Long, Long> rmOf = clients.rmsOn(ids, day);
             Map<Long, List<ShareView>> sharesOf = shares.on(ids, day);
+            // A partner linked to clients but with no MF % would silently get 0: a gap in the master, so stop (R-54).
+            java.util.Set<String> noPercent = new java.util.TreeSet<>();
+            sharesOf.values().forEach(list -> list.stream().filter(s -> s.source() == ShareService.Source.NO_PARTNER_PERCENT)
+                    .forEach(s -> noPercent.add(s.partnerName())));
+            if (!noPercent.isEmpty()) {
+                throw new RuleViolationException(noPercent.size() + " partner(s) have clients in " + period.month() + " but no MF % on " + day
+                        + ": " + String.join(", ", noPercent) + ". Set their MF % on the Partners screen (or upload Master MIS with its"
+                        + " partner sheets), then process.");
+            }
             Map<Long, Placement> placementOf = placements(org.asOf(day));
             Map<Long, String> names = employees.list().stream().collect(java.util.stream.Collectors.toMap(EmployeeView::id, EmployeeView::name));
             for (ActiveLine l : e.getValue()) {

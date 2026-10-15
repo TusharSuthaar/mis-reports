@@ -14,7 +14,7 @@ reads or writes those tables with SQL — it calls the owner's public service.
 | `partner` | `partner`, `partner_rm_link` | Sub brokers, referral partners, POSPs; partner↔RM links | `PartnerService`, `PartnerRmLinkService` |
 | `client` | `client`, `client_external_id`, `client_rm_assignment` | Clients (one per PAN), their codes in source systems, RM over time, PAN search/edit | `ClientService` |
 | `mapping` | `source_alias` | Remembered spellings: "this name in a file = that RM / partner" | `AliasService` |
-| `sharing` | `client_partner_share` | Which partner shares each client, at what %, over time; Master MIS upload; partner merge | `ShareService`, `ShareLoadService`, `PartnerMergeService` |
+| `sharing` | `client_partner_share`, `partner_product_share`, `branch_partner` | Which partner shares each client and each partner's % per product, over time (client exceptions on the link); branch rules (a partner for every client of a branch); Master MIS upload; partner merge | `ShareService`, `ShareLoadService`, `PartnerMergeService` |
 | `ingestion` | `finesse_client`, `upload`, `staged_row` | Finesse client master; monthly brokerage upload → review → save | `UploadService`, `FinesseClientMasterService` |
 | `period` | `period` | Months per product: OPEN → PROCESSED → LOCKED; locked-month guard | `PeriodService` |
 | `ledger` | `brokerage_line` | Append-only brokerage lines per client per month (+ corrections) | `LedgerService` |

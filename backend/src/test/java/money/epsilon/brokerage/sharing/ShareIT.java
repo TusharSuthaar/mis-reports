@@ -132,6 +132,18 @@ class ShareIT extends IntegrationTestBase {
     }
 
     @Test
+    void aMasterLoadedAgainFromTheSameDateWithoutAPartnerRemovesThatLink() throws Exception {
+        load(preview(master("REF " + tag, 0.5)), "2026-08-01");
+        assertThat(getJson("/api/clients/" + clientB + "/partner", admin, 200)).hasSize(1);
+        // Same start date, the partner gone: the link never took effect, so it is removed (not ended the day before it began).
+        JsonNode again = preview(master(null, null));
+        assertThat(again.get("toEnd").asInt()).isEqualTo(1);
+        load(again, "2026-08-01");
+        assertThat(getJson("/api/clients/" + clientB + "/partner", admin, 200)).isEmpty();
+        assertThat(getJson("/api/audit?entity=CLIENT_PARTNER_SHARE&action=CANCEL&size=5", admin, 200).get("total").asInt()).isPositive();
+    }
+
+    @Test
     void aDuplicatePartnerIsMergedIntoTheRightOne() throws Exception {
         long right = postJson("/api/partners", Map.of("type", "REFERRAL", "name", "TEST PARTNER AGARWAL " + tag), admin, 201).get("id").asLong();
         long wrong = postJson("/api/partners", Map.of("type", "REFERRAL", "name", "TEST PARTNER AGRAWAL " + tag), admin, 201).get("id").asLong();
@@ -201,6 +213,85 @@ class ShareIT extends IntegrationTestBase {
         assertThat(getJson("/api/clients/" + clientC + "/partner", admin, 200)).hasSize(3);
     }
 
+    /** Master with partner sheets: SBX sub-broker (MF 80%), RFX referral (MF 0%, others 50%), RFP referral under process. */
+    byte[] masterWithRateCards(Object pctForC) {
+        return new TestWorkbook()
+                .sheet("Master", "Client No", "REGION", "RD", "BRANCH", "RM", "CLIENT NAME", "PAN NO", "Concatenate", "CLIENT TYPE",
+                        "BROKER", "TYPE", "%", "POSP", "BROKER", "BROKER 2", "TYPE 2", "% 2")
+                .row(1, "R", "RD", "B", "RM", "CLIENT A " + tag, panA, "", "OFFLINE", "SBX " + tag, "Sub broker", 0.8, 0, null,
+                        "RFX " + tag, "Referral Partner", 0.5)
+                .row(2, "R", "RD", "B", "RM", "CLIENT B " + tag, panB, "", "OFFLINE", "RFP " + tag, "Referral Partner (Under Process)", 0.5, 0, null)
+                .row(3, "R", "RD", "B", "RM", "CLIENT C " + tag, panC, "", "OFFLINE", "SBX " + tag, "Sub broker", pctForC, 0, null)
+                .sheet("SUB_BROKER", "Sub-Broker", "MF", "Pre-IPO", "Equity", "Insurance")
+                .row("SBX " + tag, 0.8, 0.8, 0.8, 0)
+                .sheet("REFERRAL PARTNER", "Referral Partner", "MF", "Pre-IPO", "Equity", "Insurance")
+                .row("RFX " + tag, 0, 0.5, 0.5, 0)
+                .row("RFP " + tag, 0, 0.5, 0.5, 0)
+                .row("*sharing is as per client", null, null, null, null)
+                .bytes();
+    }
+
+    @Test
+    void partnerSheetsSetRateCardsAndOnlyRealDifferencesBecomeClientExceptions() throws Exception {
+        JsonNode p = preview(masterWithRateCards(0.6));
+        JsonNode rates = p.get("partnerRates");
+        assertThat(rates.get("sheetPartners").asInt()).isEqualTo(3);   // the note row under the table is not a partner
+        assertThat(p.get("problems").toString()).contains("read as a note");
+        assertThat(rates.get("percentChanges").asInt()).isEqualTo(12);
+        assertThat(rates.get("followsPartner").asInt()).isEqualTo(3);   // A's SB 80% = card; A's RF 50% = non-MF %; B blank-equivalent 50%
+        assertThat(rates.get("clientExceptions").asInt()).isEqualTo(1); // C at 60% while the card says 80%
+        assertThat(rates.get("pending")).extracting(JsonNode::asText).containsExactly("RFP " + tag);
+        load(p, "2026-08-01");
+
+        JsonNode now = getJson("/api/shares?clientIds=" + clientA + "," + clientB + "," + clientC, admin, 200);
+        JsonNode a = now.get(String.valueOf(clientA));
+        assertThat(a.get(0).get("percent").decimalValue()).isEqualByComparingTo("80");
+        assertThat(a.get(0).get("source").asText()).isEqualTo("PARTNER");
+        assertThat(a.get(0).get("clientPercent").isNull()).isTrue();
+        assertThat(a.get(1).get("percent").decimalValue()).as("referral: its MF rate, not its 50% on other products").isEqualByComparingTo("0");
+        JsonNode b = now.get(String.valueOf(clientB)).get(0);
+        assertThat(b.get("source").asText()).isEqualTo("PENDING");
+        assertThat(b.get("percent").decimalValue()).isEqualByComparingTo("0");
+        JsonNode c = now.get(String.valueOf(clientC)).get(0);
+        assertThat(c.get("source").asText()).isEqualTo("CLIENT");
+        assertThat(c.get("percent").decimalValue()).isEqualByComparingTo("60");
+
+        long sbx = c.get("partnerId").asLong();
+        JsonNode card = getJson("/api/partners/product-percents", admin, 200).get(String.valueOf(sbx));
+        assertThat(card.get("MF").decimalValue()).isEqualByComparingTo("80");
+        assertThat(card.get("INS").decimalValue()).isEqualByComparingTo("0");
+
+        // The rate card changes from September: A follows it, C keeps its own %.
+        postJson("/api/partners/" + sbx + "/products", Map.of("product", "MF", "percent", 70, "from", "2026-09-01"), admin, 204);
+        now = getJson("/api/shares?clientIds=" + clientA + "," + clientC, admin, 200);
+        assertThat(now.get(String.valueOf(clientA)).get(0).get("percent").decimalValue()).isEqualByComparingTo("70");
+        assertThat(now.get(String.valueOf(clientC)).get(0).get("percent").decimalValue()).isEqualByComparingTo("60");
+        assertThat(getJson("/api/partners/" + sbx + "/products", admin, 200)).hasSizeGreaterThan(4);
+
+        // C's exception removed by hand: back on the rate card.
+        postJson("/api/clients/" + clientC + "/partner", Map.of("partnerId", sbx, "from", "2026-10-01"), admin, 204);
+        assertThat(getJson("/api/shares?clientIds=" + clientC, admin, 200).get(String.valueOf(clientC)).get(0).get("source").asText())
+                .isEqualTo("PARTNER");
+
+        // Same master again changes nothing; once no row says "under process", the partner is approved.
+        assertThat(preview(masterWithRateCards(0.6)).get("partnerRates").get("percentChanges").asInt()).isEqualTo(1); // Sept's 70% vs the sheet's 80%
+        JsonNode approved = preview(new TestWorkbook()
+                .sheet("Master", "Client No", "REGION", "RD", "BRANCH", "RM", "CLIENT NAME", "PAN NO", "Concatenate", "CLIENT TYPE",
+                        "BROKER", "TYPE", "%", "POSP", "BROKER", "BROKER 2", "TYPE 2", "% 2")
+                .row(2, "R", "RD", "B", "RM", "CLIENT B " + tag, panB, "", "OFFLINE", "RFP " + tag, "Referral Partner", 0.5, 0, null)
+                .bytes());
+        assertThat(approved.get("partnerRates").get("approved")).extracting(JsonNode::asText).containsExactly("RFP " + tag);
+    }
+
+    @Test
+    void aLinkWithoutClientPercentAndWithoutRateCardIsFlagged() throws Exception {
+        long sb = postJson("/api/partners", Map.of("type", "SUB_BROKER", "name", "NOCARD " + tag), admin, 201).get("id").asLong();
+        postJson("/api/clients/" + clientC + "/partner", Map.of("partnerId", sb, "from", "2026-08-01"), admin, 204);
+        JsonNode c = getJson("/api/shares?clientIds=" + clientC, admin, 200).get(String.valueOf(clientC)).get(0);
+        assertThat(c.get("source").asText()).isEqualTo("NO_PARTNER_PERCENT");
+        assertThat(c.get("percent").decimalValue()).isEqualByComparingTo("0");
+    }
+
     /** Master MIS rows: (RM, client name, PAN). Partner columns left blank. */
     byte[] masterWithRms(String[]... rows) {
         TestWorkbook wb = new TestWorkbook().sheet("Master", "Client No", "REGION", "RD", "BRANCH", "RM", "CLIENT NAME", "PAN NO", "Concatenate",
@@ -259,12 +350,32 @@ class ShareIT extends IntegrationTestBase {
         long yn = postJson("/api/branches", Map.of("name", "KYN " + tag, "regionId", region, "from", "2026-01-01"), admin, 201).get("id").asLong();
         postJson("/api/employees", Map.of("name", "KASH " + tag, "type", "RM", "branchId", delhi, "from", "2026-01-01"), admin, 201);
         long ynBook = postJson("/api/employees", Map.of("name", "KASH " + tag, "type", "RM", "branchId", yn, "from", "2026-01-01"), admin, 201).get("id").asLong();
+        // The master names both books' branches, so a third branch picks neither: flagged.
         JsonNode p = preview(masterWithRms(new String[]{"KASH " + tag, "CLIENT C " + tag, panC, "kyn  " + tag},
+                new String[]{"KASH " + tag, "CLIENT A " + tag, panA, "KDELHI " + tag},
                 new String[]{"KASH " + tag, "CLIENT B " + tag, panB, "SOMEWHERE"}), "2026-08-01");
-        assertThat(p.get("rmChanges")).singleElement().satisfies(c -> assertThat(c.get("clientId").asLong()).isEqualTo(clientC));
+        assertThat(p.get("rmChanges").findValuesAsText("clientId")).contains(String.valueOf(clientC)).doesNotContain(String.valueOf(clientB));
         assertThat(p.get("unknownRms").get(0).get("note").asText()).contains("several RMs");
         load(p, "2026-08-01");
         assertThat(rmOf("CLIENT C " + tag)).isEqualTo(ynBook);
+    }
+
+    @Test
+    void rowsOfBranchesWithoutTheirOwnBookGoToTheRmsGeneralBook() throws Exception {
+        long region = postJson("/api/regions", Map.of("name", "VR " + tag), admin, 201).get("id").asLong();
+        long vnr = postJson("/api/branches", Map.of("name", "VNR " + tag, "regionId", region, "from", "2026-01-01"), admin, 201).get("id").asLong();
+        long dhule = postJson("/api/branches", Map.of("name", "DH " + tag, "regionId", region, "from", "2026-01-01"), admin, 201).get("id").asLong();
+        long general = postJson("/api/employees", Map.of("name", "NR " + tag, "type", "RM", "branchId", vnr, "from", "2026-01-01"), admin, 201).get("id").asLong();
+        long dhuleBook = postJson("/api/employees", Map.of("name", "NR " + tag, "type", "RM", "branchId", dhule, "from", "2026-01-01"), admin, 201).get("id").asLong();
+        // MUMBAI and NASIK have no book of their own: the book in a branch the master never names (VNR) takes them.
+        JsonNode p = preview(masterWithRms(new String[]{"NR " + tag, "CLIENT A " + tag, panA, "MUMBAI"},
+                new String[]{"NR " + tag, "CLIENT B " + tag, panB, "NASIK"},
+                new String[]{"NR " + tag, "CLIENT C " + tag, panC, "DH " + tag}), "2026-08-01");
+        assertThat(p.get("unknownRms")).isEmpty();
+        load(p, "2026-08-01");
+        assertThat(rmOf("CLIENT A " + tag)).isEqualTo(general);
+        assertThat(rmOf("CLIENT B " + tag)).isEqualTo(general);
+        assertThat(rmOf("CLIENT C " + tag)).isEqualTo(dhuleBook);
     }
 
     @Test

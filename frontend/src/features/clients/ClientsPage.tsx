@@ -276,23 +276,30 @@ function ClientPanel({ id, rms, canEdit, onClose, onChanged }: { id: number; rms
 function PartnerSection({ clientId, canEdit, onChanged }: { clientId: number; canEdit: boolean; onChanged: () => void }) {
   const history = useLoad<Share[]>(`/api/clients/${clientId}/partner`);
   const partners = useLoad<Partner[]>(canEdit ? '/api/partners' : null);
+  const today = useLoad<Record<string, Share[]>>(`/api/shares?clientIds=${clientId}`);
   const refresh = () => {
     history.reload();
+    today.reload();
     onChanged();
   };
   const all = history.data ?? [];
+  /** Today's partners with the % that counts today, branch rule included. */
+  const current = today.data?.[clientId] ?? [];
 
   return (
     <div className="separated">
       <h3>Partners</h3>
-      <p className="muted">The sub-broker is paid first; the referral partner&apos;s % is taken from what is left.</p>
+      <p className="muted">
+        A branch partner is paid first, then the sub-broker; the referral partner&apos;s % is taken from what is left.
+      </p>
       {(['SUB_BROKER', 'REFERRAL'] as const).map((role) => (
         <RoleShare
           key={role}
           clientId={clientId}
           role={role}
-          now={all.find((s) => s.partnerRole === role && s.validTo === null)}
-          partners={(partners.data ?? []).filter((p) => p.type === role && p.status === 'ACTIVE')}
+          now={current.find((s) => s.partnerRole === role && !s.branch) ?? all.find((s) => s.partnerRole === role && s.validTo === null)}
+          branchShare={current.find((s) => s.partnerRole === role && s.branch)}
+          partners={(partners.data ?? []).filter((p) => p.type === role && p.status !== 'INACTIVE')}
           canEdit={canEdit}
           onChanged={refresh}
         />
@@ -309,7 +316,7 @@ function PartnerSection({ clientId, canEdit, onChanged }: { clientId: number; ca
                 <tr key={s.id}>
                   <td>{s.partnerName}</td>
                   <td>{PARTNER_TYPE_LABEL[s.partnerRole]}</td>
-                  <td className="num">{s.percent}%</td>
+                  <td className="num">{s.clientPercent !== null ? `${s.clientPercent}% (this client)` : `${s.percent}% (partner)`}</td>
                   <td>{formatDate(s.validFrom)}</td>
                   <td>{s.validTo ? formatDate(s.validTo) : <span className="badge">current</span>}</td>
                 </tr>
@@ -322,16 +329,19 @@ function PartnerSection({ clientId, canEdit, onChanged }: { clientId: number; ca
   );
 }
 
-function RoleShare({ clientId, role, now, partners, canEdit, onChanged }: {
+function RoleShare({ clientId, role, now, branchShare, partners, canEdit, onChanged }: {
   clientId: number;
   role: 'SUB_BROKER' | 'REFERRAL';
   now: Share | undefined;
+  /** The branch rule's partner in this role, if any (paid before the client's own). */
+  branchShare?: Share;
   partners: Partner[];
   canEdit: boolean;
   onChanged: () => void;
 }) {
   const [partnerId, setPartnerId] = useState('');
   const [percent, setPercent] = useState('');
+  const [own, setOwn] = useState(now?.source === 'CLIENT');
   const [lastDay, setLastDay] = useState('');
   const { busy, error, run } = useSubmit();
   const label = PARTNER_TYPE_LABEL[role];
@@ -339,17 +349,22 @@ function RoleShare({ clientId, role, now, partners, canEdit, onChanged }: {
   return (
     <div className="role-share">
       <h4>{label}</h4>
-      <p>{now ? `${now.partnerName} · ${now.percent}%` : <span className="muted">None</span>}</p>
+      {branchShare && (
+        <p>
+          <ShareText share={branchShare} /> <span className="muted">— paid first</span>
+        </p>
+      )}
+      <p>{now ? <ShareText share={now} /> : <span className="muted">{branchShare ? 'No own ' + label.toLowerCase() : 'None'}</span>}</p>
       {canEdit && (
         <DatedChangeForm
           title={now ? `Change % or ${label.toLowerCase()}` : `Add a ${label.toLowerCase()}`}
           dateLabel="From"
           submitLabel="Save"
-          canSubmit={(partnerId !== '' || now !== undefined) && percent !== ''}
+          canSubmit={(partnerId !== '' || now !== undefined) && (!own || percent !== '')}
           onSubmit={(from) =>
             api(`/api/clients/${clientId}/partner`, {
               method: 'POST',
-              body: { partnerId: Number(partnerId || now?.partnerId), percent: Number(percent), from },
+              body: { partnerId: Number(partnerId || now?.partnerId), percent: own ? Number(percent) : null, from },
             })
           }
           onDone={() => {
@@ -369,10 +384,20 @@ function RoleShare({ clientId, role, now, partners, canEdit, onChanged }: {
               ))}
             </select>
           </label>
-          <label>
-            {now ? 'New sharing %' : 'Sharing %'}
-            <input type="number" min="0" max="100" step="0.01" value={percent} onChange={(e) => setPercent(e.target.value)} required />
+          <label className="check">
+            <input type="radio" name={`pct-${role}`} checked={!own} onChange={() => setOwn(false)} />
+            Use the partner’s MF %
           </label>
+          <label className="check">
+            <input type="radio" name={`pct-${role}`} checked={own} onChange={() => setOwn(true)} />
+            A different % for this client only
+          </label>
+          {own && (
+            <label>
+              {now ? 'New sharing %' : 'Sharing %'}
+              <input type="number" min="0" max="100" step="0.01" value={percent} onChange={(e) => setPercent(e.target.value)} required />
+            </label>
+          )}
           {now && (
             <p className="muted">
               From a later date: the old % stays for the months before. From {now.validFrom} (its first day): the % is corrected.
@@ -398,6 +423,43 @@ function RoleShare({ clientId, role, now, partners, canEdit, onChanged }: {
       )}
     </div>
   );
+}
+
+/** A partner and the % that counts, saying where the % comes from. */
+function ShareText({ share }: { share: Share }) {
+  if (share.branch) {
+    return (
+      <>
+        {share.partnerName} · {share.percent}% <span className="badge">all {share.branch} clients</span>
+      </>
+    );
+  }
+  switch (share.source) {
+    case 'CLIENT':
+      return (
+        <>
+          {share.partnerName} · {share.percent}% <span className="badge">this client only</span>
+        </>
+      );
+    case 'PARTNER':
+      return (
+        <>
+          {share.partnerName} · {share.percent}% <span className="muted">(partner’s MF %)</span>
+        </>
+      );
+    case 'PENDING':
+      return (
+        <>
+          {share.partnerName} · 0% <span className="badge warn-badge">partner approval pending</span>
+        </>
+      );
+    default:
+      return (
+        <>
+          {share.partnerName} · <span className="badge warn-badge">no MF % set for this partner</span>
+        </>
+      );
+  }
 }
 
 /** Corrects the client's PAN (a typo in the master or in Finesse). Audited; refused if another client has the PAN. */
