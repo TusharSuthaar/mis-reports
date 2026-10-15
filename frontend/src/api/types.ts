@@ -138,9 +138,33 @@ export interface OrgChart {
 export interface Job<R = unknown> {
   id: number;
   type: string;
+  /** What the job does, in plain words. */
+  title: string;
   status: 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED';
   result: R | null;
   error: string | null;
+  /** Same reference as in the server logs and on the Activity screen. */
+  reference: string | null;
+}
+
+export type ActivityKind = 'JOB' | 'EVENT' | 'ERROR';
+
+export interface Activity {
+  kind: ActivityKind;
+  id: number;
+  title: string;
+  detail: string | null;
+  result: 'WAITING' | 'RUNNING' | 'DONE' | 'FAILED';
+  by: string;
+  at: string;
+  finishedAt: string | null;
+  reference: string | null;
+}
+
+export interface ActivitySummary {
+  runningJobs: number;
+  failedJobs: number;
+  errors: number;
 }
 
 export interface ImportResult {

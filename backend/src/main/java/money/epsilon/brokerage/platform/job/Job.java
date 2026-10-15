@@ -46,10 +46,19 @@ class Job {
     @Column(name = "finished_at")
     private Instant finishedAt;
 
+    /** The reference of the request that submitted it: the same in the logs and on the Activity screen. */
+    @Column(name = "request_id")
+    private String requestId;
+
     protected Job() {
     }
 
     Job(String type, String payload, String createdBy) {
+        this(type, payload, createdBy, null);
+    }
+
+    Job(String type, String payload, String createdBy, String requestId) {
+        this.requestId = requestId;
         this.type = type;
         this.payload = payload;
         this.createdBy = createdBy;
@@ -96,4 +105,5 @@ class Job {
     Instant getCreatedAt() { return createdAt; }
     Instant getStartedAt() { return startedAt; }
     Instant getFinishedAt() { return finishedAt; }
+    String getRequestId() { return requestId; }
 }

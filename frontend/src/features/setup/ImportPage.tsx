@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api, errorText } from '../../api/client';
 import type { ImportResult } from '../../api/types';
-import { useJob } from '../../api/useJob';
+import { useJob, jobErrorText } from '../../api/useJob';
 import { useAuth } from '../../app/auth';
 import { canEditMasters } from '../../app/permissions';
 
@@ -60,7 +60,7 @@ export function ImportPage() {
       {error && <p className="error">{error}</p>}
       {jobError && <p className="error">{jobError}</p>}
       {running && <p className="muted">Working…</p>}
-      {job?.status === 'FAILED' && <p className="error">The import failed: {job.error}</p>}
+      {job?.status === 'FAILED' && <p className="error">The import failed: {jobErrorText(job)}</p>}
       {result && <ImportResultView result={result} />}
     </section>
   );

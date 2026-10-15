@@ -26,7 +26,7 @@ class MasterImportJob extends TransactionalJob<MasterImportJob.Payload> {
     private final AuditService audit;
 
     MasterImportJob(FileStore files, MasterImportProcessor processor, TransactionTemplate tx, AuditService audit, ObjectMapper mapper) {
-        super(TYPE, Payload.class, tx, mapper);
+        super(TYPE, "Imported masters from a file", Payload.class, tx, mapper);
         this.files = files;
         this.processor = processor;
         this.audit = audit;

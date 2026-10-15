@@ -23,9 +23,14 @@ checklist asks for it.
 | G-16 | Uploaded Excel is read only with `platform.excel.ExcelFile` (headers by name, exact amounts, dates, row-numbered errors). | `GuardrailsTest.onlyThePlatformExcelReaderOpensWorkbooks` |
 | G-17 | Every upload is checked with `UploadedFile.of`; every background job extends `TransactionalJob` (one transaction, all or nothing). | `GuardrailsTest.importsUseTheSharedPipeline` |
 | G-18 | A dated value (RM, share…) changes only through `DatedHistory.setFrom`: same value → nothing, same first day → corrected, otherwise a new row from the date. | Review, `ShareIT`, `TimelineTest` |
+| G-19 | Every request and job has a **reference**: in the `X-Request-Id` header, every error answer, the job record and every log line. | `ActivityIT` |
+| G-20 | Log only through SLF4J: JSON lines with requestId, user, module, action. No `System.out` / `printStackTrace`. | `GuardrailsTest.nothingPrintsToTheConsole`, `JsonLogFormatterTest` |
+| G-21 | No full PAN in logs or error records (the formatter masks PAN-shaped text as a safety net); query strings are never logged. | `JsonLogFormatterTest`, `ActivityIT`, review |
+| G-22 | Unexpected errors show only "something went wrong + reference"; every job type has a plain-words title for the Activity screen. | `ActivityIT`, `JobHandler.title()` (compiler) |
 
 ## Before you commit
 1. `backend/mvnw-docker.sh verify` and `cd frontend && npm test` are green.
 2. Changed a business rule? Update its row in `business-rules.md` and its test.
 3. New table? Migration + owner row in `modules.md`.
 4. A choice someone will later ask "why?" about? Add a 5-line note in `docs/decisions/`.
+5. Logging something? Read [logging.md](logging.md): reference, no PANs, plain-words titles.

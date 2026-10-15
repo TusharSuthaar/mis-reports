@@ -44,7 +44,7 @@ describe('this month', () => {
     let sentMonth: string | null = null;
     let committed = false;
     const job: Job<StageResult> = {
-      id: 4, type: 'income-upload', status: 'DONE', error: null,
+      id: 4, type: 'income-upload', title: 'Uploaded a brokerage file', status: 'DONE', error: null, reference: 'TESTREF1',
       result: { uploadId: 5, errors: [], warnings: 1, notes: ['Brokerage for 2026-07 (2610.00) is in this file and is counted in 2026-08'] },
     };
     fakeApi({
@@ -166,7 +166,7 @@ describe('this month', () => {
   it('shows why a file was not accepted', async () => {
     document.cookie = 'XSRF-TOKEN=tok';
     const job: Job<StageResult> = {
-      id: 4, type: 'income-upload', status: 'DONE', error: null,
+      id: 4, type: 'income-upload', title: 'Uploaded a brokerage file', status: 'DONE', error: null, reference: 'TESTREF1',
       result: { uploadId: null, errors: [{ row: 0, message: 'Rows add up to 100.00 but the Total row says 1.00' }], warnings: 0, notes: [] },
     };
     fakeApi({

@@ -56,7 +56,7 @@ describe('upload Master MIS', () => {
     const result: ShareLoadResult = {
       fileName: 'x', clientsCreated: 3021, rmChanged: 1, sharesSet: 651, sharesEnded: 0, unchanged: 1769, partnersCreated: 1, zeroPct: 65, unmatched: 1,
     };
-    const job: Job<ShareLoadResult> = { id: 3, type: 'share-load', status: 'DONE', result, error: null };
+    const job: Job<ShareLoadResult> = { id: 3, type: 'share-load', title: 'Uploaded the Master MIS', status: 'DONE', result, error: null, reference: 'TESTREF1' };
     fakeApi({
       'GET /api/auth/me': ok(admin),
       'POST /api/share-load/preview': (init) => {

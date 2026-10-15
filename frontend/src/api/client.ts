@@ -5,6 +5,8 @@ export class ApiError extends Error {
     readonly status: number,
     message: string,
     readonly fieldErrors: Record<string, string> = {},
+    /** The request's reference: the same one is in the server logs. Quote it when reporting a problem. */
+    readonly reference: string | null = null,
   ) {
     super(message);
   }
@@ -50,7 +52,8 @@ export async function api<T>(path: string, options: { method?: Method; body?: un
   if (!res.ok) {
     if (res.status === 401 && path !== '/api/auth/me' && path !== '/api/auth/login') sessionExpired();
     const problem = await res.json().catch(() => null);
-    throw new ApiError(res.status, problem?.detail ?? res.statusText ?? 'Request failed', problem?.errors ?? {});
+    const reference: string | null = problem?.reference ?? res.headers.get('X-Request-Id');
+    throw new ApiError(res.status, problem?.detail ?? res.statusText ?? 'Request failed', problem?.errors ?? {}, reference);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -60,7 +63,10 @@ export async function api<T>(path: string, options: { method?: Method; body?: un
 export function errorText(e: unknown): string {
   if (e instanceof ApiError) {
     const fields = Object.entries(e.fieldErrors).map(([f, m]) => `${f}: ${m}`);
-    return fields.length ? fields.join('; ') : e.message;
+    if (fields.length) return fields.join('; ');
+    // Server faults: make sure the reference is on screen (the server's own 500 message already names it).
+    if (e.status >= 500 && e.reference && !e.message.includes(e.reference)) return `${e.message} (reference ${e.reference})`;
+    return e.message;
   }
   return 'Something went wrong';
 }

@@ -24,6 +24,7 @@ import org.springframework.stereotype.Component;
 public class PanCipher {
 
     private static final Pattern PAN = Pattern.compile("^[A-Z]{5}[0-9]{4}[A-Z]$");
+    private static final Pattern PAN_IN_TEXT = Pattern.compile("(?i)\\b([A-Z]{5})[0-9]{4}([A-Z])\\b");
     private static final String VERSION = "v1:";
     private static final int IV_BYTES = 12;
     private static final int TAG_BITS = 128;
@@ -59,6 +60,12 @@ public class PanCipher {
         if (pan == null) return null;
         if (pan.length() < 10) return "*".repeat(pan.length()); // not a PAN: hide all of it
         return pan.substring(0, 5) + "****" + pan.substring(9);
+    }
+
+    /** Masks every PAN-shaped word in free text (log lines, error messages): "PAN abcde1234f bad" → "PAN abcde****f bad". */
+    public static String maskAll(String text) {
+        if (text == null) return null;
+        return PAN_IN_TEXT.matcher(text).replaceAll("$1****$2");
     }
 
     public String encrypt(String pan) {

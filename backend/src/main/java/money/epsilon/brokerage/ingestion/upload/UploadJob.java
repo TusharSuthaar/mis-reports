@@ -15,7 +15,7 @@ class UploadJob extends TransactionalJob<UploadJob.Payload> {
     private final UploadService service;
 
     UploadJob(UploadService service, TransactionTemplate tx, ObjectMapper mapper) {
-        super(TYPE, Payload.class, tx, mapper);
+        super(TYPE, "Uploaded a brokerage file", Payload.class, tx, mapper);
         this.service = service;
     }
 

@@ -19,7 +19,7 @@ class ShareLoadJob extends TransactionalJob<ShareLoadJob.Payload> {
     private final AuditService audit;
 
     ShareLoadJob(ShareLoadService service, TransactionTemplate tx, AuditService audit, ObjectMapper mapper) {
-        super(TYPE, Payload.class, tx, mapper);
+        super(TYPE, "Uploaded the Master MIS (clients, RMs, sharing)", Payload.class, tx, mapper);
         this.service = service;
         this.audit = audit;
     }

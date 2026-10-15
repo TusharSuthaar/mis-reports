@@ -12,7 +12,7 @@ import {
   type StageResult,
   type UploadReview,
 } from '../../api/types';
-import { useJob } from '../../api/useJob';
+import { useJob, jobErrorText } from '../../api/useJob';
 import { useLoad } from '../../api/useLoad';
 import { useSubmit } from '../../api/useSubmit';
 import { useAuth } from '../../app/auth';
@@ -214,7 +214,7 @@ function BrokerageCard({ onStaged }: { onStaged: (uploadId: number, notes: strin
       </div>
       {error && <p className="error">{error}</p>}
       {jobError && <p className="error">{jobError}</p>}
-      {job?.status === 'FAILED' && <p className="error">The file could not be read: {job.error}</p>}
+      {job?.status === 'FAILED' && <p className="error">The file could not be read: {jobErrorText(job)}</p>}
       {fileErrors.length > 0 && (
         <div className="result">
           <p className="error" role="status">The file was not accepted:</p>
@@ -478,7 +478,7 @@ function MonthLine({ m, canEdit, onReview, onChanged }: { m: MonthRow; canEdit: 
               </button>
             </span>
           )}
-          {job?.status === 'FAILED' && <div className="error">{job.error}</div>}
+          {job?.status === 'FAILED' && <div className="error">{jobErrorText(job)}</div>}
           {error && <div className="error">{error}</div>}
         </td>
       </tr>

@@ -9,7 +9,7 @@ reads or writes those tables with SQL — it calls the owner's public service.
 
 | Module | Owns tables | Job | Public entry point |
 |---|---|---|---|
-| `platform` | `app_user`, `audit_log`, `job`, `spring_session`, `spring_session_attributes` | Shared kernel: login, roles, users, audit log, background jobs, PAN crypto, dated history, Excel reading, upload/import pipeline, file storage, errors | `AuditService`, `JobService`, `PanCipher`, `DatedHistory`, `Text`, `ExcelFile`, `UploadedFile`, `TransactionalJob`, `FileStore` |
+| `platform` | `app_user`, `audit_log`, `job`, `error_log`, `spring_session`, `spring_session_attributes` | Shared kernel: login, roles, users, audit log, background jobs, request IDs + JSON logs, activity, error log, PAN crypto, dated history, Excel reading, upload/import pipeline, file storage, errors | `AuditService`, `JobService`, `PanCipher`, `DatedHistory`, `Text`, `ExcelFile`, `UploadedFile`, `TransactionalJob`, `FileStore`, `RequestContext`, `ActivityService` |
 | `org` | `region`, `branch`, `employee`, `branch_region_assignment`, `rd_assignment`, `rm_branch_assignment` | Regions, branches, RMs/RDs and their history; org chart on any date | `EmployeeService`, `OrgChartService` |
 | `partner` | `partner`, `partner_rm_link` | Sub brokers, referral partners, POSPs; partner↔RM links | `PartnerService`, `PartnerRmLinkService` |
 | `client` | `client`, `client_external_id`, `client_rm_assignment` | Clients (one per PAN), their codes in source systems, RM over time, PAN search/edit | `ClientService` |

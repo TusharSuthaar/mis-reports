@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom';
 import { RequireAuth } from './app/auth';
 import { MASTER_READ, MASTER_WRITE } from './app/permissions';
 import { Shell } from './app/Shell';
+import { ActivityPage } from './features/activity/ActivityPage';
 import { AuditPage } from './features/audit/AuditPage';
 import { ClientsPage } from './features/clients/ClientsPage';
 import { MonthPage } from './features/month/MonthPage';
@@ -46,6 +47,7 @@ export function App() {
           [
             ['month', <MonthPage />],
             ['clients', <ClientsPage />],
+            ['activity', <ActivityPage />],
             ['setup/org', <OrgPage />],
             ['setup/partners', <PartnersPage />],
             ['setup/import', <ImportPage />],

@@ -10,6 +10,7 @@ One app (Java + React + PostgreSQL), run with `docker compose up -d --build` (se
 | Find where code lives and which module owns what | [architecture/modules.md](architecture/modules.md) | 4 min |
 | Change code without breaking something elsewhere | [architecture/guardrails.md](architecture/guardrails.md) | 4 min |
 | Add a new file import (a new product, a new master) | [architecture/adding-an-import.md](architecture/adding-an-import.md) | 3 min |
+| Find out what happened / what failed (logs, references, Activity) | [architecture/logging.md](architecture/logging.md) | 3 min |
 | Know *why* something is the way it is | [decisions/](decisions/) — one page each | 1 min each |
 
 ## The rules for these docs

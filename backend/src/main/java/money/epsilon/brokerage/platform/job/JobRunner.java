@@ -6,8 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import money.epsilon.brokerage.platform.logging.RequestContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -49,6 +51,11 @@ class JobRunner {
         return handlers().containsKey(type);
     }
 
+    String titleOf(String type) {
+        JobHandler h = handlers().get(type);
+        return h == null ? type : h.title();
+    }
+
     /** Looked up on first use, not at start-up: handlers may themselves depend on the job service. */
     private Map<String, JobHandler> handlers() {
         if (handlers == null) {
@@ -65,18 +72,28 @@ class JobRunner {
             return job;
         });
         actAs(started.getCreatedBy());
+        JobHandler handler = handlers().get(started.getType());
+        // Log lines of the job carry the submitting request's reference, so one search finds both.
+        MDC.put(RequestContext.REQUEST_ID, started.getRequestId() != null ? started.getRequestId() : "JOB-" + jobId);
+        MDC.put(RequestContext.JOB_ID, String.valueOf(jobId));
+        MDC.put(RequestContext.USER, started.getCreatedBy());
+        MDC.put(RequestContext.MODULE, RequestContext.moduleOf(handler.getClass()));
+        MDC.put(RequestContext.ACTION, started.getType());
+        log.info("Job {} started", jobId);
         try {
             JsonNode payload = started.getPayload() == null ? null : mapper.readTree(started.getPayload());
-            JsonNode result = handlers().get(started.getType()).run(payload);
+            JsonNode result = handler.run(payload);
             String json = result == null ? null : mapper.writeValueAsString(result);
             tx.executeWithoutResult(s -> repository.findById(jobId).orElseThrow().complete(json));
+            log.info("Job {} done", jobId);
         } catch (Exception e) {
-            log.warn("Job {} ({}) failed", jobId, started.getType(), e);
+            log.error("Job {} failed", jobId, e);
             String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             String error = message.length() > MAX_ERROR_LENGTH ? message.substring(0, MAX_ERROR_LENGTH) : message;
             tx.executeWithoutResult(s -> repository.findById(jobId).orElseThrow().fail(error));
         } finally {
             SecurityContextHolder.clearContext();
+            MDC.clear();
         }
     }
 

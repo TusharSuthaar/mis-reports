@@ -4,6 +4,12 @@ import type { Job } from './types';
 
 const POLL_MS = 1000;
 
+/** Why a job failed, with the reference to quote (it is on every log line of the job). */
+export function jobErrorText(job: Pick<Job, 'error' | 'reference'>): string {
+  const error = job.error ?? 'Unknown error';
+  return job.reference ? `${error} (reference ${job.reference})` : error;
+}
+
 /** Polls /api/jobs/{id} until the job is DONE or FAILED. Pass null to stop watching. */
 export function useJob<R>(jobId: number | null) {
   const [job, setJob] = useState<Job<R> | null>(null);

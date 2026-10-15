@@ -3,7 +3,7 @@ import type { Employee } from '../../api/types';
 import { useLoad } from '../../api/useLoad';
 import { api, errorText } from '../../api/client';
 import { PARTNER_TYPE_LABEL, type ShareLoadPreview, type ShareLoadResult } from '../../api/types';
-import { useJob } from '../../api/useJob';
+import { useJob, jobErrorText } from '../../api/useJob';
 
 /**
  * Master MIS upload (Master_MIS.xlsx): adds the clients it has and the app does not (by PAN; by name for a row without
@@ -204,7 +204,7 @@ export function LoadSharesPage() {
 
       {running && <p className="muted">Loading…</p>}
       {jobError && <p className="error">{jobError}</p>}
-      {job?.status === 'FAILED' && <p className="error">Nothing was loaded: {job.error}</p>}
+      {job?.status === 'FAILED' && <p className="error">Nothing was loaded: {jobErrorText(job)}</p>}
       {job?.status === 'DONE' && job.result && (
         <p className="ok" role="status">
           Done: {job.result.clientsCreated} clients added, {job.result.rmChanged} RMs changed, {job.result.sharesSet} shares set,{' '}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api, errorText } from '../../api/client';
 import type { LoadPreview, LoadResult, MatchStatus } from '../../api/types';
-import { useJob } from '../../api/useJob';
+import { useJob, jobErrorText } from '../../api/useJob';
 import { formatMoney } from '../../format';
 
 const STATUS_TEXT: Record<MatchStatus, string> = {
@@ -198,7 +198,7 @@ export function LoadClientsPage() {
 
       {running && <p className="muted">Loading… this can take a minute.</p>}
       {jobError && <p className="error">{jobError}</p>}
-      {job?.status === 'FAILED' && <p className="error">Nothing was loaded: {job.error}</p>}
+      {job?.status === 'FAILED' && <p className="error">Nothing was loaded: {jobErrorText(job)}</p>}
       {job?.status === 'DONE' && job.result && (
         <div className="result">
           <p className="ok" role="status">

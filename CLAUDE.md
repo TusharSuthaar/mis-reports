@@ -13,6 +13,7 @@ Read [docs/README.md](docs/README.md) first, then [docs/architecture/guardrails.
    New import? Follow [docs/architecture/adding-an-import.md](docs/architecture/adding-an-import.md).
 4. **Schema = new Flyway migration**, never edit an applied one. **Money = BigDecimal / NUMERIC.**
 5. **Audit every business change** (who, when, before, after, reason). Ledger, splits and audit log are append-only.
+   **Log through SLF4J only**, never a full PAN; errors carry the request reference ([logging.md](docs/architecture/logging.md)).
 6. **No real client data anywhere in the repo** — `private-data/` and `.env` stay local. Tests use made-up names and PANs.
 7. **Ask before guessing a business rule.** Record the answer as a rule row (and a decision note if it is a choice).
 

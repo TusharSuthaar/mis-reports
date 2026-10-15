@@ -15,7 +15,7 @@ class ProcessJob extends TransactionalJob<ProcessJob.Payload> {
     private final AttributionService service;
 
     ProcessJob(AttributionService service, TransactionTemplate tx, ObjectMapper mapper) {
-        super(TYPE, Payload.class, tx, mapper);
+        super(TYPE, "Processed a month (partner shares)", Payload.class, tx, mapper);
         this.service = service;
     }
 

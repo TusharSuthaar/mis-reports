@@ -19,7 +19,7 @@ class ClientLoadJob extends TransactionalJob<ClientLoadJob.Payload> {
     private final AuditService audit;
 
     ClientLoadJob(ClientLoadService service, TransactionTemplate tx, AuditService audit, ObjectMapper mapper) {
-        super(TYPE, Payload.class, tx, mapper);
+        super(TYPE, "Loaded clients from a file", Payload.class, tx, mapper);
         this.service = service;
         this.audit = audit;
     }

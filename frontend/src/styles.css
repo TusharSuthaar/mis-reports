@@ -154,5 +154,8 @@ details.past summary { cursor: pointer; color: var(--primary); }
 .stat { background: var(--bg, #f6f7f9); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; min-width: 150px; display: flex; flex-direction: column; }
 .stat strong { font-size: 20px; }
 .stat.danger { background: #fdecec; border-color: #e7a3a3; color: #9b1c1c; }
+.stat-button { font: inherit; text-align: left; cursor: pointer; color: inherit; }
+.stat-button:hover { border-color: var(--primary); }
+.fail-badge { background: #fdecec; color: #9b1c1c; }
 .highlight-rows tbody tr { background: #fdecec; }
 .notes { margin: 6px 0; padding-left: 18px; color: var(--muted, #555); }

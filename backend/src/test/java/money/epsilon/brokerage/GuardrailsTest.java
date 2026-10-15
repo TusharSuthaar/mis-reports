@@ -157,6 +157,22 @@ class GuardrailsTest {
         assertThat(problems).isEmpty();
     }
 
+    /**
+     * G-20 — everything goes through the logger (JSON, with the request reference, PANs masked). Printing to the
+     * console bypasses all of that.
+     */
+    @Test
+    void nothingPrintsToTheConsole() throws IOException {
+        Pattern printing = Pattern.compile("System\\.(out|err)\\.|\\.printStackTrace\\(");
+        List<String> printers = new ArrayList<>();
+        try (Stream<Path> files = Files.walk(MAIN)) {
+            for (Path f : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+                if (printing.matcher(Files.readString(f)).find()) printers.add(MAIN.relativize(f).toString().replace('\\', '/'));
+            }
+        }
+        assertThat(printers).as("use an SLF4J logger instead of System.out / printStackTrace").isEmpty();
+    }
+
     // ---- helpers -------------------------------------------------------------------------------------------
 
     /** table → owning module, from the table in docs/architecture/modules.md. */

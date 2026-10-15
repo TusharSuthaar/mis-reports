@@ -1,8 +1,17 @@
 name: epsilon-brokerage
 
+# Container logs rotate: at most 10 files of 20 MB per service (older lines are dropped). The audit log and the
+# job/error records in the database are the long-term history; see docs/architecture/logging.md.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "10"
+
 services:
   db:
     image: postgres:16-alpine
+    logging: *logging
     environment:
       POSTGRES_DB: mis
       POSTGRES_USER: ${MIS_DB_USER:-mis}
@@ -18,6 +27,7 @@ services:
 
   api:
     build: ./backend
+    logging: *logging
     environment:
       MIS_DB_URL: jdbc:postgresql://db:5432/mis
       MIS_DB_USER: ${MIS_DB_USER:-mis}
@@ -28,6 +38,7 @@ services:
       MIS_PAN_KEY: ${MIS_PAN_KEY:?Set MIS_PAN_KEY in .env (see .env.example)}
       MIS_PAN_HASH_KEY: ${MIS_PAN_HASH_KEY:?Set MIS_PAN_HASH_KEY in .env (see .env.example)}
       MIS_STORAGE_DIR: /data/files
+      MIS_LOG_FORMAT: ${MIS_LOG_FORMAT-money.epsilon.brokerage.platform.logging.JsonLogFormatter}
     volumes:
       - file-store:/data/files
     depends_on:
@@ -38,6 +49,7 @@ services:
 
   ui:
     build: ./frontend
+    logging: *logging
     depends_on:
       - api
     ports:

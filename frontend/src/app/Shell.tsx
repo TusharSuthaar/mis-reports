@@ -16,6 +16,7 @@ export const NAV: NavItem[] = [
   { to: '/', label: 'Home' },
   { to: '/month', label: 'This month', roles: MASTER_READ },
   { to: '/clients', label: 'Clients', roles: MASTER_READ },
+  { to: '/activity', label: 'Activity', roles: MASTER_READ },
   { to: '/setup/org', label: 'Org', roles: MASTER_READ, group: 'Setup' },
   { to: '/setup/partners', label: 'Partners', roles: MASTER_READ, group: 'Setup' },
   { to: '/setup/load-clients', label: 'Load clients', roles: MASTER_WRITE, group: 'Setup' },

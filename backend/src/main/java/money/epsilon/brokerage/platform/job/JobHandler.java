@@ -10,6 +10,9 @@ public interface JobHandler {
 
     String type();
 
+    /** What the job does, in plain words, for the Activity screen (e.g. "Uploaded a brokerage file"). */
+    String title();
+
     /** @return the job result, stored as JSON (may be null) */
     JsonNode run(JsonNode payload) throws Exception;
 }

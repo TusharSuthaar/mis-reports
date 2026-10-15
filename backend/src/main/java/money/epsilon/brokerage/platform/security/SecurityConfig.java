@@ -44,6 +44,7 @@ class SecurityConfig {
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/api/health", "/api/auth/csrf", "/api/auth/login", "/error").permitAll()
                         .requestMatchers("/api/users/**", "/api/audit/**").hasRole(Role.ADMIN.name())
+                        .requestMatchers("/api/activity/**").hasAnyRole(Role.ADMIN.name(), Role.HO.name(), Role.FINANCE.name())
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().denyAll())
                 .exceptionHandling(e -> e.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))

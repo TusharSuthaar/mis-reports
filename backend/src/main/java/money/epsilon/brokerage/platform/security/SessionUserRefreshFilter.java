@@ -7,8 +7,10 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
 import java.util.Optional;
+import money.epsilon.brokerage.platform.logging.RequestContext;
 import money.epsilon.brokerage.platform.user.AppUser;
 import money.epsilon.brokerage.platform.user.AppUserRepository;
+import org.slf4j.MDC;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -48,6 +50,8 @@ class SessionUserRefreshFilter extends OncePerRequestFilter {
                 contextRepository.saveContext(context, request, response);
             }
         }
+        // Every log line of this request names who made it.
+        MDC.put(RequestContext.USER, CurrentUser.username());
         chain.doFilter(request, response);
     }
 }

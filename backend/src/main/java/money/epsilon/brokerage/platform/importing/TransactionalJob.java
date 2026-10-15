@@ -16,12 +16,14 @@ import org.springframework.transaction.support.TransactionTemplate;
 public abstract class TransactionalJob<P> implements JobHandler {
 
     private final String type;
+    private final String title;
     private final Class<P> payloadType;
     private final TransactionTemplate tx;
     private final ObjectMapper mapper;
 
-    protected TransactionalJob(String type, Class<P> payloadType, TransactionTemplate tx, ObjectMapper mapper) {
+    protected TransactionalJob(String type, String title, Class<P> payloadType, TransactionTemplate tx, ObjectMapper mapper) {
         this.type = type;
+        this.title = title;
         this.payloadType = payloadType;
         this.tx = tx;
         this.mapper = mapper;
@@ -33,6 +35,11 @@ public abstract class TransactionalJob<P> implements JobHandler {
     @Override
     public final String type() {
         return type;
+    }
+
+    @Override
+    public final String title() {
+        return title;
     }
 
     @Override

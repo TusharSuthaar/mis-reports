@@ -23,3 +23,5 @@
 | **Not in Master MIS** | A client in the brokerage file whose PAN (or guardian PAN / name) has no RM in Master MIS. Blocks Process. |
 | **Alias** | A remembered spelling: "this name in a file means that RM / partner". |
 | **Dated history** | Every change has a "from" date; the old value stays for the months before. |
+| **Reference** | 8 characters (e.g. `7K2MQX4P`) given to every request and job. Quote it when something fails: it finds the job, the error and the log lines. |
+| **Activity** | The screen listing uploads, processing, saves, locks, downloads and errors — who, when, result. |

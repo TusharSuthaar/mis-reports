@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.EnumSet;
+import money.epsilon.brokerage.platform.logging.RequestContext;
 import money.epsilon.brokerage.platform.security.AppUserPrincipal;
 import money.epsilon.brokerage.platform.security.CurrentUser;
 import money.epsilon.brokerage.platform.user.Role;
@@ -42,7 +43,7 @@ public class JobService {
         if (!runner.supports(type)) {
             throw new IllegalArgumentException("Unknown job type: " + type);
         }
-        long id = repository.save(new Job(type, runner.toJson(payload), CurrentUser.username())).getId();
+        long id = repository.save(new Job(type, runner.toJson(payload), CurrentUser.username(), RequestContext.requestIdOrNew())).getId();
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
@@ -63,6 +64,11 @@ public class JobService {
         return toView(job);
     }
 
+    /** Plain words for a job type (Activity screen); the type itself if no handler knows it any more. */
+    public String titleOf(String type) {
+        return runner.titleOf(type);
+    }
+
     /** Work in flight when the app stopped cannot resume; mark it failed so nobody waits on it. */
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
@@ -73,8 +79,8 @@ public class JobService {
     }
 
     private JobView toView(Job j) {
-        return new JobView(j.getId(), j.getType(), j.getStatus(), readJson(j.getResult()), j.getError(),
-                j.getCreatedBy(), j.getCreatedAt(), j.getStartedAt(), j.getFinishedAt());
+        return new JobView(j.getId(), j.getType(), runner.titleOf(j.getType()), j.getStatus(), readJson(j.getResult()), j.getError(),
+                j.getCreatedBy(), j.getCreatedAt(), j.getStartedAt(), j.getFinishedAt(), j.getRequestId());
     }
 
     private JsonNode readJson(String json) {
@@ -85,7 +91,8 @@ public class JobService {
         }
     }
 
-    public record JobView(Long id, String type, JobStatus status, JsonNode result, String error, String createdBy,
-                          Instant createdAt, Instant startedAt, Instant finishedAt) {
+    /** {@code reference}: quote it when a job fails; the same reference is on every log line of the job. */
+    public record JobView(Long id, String type, String title, JobStatus status, JsonNode result, String error, String createdBy,
+                          Instant createdAt, Instant startedAt, Instant finishedAt, String reference) {
     }
 }

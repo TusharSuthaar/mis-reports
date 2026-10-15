@@ -152,7 +152,7 @@ describe('import', () => {
       sheets: [{ sheet: 'Regions', created: 2, updated: 0, unchanged: 0 }],
       errors: [{ sheet: 'RD', row: 4, message: 'Only an RM can be an RD' }],
     };
-    const job: Job<ImportResult> = { id: 9, type: 'master-import', status: 'DONE', result, error: null };
+    const job: Job<ImportResult> = { id: 9, type: 'master-import', title: 'Imported masters from a file', status: 'DONE', result, error: null, reference: 'TESTREF1' };
     let sentDryRun: string | null = null;
     fakeApi({
       'GET /api/auth/me': ok(me('ADMIN')),

@@ -19,6 +19,13 @@ spring:
       max-file-size: 20MB
       max-request-size: 20MB
 
+logging:
+  structured:
+    # One JSON object per line (time, level, requestId, user, module, action, jobId, message, error); PANs masked.
+    # Set MIS_LOG_FORMAT to empty for plain readable lines when debugging locally.
+    format:
+      console: ${MIS_LOG_FORMAT:money.epsilon.brokerage.platform.logging.JsonLogFormatter}
+
 server:
   servlet:
     session:
@@ -37,6 +44,9 @@ mis:
     pool-size: ${MIS_JOB_POOL_SIZE:2}
   # Business time zone: decides what "today" is.
   zone: ${MIS_ZONE:Asia/Kolkata}
+  logs:
+    # Unexpected errors are kept this long on the Activity screen (logs themselves rotate in Docker; audit is kept forever).
+    error-retention-days: ${MIS_ERROR_RETENTION_DAYS:400}
   # Uploaded files (master imports; later, income files).
   storage:
     dir: ${MIS_STORAGE_DIR:./data/files}

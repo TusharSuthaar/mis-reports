@@ -13,3 +13,4 @@ Never edit an old one to change it — add a new one that replaces it, and link 
 | [0006](0006-dated-history-and-locked-months.md) | Dated history; corrections in place; locked months never change | 2026-10-09 |
 | [0007](0007-no-real-data-in-the-repo.md) | Code only in Git; client data stays local and encrypted | 2026-10-15 |
 | [0008](0008-shared-kernel.md) | One way to do each common job (Excel, uploads, jobs, matching, dated changes) | 2026-10-15 |
+| [0009](0009-references-and-json-logs.md) | One reference per request; JSON logs with PANs masked; Activity screen | 2026-10-15 |

@@ -145,7 +145,7 @@ describe('load clients', () => {
     document.cookie = 'XSRF-TOKEN=tok';
     let sent: Record<string, unknown> | null = null;
     const result: LoadResult = { fileName: 'x', clientsCreated: 3, clientsAlreadyThere: 0, rmAssigned: 2, needsRm: 1, partnersCreated: 1, spellingsRemembered: 2, familyHeadsLinked: 0 };
-    const job: Job<LoadResult> = { id: 5, type: 'client-load', status: 'DONE', result, error: null };
+    const job: Job<LoadResult> = { id: 5, type: 'client-load', title: 'Loaded clients from a file', status: 'DONE', result, error: null, reference: 'TESTREF1' };
     fakeApi({
       'GET /api/auth/me': ok(me('ADMIN')),
       'POST /api/client-load/preview': ok(preview),
