@@ -153,6 +153,24 @@ class ShareIT extends IntegrationTestBase {
     }
 
     @Test
+    void aClientsPercentIsChangedFromADateOrCorrectedFromItsFirstDay() throws Exception {
+        long sb = postJson("/api/partners", Map.of("type", "SUB_BROKER", "name", "PCT SB " + tag), admin, 201).get("id").asLong();
+        postJson("/api/clients/" + clientC + "/partner", Map.of("partnerId", sb, "percent", 50, "from", "2026-08-01"), admin, 204);
+        // wrong from the first day: corrected in place, no new history row
+        postJson("/api/clients/" + clientC + "/partner", Map.of("partnerId", sb, "percent", 55, "from", "2026-08-01"), admin, 204);
+        JsonNode h = getJson("/api/clients/" + clientC + "/partner", admin, 200);
+        assertThat(h).hasSize(1);
+        assertThat(h.get(0).get("percent").decimalValue()).isEqualByComparingTo("55");
+        assertThat(getJson("/api/audit?entity=CLIENT_PARTNER_SHARE&size=5", admin, 200).get("items").get(0).get("action").asText()).isEqualTo("CORRECT");
+        // a real change from October keeps August–September at 55%
+        postJson("/api/clients/" + clientC + "/partner", Map.of("partnerId", sb, "percent", 70, "from", "2026-10-01"), admin, 204);
+        h = getJson("/api/clients/" + clientC + "/partner", admin, 200);
+        assertThat(h).hasSize(2);
+        assertThat(h.get(0).get("percent").decimalValue()).isEqualByComparingTo("70");
+        assertThat(h.get(1).get("validTo").asText()).isEqualTo("2026-09-30");
+    }
+
+    @Test
     void oneClientsPartnerCanBeSetAndEndedByHand() throws Exception {
         long partner = postJson("/api/partners", Map.of("type", "REFERRAL", "name", "HAND " + tag), admin, 201).get("id").asLong();
         postJson("/api/clients/" + clientC + "/partner", Map.of("partnerId", partner, "percent", 45, "from", "2026-08-01"), admin, 204);

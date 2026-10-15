@@ -36,8 +36,11 @@ public class EndFileService {
     private final JdbcClient jdbc;
     private final PanCipher panCipher;
     private final AuditService audit;
+    private final money.epsilon.brokerage.client.service.ClientService clients;
 
-    EndFileService(PeriodService periods, JdbcClient jdbc, PanCipher panCipher, AuditService audit) {
+    EndFileService(PeriodService periods, JdbcClient jdbc, PanCipher panCipher, AuditService audit,
+                   money.epsilon.brokerage.client.service.ClientService clients) {
+        this.clients = clients;
         this.periods = periods;
         this.jdbc = jdbc;
         this.panCipher = panCipher;
@@ -53,7 +56,7 @@ public class EndFileService {
         if (p.status() == Period.Status.OPEN) throw new RuleViolationException("Process " + p.month() + " first; the END file comes from the split");
         boolean draft = p.status() != Period.Status.LOCKED;
         boolean fullPan = Roles.canSeeFullPan();
-        Set<Long> rmChanged = clientsWithRmChangeIn(p.fromDate(), p.toDate());
+        Set<Long> rmChanged = clients.clientsWithRmChangeIn(p.fromDate(), p.toDate());
         Map<Long, YearMonth> monthOfPeriod = periods.list(MF).stream().collect(Collectors.toMap(PeriodView::id, PeriodView::month));
 
         List<EndRow> rows = jdbc.sql("""
@@ -92,15 +95,6 @@ public class EndFileService {
         BigDecimal net = rows.stream().map(EndRow::mfNet).reduce(BigDecimal.ZERO, BigDecimal::add);
         audit.record("END_FILE", periodId, "EXPORT", null, new ExportAudit(p.month(), draft, rows.size(), net, fullPan));
         return new EndFile(name, content, draft);
-    }
-
-    /** Clients whose RM changed on a day inside the month (more than one RM assignment overlaps it). */
-    private Set<Long> clientsWithRmChangeIn(LocalDate from, LocalDate to) {
-        return Set.copyOf(jdbc.sql("""
-                        SELECT client_id FROM client_rm_assignment
-                        WHERE valid_from <= ? AND (valid_to IS NULL OR valid_to >= ?)
-                        GROUP BY client_id HAVING count(*) > 1""")
-                .params(to, from).query(Long.class).list());
     }
 
     record ExportAudit(YearMonth month, boolean draft, int rows, BigDecimal net, boolean fullPan) {

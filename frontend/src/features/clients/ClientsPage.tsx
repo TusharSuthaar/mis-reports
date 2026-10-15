@@ -57,7 +57,7 @@ export function ClientsPage() {
       <div className="filters">
         <label>
           Search
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or client code" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, client code or full PAN" />
         </label>
         <label className="check">
           <input
@@ -227,7 +227,18 @@ function ClientPanel({ id, rms, canEdit, onClose, onChanged }: { id: number; rms
             <dt>Code</dt>
             <dd className="mono">{c.iwellCode}</dd>
             <dt>PAN</dt>
-            <dd className="mono">{c.pan ?? '—'}</dd>
+            <dd className="mono">
+              {c.pan ?? '—'}
+              {canEdit && (
+                <PanEdit
+                  clientId={id}
+                  onDone={() => {
+                    detail.reload();
+                    onChanged();
+                  }}
+                />
+              )}
+            </dd>
             <dt>Family head</dt>
             <dd>{detail.data.familyHeadName ?? detail.data.familyHeadCode ?? '—'}</dd>
             <dt>RM now</dt>
@@ -331,12 +342,15 @@ function RoleShare({ clientId, role, now, partners, canEdit, onChanged }: {
       <p>{now ? `${now.partnerName} · ${now.percent}%` : <span className="muted">None</span>}</p>
       {canEdit && (
         <DatedChangeForm
-          title={now ? `Change ${label.toLowerCase()} or %` : `Add a ${label.toLowerCase()}`}
+          title={now ? `Change % or ${label.toLowerCase()}` : `Add a ${label.toLowerCase()}`}
           dateLabel="From"
           submitLabel="Save"
-          canSubmit={partnerId !== '' && percent !== ''}
+          canSubmit={(partnerId !== '' || now !== undefined) && percent !== ''}
           onSubmit={(from) =>
-            api(`/api/clients/${clientId}/partner`, { method: 'POST', body: { partnerId: Number(partnerId), percent: Number(percent), from } })
+            api(`/api/clients/${clientId}/partner`, {
+              method: 'POST',
+              body: { partnerId: Number(partnerId || now?.partnerId), percent: Number(percent), from },
+            })
           }
           onDone={() => {
             setPartnerId('');
@@ -346,8 +360,8 @@ function RoleShare({ clientId, role, now, partners, canEdit, onChanged }: {
         >
           <label>
             {label}
-            <select value={partnerId} onChange={(e) => setPartnerId(e.target.value)} required>
-              <option value="">Choose…</option>
+            <select value={partnerId} onChange={(e) => setPartnerId(e.target.value)} required={!now}>
+              <option value="">{now ? `Keep ${now.partnerName}` : 'Choose…'}</option>
               {partners.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -356,9 +370,14 @@ function RoleShare({ clientId, role, now, partners, canEdit, onChanged }: {
             </select>
           </label>
           <label>
-            Sharing %
+            {now ? 'New sharing %' : 'Sharing %'}
             <input type="number" min="0" max="100" step="0.01" value={percent} onChange={(e) => setPercent(e.target.value)} required />
           </label>
+          {now && (
+            <p className="muted">
+              From a later date: the old % stays for the months before. From {now.validFrom} (its first day): the % is corrected.
+            </p>
+          )}
         </DatedChangeForm>
       )}
       {canEdit && now && (
@@ -378,5 +397,44 @@ function RoleShare({ clientId, role, now, partners, canEdit, onChanged }: {
         </form>
       )}
     </div>
+  );
+}
+
+/** Corrects the client's PAN (a typo in the master or in Finesse). Audited; refused if another client has the PAN. */
+function PanEdit({ clientId, onDone }: { clientId: number; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [pan, setPan] = useState('');
+  const [reason, setReason] = useState('');
+  const { busy, error, run } = useSubmit();
+  if (!open) {
+    return (
+      <button type="button" className="link" onClick={() => setOpen(true)}>
+        Edit PAN
+      </button>
+    );
+  }
+  return (
+    <form
+      className="inline-form"
+      onSubmit={async (e: FormEvent) => {
+        e.preventDefault();
+        if (await run(() => api(`/api/clients/${clientId}/pan`, { method: 'POST', body: { pan, reason } }))) {
+          setOpen(false);
+          setPan('');
+          setReason('');
+          onDone();
+        }
+      }}
+    >
+      <input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" aria-label="New PAN" maxLength={10} required />
+      <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" aria-label="Reason for the PAN change" />
+      <button type="submit" className="secondary" disabled={busy || pan.trim().length !== 10}>
+        Save PAN
+      </button>
+      <button type="button" className="link" onClick={() => setOpen(false)}>
+        Cancel
+      </button>
+      {error && <span className="error">{error}</span>}
+    </form>
   );
 }

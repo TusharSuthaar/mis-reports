@@ -1,6 +1,7 @@
 package money.epsilon.brokerage.client.api;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -69,11 +70,22 @@ class ClientController {
         service.changeRm(id, req.rmId(), req.from(), req.reason());
     }
 
+    /** Correct a client's PAN (audited; refused if another client has it). */
+    @PostMapping("/{id}/pan")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize(Roles.MASTER_WRITE)
+    void changePan(@PathVariable long id, @Valid @RequestBody ChangePanRequest req) {
+        service.changePan(id, req.pan(), req.reason());
+    }
+
     /** Change the RM of several clients from the same date, all or none. */
     @PostMapping("/rm")
     @PreAuthorize(Roles.MASTER_WRITE)
     Map<String, Integer> changeRmForAll(@Valid @RequestBody BulkChangeRmRequest req) {
         return Map.of("changed", service.changeRmForAll(req.clientIds(), req.rmId(), req.from(), req.reason()));
+    }
+
+    record ChangePanRequest(@NotBlank @Size(max = 20) String pan, @Size(max = 500) String reason) {
     }
 
     record ChangeRmRequest(@NotNull Long rmId, @NotNull LocalDate from, @Size(max = 500) String reason) {

@@ -60,23 +60,33 @@ public class ClientService {
 
     // ---- reading -------------------------------------------------------------------------------------------
 
-    /** Page of clients sorted by name. {@code q} matches name or any source code (Finesse shown first); {@code needsRm} = no current RM. */
+    /**
+     * Page of clients sorted by name. {@code q} matches the name, any source code (Finesse shown first) or, when it is a
+     * full PAN, the PAN. {@code needsRm} = no current RM.
+     */
     @Transactional(readOnly = true)
     public PageResponse<ClientView> page(String q, boolean needsRm, Long rmId, int page, int size) {
         String query = Text.clean(q) == null ? "" : Text.clean(q).toLowerCase();
+        String panHash = "";
+        try {
+            String pan = PanCipher.normalise(query);
+            if (pan != null) panHash = panCipher.hash(pan);
+        } catch (IllegalArgumentException notAPan) {
+            // a name or a code
+        }
         List<Row> rows = jdbc.sql("""
                         SELECT c.id, c.name, c.pan_encrypted, x.code, a.rm_id, count(*) OVER () AS total
                         FROM client c
                         LEFT JOIN LATERAL (SELECT code FROM client_external_id e WHERE e.client_id = c.id
                                            ORDER BY e.source = :source DESC, e.code LIMIT 1) x ON true
                         LEFT JOIN client_rm_assignment a ON a.client_id = c.id AND a.valid_to IS NULL
-                        WHERE (:q = '' OR lower(c.name) LIKE :like
+                        WHERE (:q = '' OR lower(c.name) LIKE :like OR c.pan_hash = :panHash
                                OR EXISTS (SELECT 1 FROM client_external_id e WHERE e.client_id = c.id AND lower(e.code) LIKE :like))
                           AND (:needsRm = false OR a.id IS NULL)
                           AND (:rmId = 0 OR a.rm_id = :rmId)
                         ORDER BY lower(c.name), c.id
                         LIMIT :size OFFSET :offset""")
-                .param("source", "FINESSE").param("q", query).param("like", "%" + query + "%")
+                .param("source", "FINESSE").param("q", query).param("panHash", panHash).param("like", "%" + query + "%")
                 .param("needsRm", needsRm).param("rmId", rmId == null ? 0L : rmId)
                 .param("size", size).param("offset", (long) page * size)
                 .query((rs, n) -> new Row(rs.getLong("id"), rs.getString("name"), rs.getString("pan_encrypted"), rs.getString("code"),
@@ -251,6 +261,54 @@ public class ClientService {
     }
 
     public record CurrentRm(long rmId, LocalDate since) {
+    }
+
+    /**
+     * Corrects a client's PAN (e.g. a typo in the master). Refused when another client already has that PAN. The next
+     * brokerage upload / Master MIS load matches the client by the new PAN.
+     */
+    @Transactional
+    public void changePan(long clientId, String pan, String reason) {
+        Client c = find(clientId);
+        String normalised = PanCipher.normalise(pan);
+        if (normalised == null) throw new IllegalArgumentException("Enter the PAN");
+        String hash = panCipher.hash(normalised);
+        if (hash.equals(c.getPanHash())) throw new RuleViolationException(c.getName() + " already has this PAN");
+        List<String> others = jdbc.sql("SELECT name FROM client WHERE pan_hash = ? AND id <> ?").params(hash, clientId)
+                .query(String.class).list();
+        if (!others.isEmpty()) {
+            throw new RuleViolationException("PAN " + PanCipher.mask(normalised) + " is already on " + String.join(", ", others));
+        }
+        String before = c.getPanEncrypted() == null ? null : PanCipher.mask(panCipher.decrypt(c.getPanEncrypted()));
+        c.changePan(panCipher.encrypt(normalised), hash);
+        clients.saveAndFlush(c);
+        audit.record("CLIENT", clientId, "PAN_CHANGE", new PanAudit(before, null), new PanAudit(PanCipher.mask(normalised), Text.clean(reason)));
+    }
+
+    record PanAudit(String maskedPan, String reason) {
+    }
+
+    /** client id → PAN (plain, normalised) for the clients that have one. Callers mask it for users who may not see it. */
+    @Transactional(readOnly = true)
+    public Map<Long, String> pans(Collection<Long> clientIds) {
+        Map<Long, String> result = new HashMap<>();
+        if (clientIds.isEmpty()) return result;
+        for (List<Long> chunk : chunks(List.copyOf(clientIds), 1000)) {
+            jdbc.sql("SELECT id, pan_encrypted FROM client WHERE id IN (:ids) AND pan_encrypted IS NOT NULL").param("ids", chunk)
+                    .query((rs, n) -> Map.entry(rs.getLong(1), rs.getString(2))).list()
+                    .forEach(e -> result.put(e.getKey(), panCipher.decrypt(e.getValue())));
+        }
+        return result;
+    }
+
+    /** Clients whose RM changed on a day inside {@code from}..{@code to} (more than one RM entry overlaps it). */
+    @Transactional(readOnly = true)
+    public java.util.Set<Long> clientsWithRmChangeIn(LocalDate from, LocalDate to) {
+        return java.util.Set.copyOf(jdbc.sql("""
+                        SELECT client_id FROM client_rm_assignment
+                        WHERE valid_from <= ? AND (valid_to IS NULL OR valid_to >= ?)
+                        GROUP BY client_id HAVING count(*) > 1""")
+                .params(to, from).query(Long.class).list());
     }
 
     /** client id → name. */

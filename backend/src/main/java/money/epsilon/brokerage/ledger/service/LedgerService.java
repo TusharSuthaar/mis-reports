@@ -60,6 +60,16 @@ public class LedgerService {
                 .list();
     }
 
+    /** period id → the clients with an active line of their own (not a correction) in that month. */
+    @Transactional(readOnly = true)
+    public Map<Long, java.util.Set<Long>> activeClientsByPeriod(String productType) {
+        Map<Long, java.util.Set<Long>> result = new java.util.HashMap<>();
+        jdbc.sql("SELECT DISTINCT period_id, client_id FROM brokerage_line WHERE product_type = ? AND NOT voided AND adjusts_period_id IS NULL")
+                .param(productType).query((rs, n) -> Map.entry(rs.getLong(1), rs.getLong(2))).list()
+                .forEach(e -> result.computeIfAbsent(e.getKey(), k -> new java.util.HashSet<>()).add(e.getValue()));
+        return result;
+    }
+
     /** What a month finally says per client: its own lines plus every correction posted for it later. */
     @Transactional(readOnly = true)
     public Map<Long, Amounts> effectiveByClient(long periodId, String productType) {

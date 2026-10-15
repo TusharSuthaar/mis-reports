@@ -109,6 +109,15 @@ public class ShareService {
         if (latest.filter(s -> s.getValidTo() == null && s.getPartnerId().equals(partnerId) && s.getShare().compareTo(fraction) == 0).isPresent()) {
             throw new RuleViolationException("That is already the client's partner and %");
         }
+        // The same start day as the current row: that row was wrong from its first day, so it is corrected in place.
+        if (latest.isPresent() && latest.get().getValidTo() == null && latest.get().getValidFrom().equals(from)) {
+            ClientPartnerShare s = latest.get();
+            Object before = auditView(s);
+            s.correct(partnerId, fraction, reason);
+            shares.saveAndFlush(s);
+            audit.record(AUDIT_SHARE, s.getId(), "CORRECT", before, auditView(s));
+            return;
+        }
         DatedHistory.makeRoom(latest, from, shares, audit, AUDIT_SHARE, this::auditView, reason);
         DatedHistory.add(new ClientPartnerShare(clientId, partnerId, role, MF, fraction, from, reason), shares, audit, AUDIT_SHARE, this::auditView);
     }

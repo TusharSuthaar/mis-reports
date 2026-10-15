@@ -279,13 +279,11 @@ public class UploadService {
         Map<Long, List<Row>> byClient = rows.stream().filter(r -> !rmOn.containsKey(r.clientId()))
                 .collect(Collectors.groupingBy(Row::clientId, LinkedHashMap::new, Collectors.toList()));
         if (byClient.isEmpty()) return List.of();
-        Map<Long, String> pans = jdbc.sql("SELECT id, pan_encrypted FROM client WHERE id IN (:ids) AND pan_encrypted IS NOT NULL")
-                .param("ids", byClient.keySet()).query((rs, n) -> Map.entry(rs.getLong(1), rs.getString(2))).list().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        Map<Long, String> pans = clients.pans(byClient.keySet());
         boolean fullPan = Roles.canSeeFullPan();
         return byClient.entrySet().stream().map(e -> {
             List<Row> rs = e.getValue();
-            String pan = pans.containsKey(e.getKey()) ? panCipher.decrypt(pans.get(e.getKey())) : null;
+            String pan = pans.get(e.getKey());
             String reason = rs.stream().map(Row::matchNote).filter(n -> n != null).findFirst().orElse("No RM in Master MIS for this month");
             return new NotInMaster(e.getKey(), rs.stream().map(Row::code).collect(Collectors.joining(", ")), rs.get(0).name(),
                     fullPan || pan == null ? pan : PanCipher.mask(pan), reason,
@@ -400,15 +398,12 @@ public class UploadService {
         Map<Long, LedgerService.Totals> totals = ledger.totalsByPeriod(MF);
         Map<Long, List<Upload>> byPeriod = uploads.findByPeriodIdInOrderByUploadedAtDesc(all.stream().map(PeriodView::id).toList())
                 .stream().collect(Collectors.groupingBy(Upload::getPeriodId));
-        Map<Long, Long> missing = jdbc.sql("""
-                        SELECT l.period_id, count(DISTINCT l.client_id) AS n
-                        FROM brokerage_line l JOIN period p ON p.id = l.period_id
-                        WHERE NOT l.voided AND l.product_type = ?
-                          AND NOT EXISTS (SELECT 1 FROM client_rm_assignment a WHERE a.client_id = l.client_id
-                                          AND a.valid_from <= p.to_date AND (a.valid_to IS NULL OR a.valid_to >= p.to_date))
-                        GROUP BY l.period_id""")
-                .param(MF).query((rs, n) -> Map.entry(rs.getLong(1), rs.getLong(2))).list().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        Map<Long, java.util.Set<Long>> clientsByPeriod = ledger.activeClientsByPeriod(MF);
+        Map<Long, Long> missing = new HashMap<>();
+        for (PeriodView p : all) {
+            java.util.Set<Long> ids = clientsByPeriod.getOrDefault(p.id(), java.util.Set.of());
+            if (!ids.isEmpty()) missing.put(p.id(), (long) (ids.size() - clients.rmsOn(ids, p.toDate()).size()));
+        }
         return all.stream().map(p -> {
             List<Upload> ups = byPeriod.getOrDefault(p.id(), List.of());
             UploadView saved = ups.stream().filter(x -> x.getStatus() == Upload.Status.COMMITTED).findFirst().map(x -> view(x, p, null)).orElse(null);

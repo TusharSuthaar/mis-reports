@@ -77,6 +77,31 @@ public class PartnerRmLinkService {
         DatedHistory.end(link, lastDay, links, audit, AUDIT_LINK, this::auditView, reason);
     }
 
+    /**
+     * Hands every RM link of a merged duplicate to the partner it was merged into. Refused when both are linked to the
+     * same RM at the same time. @return how many links moved
+     */
+    @Transactional
+    public int moveAll(long fromPartnerId, long intoPartnerId) {
+        List<PartnerRmLink> from = links.findByPartnerIdOrderByValidFromDesc(fromPartnerId);
+        List<PartnerRmLink> into = links.findByPartnerIdOrderByValidFromDesc(intoPartnerId);
+        for (PartnerRmLink a : from) {
+            for (PartnerRmLink b : into) {
+                boolean overlap = a.getRmId().equals(b.getRmId())
+                        && !a.getValidFrom().isAfter(b.getValidTo() == null ? LocalDate.MAX : b.getValidTo())
+                        && !b.getValidFrom().isAfter(a.getValidTo() == null ? LocalDate.MAX : a.getValidTo());
+                if (overlap) throw new RuleViolationException("Both partners are linked to the same RM at the same time; end one link first");
+            }
+        }
+        for (PartnerRmLink a : from) {
+            Object before = auditView(a);
+            a.moveTo(intoPartnerId);
+            links.saveAndFlush(a);
+            audit.record(AUDIT_LINK, a.getId(), "MOVE", before, auditView(a));
+        }
+        return from.size();
+    }
+
     /** An RM who leaves stops working with partners on their last day. */
     @EventListener
     public void onEmployeeExited(EmployeeExited event) {

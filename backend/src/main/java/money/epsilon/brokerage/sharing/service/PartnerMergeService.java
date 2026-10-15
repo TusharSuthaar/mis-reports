@@ -28,8 +28,11 @@ public class PartnerMergeService {
     private final ChangeWindow window;
     private final JdbcClient jdbc;
     private final AuditService audit;
+    private final money.epsilon.brokerage.partner.service.PartnerRmLinkService rmLinks;
 
-    PartnerMergeService(PartnerService partners, AliasService aliases, ChangeWindow window, JdbcClient jdbc, AuditService audit) {
+    PartnerMergeService(PartnerService partners, AliasService aliases, ChangeWindow window, JdbcClient jdbc, AuditService audit,
+                        money.epsilon.brokerage.partner.service.PartnerRmLinkService rmLinks) {
+        this.rmLinks = rmLinks;
         this.partners = partners;
         this.aliases = aliases;
         this.window = window;
@@ -63,15 +66,8 @@ public class PartnerMergeService {
                 .params(fromId, intoId).query(Integer.class).single();
         if (clash > 0) throw new RuleViolationException(clash + " client(s) have both partners at the same time; fix those clients first");
 
-        int linkClash = jdbc.sql("""
-                        SELECT count(*) FROM partner_rm_link a JOIN partner_rm_link b ON a.rm_id = b.rm_id
-                         AND a.valid_from <= coalesce(b.valid_to, 'infinity') AND b.valid_from <= coalesce(a.valid_to, 'infinity')
-                        WHERE a.partner_id = ? AND b.partner_id = ?""")
-                .params(fromId, intoId).query(Integer.class).single();
-        if (linkClash > 0) throw new RuleViolationException("Both partners are linked to the same RM at the same time; end one link first");
-
         int shares = jdbc.sql("UPDATE client_partner_share SET partner_id = ? WHERE partner_id = ?").params(intoId, fromId).update();
-        int links = jdbc.sql("UPDATE partner_rm_link SET partner_id = ? WHERE partner_id = ?").params(intoId, fromId).update();
+        int links = rmLinks.moveAll(fromId, intoId);
         int moved = aliases.retarget(EntityType.PARTNER, fromId, intoId);
         boolean added = aliases.remember(ClientService.INVESTWELL, EntityType.PARTNER, from.name(), intoId);
         partners.update(fromId, new PartnerInput(null, null, null, null, null, null, PartnerStatus.INACTIVE));

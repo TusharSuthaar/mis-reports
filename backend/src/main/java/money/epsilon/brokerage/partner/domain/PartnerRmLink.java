@@ -27,5 +27,8 @@ public class PartnerRmLink extends DatedRow {
     }
 
     public Long getPartnerId() { return partnerId; }
+
+    /** After a partner merge: this link now belongs to the partner the duplicate was merged into. */
+    public void moveTo(Long partnerId) { this.partnerId = partnerId; }
     public Long getRmId() { return rmId; }
 }

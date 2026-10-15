@@ -6,6 +6,9 @@ ledger, lock periods, and produce MIS reports and the monthly END file.
 
 Stack: Java 21 / Spring Boot 3.5 (modular monolith), PostgreSQL 16 with Flyway, React 18 + TypeScript + Vite.
 
+**Product knowledge and guardrails:** start at [docs/README.md](docs/README.md) — business rules (each proved by a test),
+module ownership, guardrails and decision notes. Working on the code: read [CLAUDE.md](CLAUDE.md).
+
 ## Run it
 
 Needs Docker Desktop.
@@ -70,7 +73,9 @@ frontend/src/
 ```
 
 Rules enforced by `ArchitectureTest`: no cycles between modules, and a module's entities and
-repositories are used only inside that module.
+repositories are used only inside that module. `GuardrailsTest` checks that every table has one owning module
+([docs/architecture/modules.md](docs/architecture/modules.md)), that no module's SQL touches another module's tables,
+and that every business rule in [docs/product/business-rules.md](docs/product/business-rules.md) names a test that exists.
 
 ## Conventions
 
@@ -85,7 +90,7 @@ repositories are used only inside that module.
   Postgres exclusion constraints make overlaps impossible even outside the app.
 - PAN: AES-256-GCM at rest plus a keyed hash for lookups (`PanCipher`). Full PAN only for FINANCE/ADMIN;
   everyone else, and the audit log, sees `ABCDE****F`. **Back up the PAN keys**: without them stored PANs are unreadable.
-- Real client data (Investwell files, master lists) goes in `private-data/`, which is git-ignored.
+- Real client data (Finesse files, Master MIS, END files) goes in `private-data/`, which is git-ignored. No real names, PANs or amounts in code, tests or docs.
 
 ## Build status
 

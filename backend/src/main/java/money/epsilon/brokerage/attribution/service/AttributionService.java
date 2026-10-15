@@ -154,11 +154,10 @@ public class AttributionService {
                                              rd_at_period, is_adjustment)
                 VALUES (""" + runId + ", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows);
 
-        Integer unbalanced = jdbc.sql("""
-                        SELECT count(*) FROM brokerage_line l JOIN (
-                            SELECT brokerage_line_id, sum(amount) AS total FROM brokerage_split WHERE run_id = ? GROUP BY brokerage_line_id) s
-                          ON s.brokerage_line_id = l.id WHERE s.total <> l.net""")
-                .param(runId).query(Integer.class).single();
+        // Every line must split back to exactly its net (the parts were built above from the ledger's own lines).
+        Map<Long, BigDecimal> splitTotal = new java.util.HashMap<>();
+        for (Object[] r : rows) splitTotal.merge((Long) r[1], (BigDecimal) r[9], BigDecimal::add);
+        long unbalanced = lines.stream().filter(l -> splitTotal.getOrDefault(l.id(), BigDecimal.ZERO).compareTo(l.net()) != 0).count();
         if (unbalanced != 0) throw new IllegalStateException(unbalanced + " lines do not split back to their net; nothing was saved");
 
         periods.markProcessed(periodId, CurrentUser.username());

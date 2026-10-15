@@ -63,4 +63,10 @@ public class Client {
     public Long getFamilyHeadClientId() { return familyHeadClientId; }
 
     public void setFamilyHeadClientId(Long familyHeadClientId) { this.familyHeadClientId = familyHeadClientId; }
+
+    /** A corrected PAN (encrypted, and its lookup hash). Audited by the caller. */
+    public void changePan(String panEncrypted, String panHash) {
+        this.panEncrypted = panEncrypted;
+        this.panHash = panHash;
+    }
 }

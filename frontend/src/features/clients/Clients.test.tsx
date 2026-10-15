@@ -30,7 +30,7 @@ const rms: Employee[] = [
 
 const page: Page<ClientRow> = {
   items: [
-    { id: 100, name: 'ANITA RAO', pan: 'BYXPS****L', iwellCode: '320066313', rmId: 1, rmName: 'RM ALPHA', branchName: 'PATNA' },
+    { id: 100, name: 'ANITA RAO', pan: 'PQRST****K', iwellCode: '320066313', rmId: 1, rmName: 'RM ALPHA', branchName: 'PATNA' },
     { id: 101, name: 'WAITING CLIENT', pan: null, iwellCode: '999', rmId: null, rmName: null, branchName: null },
   ],
   page: 0,
@@ -59,6 +59,34 @@ describe('clients', () => {
     expect(within(panel).getAllByLabelText('From')).toHaveLength(3); // change RM, sub-broker, referral partner
     // the current RM is not offered again
     expect(within(panel).queryByRole('option', { name: 'RM ALPHA — PATNA' })).not.toBeInTheDocument();
+  });
+
+  it('finds a client by PAN and corrects the PAN', async () => {
+    document.cookie = 'XSRF-TOKEN=tok';
+    let searched: string | null = null;
+    let sent: unknown = null;
+    fakeApi({
+      'GET /api/auth/me': ok(me('HO')),
+      'GET /api/employees': ok(rms),
+      'GET /api/clients': ok(page),
+      'GET /api/clients/100': ok({ client: page.items[0], iwellCode2: null, familyHeadCode: null, familyHeadName: null }),
+      'GET /api/clients/100/rm': ok([]),
+      'POST /api/clients/100/pan': (init) => {
+        sent = JSON.parse(String(init?.body));
+        return { status: 204, body: undefined };
+      },
+    });
+    renderAt('/clients?q=pqrst6789k');
+    searched = ((await screen.findByPlaceholderText('Name, client code or full PAN')) as HTMLInputElement).value;
+    expect(searched).toBe('pqrst6789k');
+
+    await userEvent.click(await screen.findByRole('button', { name: 'ANITA RAO' }));
+    const panel = await screen.findByRole('dialog', { name: 'ANITA RAO' });
+    await userEvent.click(within(panel).getByRole('button', { name: 'Edit PAN' }));
+    await userEvent.type(within(panel).getByLabelText('New PAN'), 'zyxwv9876a');
+    await userEvent.type(within(panel).getByLabelText('Reason for the PAN change'), 'typo');
+    await userEvent.click(within(panel).getByRole('button', { name: 'Save PAN' }));
+    expect(sent).toEqual({ pan: 'ZYXWV9876A', reason: 'typo' });
   });
 
   it('sets one RM for all selected clients', async () => {

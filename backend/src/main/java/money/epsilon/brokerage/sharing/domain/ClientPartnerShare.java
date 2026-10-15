@@ -51,4 +51,11 @@ public class ClientPartnerShare extends DatedRow {
     public PartnerType getPartnerRole() { return partnerRole; }
     public String getProductType() { return productType; }
     public BigDecimal getShare() { return share; }
+
+    /** A correction of who / what % from this row's first day (audited by the caller). Same role only. */
+    public void correct(Long partnerId, BigDecimal share, String reason) {
+        this.partnerId = partnerId;
+        this.share = share;
+        setReason(reason);
+    }
 }
