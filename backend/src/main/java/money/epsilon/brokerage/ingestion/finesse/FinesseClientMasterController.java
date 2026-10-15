@@ -1,5 +1,6 @@
 package money.epsilon.brokerage.ingestion.finesse;
 
+import money.epsilon.brokerage.platform.importing.UploadedFile;
 import java.io.IOException;
 import money.epsilon.brokerage.ingestion.finesse.FinesseClientMasterService.LoadResult;
 import money.epsilon.brokerage.ingestion.finesse.FinesseClientMasterService.Status;
@@ -30,9 +31,7 @@ class FinesseClientMasterController {
     @PostMapping("/api/finesse/client-master")
     @PreAuthorize(Roles.MASTER_WRITE)
     LoadResult upload(@RequestParam("file") MultipartFile file) throws IOException {
-        String name = file.getOriginalFilename() == null ? "ClientMasterReport.xlsx" : file.getOriginalFilename();
-        if (file.isEmpty()) throw new IllegalArgumentException("The file is empty");
-        if (!name.toLowerCase().endsWith(".xlsx")) throw new IllegalArgumentException("Upload the Finesse client master .xlsx file");
-        return service.load(file.getBytes(), name);
+        UploadedFile f = UploadedFile.of(file, "ClientMasterReport.xlsx", "the Finesse client master");
+        return service.load(f.content(), f.name());
     }
 }

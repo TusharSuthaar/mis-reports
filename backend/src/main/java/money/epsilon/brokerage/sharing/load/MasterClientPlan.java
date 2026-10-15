@@ -61,7 +61,7 @@ final class MasterClientPlan {
         Map<String, List<Long>> noPanByName = new LinkedHashMap<>();
         for (ClientKey c : clients) {
             if (c.panHash() != null) byPan.computeIfAbsent(c.panHash(), k -> new ArrayList<>()).add(c.id());
-            else noPanByName.computeIfAbsent(nameKey(c.nameKey()), k -> new ArrayList<>()).add(c.id());
+            else noPanByName.computeIfAbsent(Text.nameKey(c.nameKey()), k -> new ArrayList<>()).add(c.id());
         }
 
         Map<String, List<MasterRow>> byKey = new LinkedHashMap<>();
@@ -75,7 +75,7 @@ final class MasterClientPlan {
                     plan.problems.add("Row " + r.rowNumber() + ": PAN '" + PanCipher.mask(r.pan().trim().toUpperCase()) + "' is not valid; matched by name instead");
                 }
             }
-            String key = pan != null ? "P:" + hash.apply(pan) : "N:" + nameKey(Text.key(r.clientName()));
+            String key = pan != null ? "P:" + hash.apply(pan) : "N:" + Text.nameKey(r.clientName());
             if (key.equals("N:")) continue;
             byKey.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
             if (pan != null) panOfKey.put(key, pan);
@@ -130,8 +130,4 @@ final class MasterClientPlan {
         return plan;
     }
 
-    /** Name match key: upper case, single spaces, dots ignored ("A. K. SHAH" = "A K SHAH"). */
-    static String nameKey(String key) {
-        return Text.key(key == null ? "" : key.replace('.', ' '));
-    }
 }

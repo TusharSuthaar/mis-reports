@@ -7,8 +7,10 @@ Read [docs/README.md](docs/README.md) first, then [docs/architecture/guardrails.
    public service. `GuardrailsTest.modulesOnlyQueryTheirOwnTables` fails otherwise.
 2. **Business rules live in [business-rules.md](docs/product/business-rules.md)**, each with a test. Change a rule → change
    its row, its code and its test together.
-3. **Reuse, don't copy**: name/PAN cleaning (`Text`, `PanCipher`), dated history (`DatedHistory`, `Timeline`), audit
-   (`AuditService`), jobs (`JobService`). New copies fail `GuardrailsTest.noNewCopiesOfSharedHelpers`.
+3. **Reuse, don't copy** (the shared kernel in `platform`): name/PAN cleaning (`Text`, `PanCipher`), Excel reading
+   (`ExcelFile`), uploads (`UploadedFile`), background work (`TransactionalJob`), dated changes (`DatedHistory.setFrom`),
+   audit (`AuditService`). `GuardrailsTest` fails on copies, on other Excel readers and on jobs outside the pipeline.
+   New import? Follow [docs/architecture/adding-an-import.md](docs/architecture/adding-an-import.md).
 4. **Schema = new Flyway migration**, never edit an applied one. **Money = BigDecimal / NUMERIC.**
 5. **Audit every business change** (who, when, before, after, reason). Ledger, splits and audit log are append-only.
 6. **No real client data anywhere in the repo** — `private-data/` and `.env` stay local. Tests use made-up names and PANs.

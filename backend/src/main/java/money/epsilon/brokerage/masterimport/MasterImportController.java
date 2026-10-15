@@ -1,5 +1,6 @@
 package money.epsilon.brokerage.masterimport;
 
+import money.epsilon.brokerage.platform.importing.UploadedFile;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.security.MessageDigest;
@@ -55,20 +56,10 @@ class MasterImportController {
     @PreAuthorize(Roles.MASTER_WRITE)
     Map<String, Long> upload(@RequestParam("file") MultipartFile file, @RequestParam(defaultValue = "false") boolean dryRun)
             throws IOException {
-        String name = file.getOriginalFilename() == null ? "upload.xlsx" : file.getOriginalFilename();
-        if (file.isEmpty()) throw new IllegalArgumentException("The file is empty");
-        if (!name.toLowerCase().endsWith(".xlsx")) throw new IllegalArgumentException("Upload an Excel .xlsx file");
-        byte[] content = file.getBytes();
-        String path = files.save("master-imports", content, ".xlsx");
-        var payload = new MasterImportJob.Payload(path, name, sha256(content), dryRun);
+        UploadedFile f = UploadedFile.of(file, "upload.xlsx", "the masters workbook");
+        String path = files.save(MasterImportJob.AREA, f.content(), ".xlsx");
+        var payload = new MasterImportJob.Payload(path, f.name(), f.sha256(), dryRun);
         return Map.of("jobId", jobs.submit(MasterImportJob.TYPE, mapper.valueToTree(payload)));
     }
 
-    private static String sha256(byte[] content) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
-    }
 }

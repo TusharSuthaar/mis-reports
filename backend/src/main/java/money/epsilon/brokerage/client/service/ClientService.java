@@ -214,18 +214,24 @@ public class ClientService {
                 .param("source", source).update();
     }
 
-    /** The client's RM is {@code rmId} from {@code from}; the previous RM ends the day before. History is kept. */
+    /**
+     * The client's RM is {@code rmId} from {@code from}: the previous RM ends the day before (history is kept), or, from
+     * the current entry's own first day, that entry is corrected. Refused if the client already has this RM.
+     */
     @Transactional
     public void changeRm(long clientId, long rmId, LocalDate from, String reason) {
         Client c = find(clientId);
-        window.beforeChange(from);
-        EmployeeView rm = employees.requireEmployedOn(rmId, from);
-        Optional<ClientRmAssignment> latest = assignments.findFirstByClientIdOrderByValidFromDesc(clientId);
-        if (latest.filter(a -> a.getValidTo() == null && a.getRmId().equals(rmId)).isPresent()) {
-            throw new RuleViolationException(c.getName() + " is already with " + rm.name());
+        if (setRm(clientId, rmId, from, reason) == DatedHistory.Outcome.UNCHANGED) {
+            throw new RuleViolationException(c.getName() + " is already with " + employees.get(rmId).name());
         }
-        DatedHistory.makeRoom(latest, from, assignments, audit, AUDIT_CLIENT_RM, this::auditView, reason);
-        DatedHistory.add(new ClientRmAssignment(clientId, rmId, from, reason), assignments, audit, AUDIT_CLIENT_RM, this::auditView);
+    }
+
+    private DatedHistory.Outcome setRm(long clientId, long rmId, LocalDate from, String reason) {
+        window.beforeChange(from);
+        employees.requireEmployedOn(rmId, from);
+        return DatedHistory.setFrom(assignments.findFirstByClientIdOrderByValidFromDesc(clientId), from, a -> a.getRmId().equals(rmId),
+                a -> a.correctRm(rmId, reason), () -> new ClientRmAssignment(clientId, rmId, from, reason),
+                assignments, audit, AUDIT_CLIENT_RM, this::auditView, reason);
     }
 
     /**
@@ -234,20 +240,8 @@ public class ClientService {
      */
     @Transactional
     public void setRmFrom(long clientId, long rmId, LocalDate from, String reason) {
-        Optional<ClientRmAssignment> latest = assignments.findFirstByClientIdOrderByValidFromDesc(clientId);
-        if (latest.isEmpty() || latest.get().getValidTo() != null || !latest.get().getValidFrom().equals(from)) {
-            if (latest.filter(a -> a.getValidTo() == null && a.getRmId().equals(rmId)).isPresent()) return;
-            changeRm(clientId, rmId, from, reason);
-            return;
-        }
-        ClientRmAssignment a = latest.get();
-        if (a.getRmId().equals(rmId)) return;
-        window.beforeChange(from);
-        employees.requireEmployedOn(rmId, from);
-        AuditView before = auditView(a);
-        a.correctRm(rmId, reason);
-        assignments.saveAndFlush(a);
-        audit.record(AUDIT_CLIENT_RM, clientId, "CORRECT", before, auditView(a));
+        find(clientId);
+        setRm(clientId, rmId, from, reason);
     }
 
     /** client id → its current (open) RM entry: RM and the day it started. */

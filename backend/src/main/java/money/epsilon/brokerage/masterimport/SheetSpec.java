@@ -47,7 +47,4 @@ record SheetSpec(String name, List<Column> columns, String help) {
     /** In dependency order: a sheet may refer to anything on an earlier sheet. */
     static final List<SheetSpec> ALL = List.of(REGIONS, BRANCHES, EMPLOYEES, RD, RM_BRANCH, PARTNERS, PARTNER_RM);
 
-    static String normalise(String s) {
-        return s == null ? "" : s.toLowerCase().replaceAll("[^a-z0-9]", "");
-    }
 }

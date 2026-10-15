@@ -1,21 +1,11 @@
 package money.epsilon.brokerage.sharing.load;
 
-import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import money.epsilon.brokerage.platform.excel.ExcelFile;
+import money.epsilon.brokerage.platform.excel.ExcelRow;
 import money.epsilon.brokerage.platform.text.Text;
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.CellType;
-import org.apache.poi.ss.usermodel.DataFormatter;
-import org.apache.poi.ss.usermodel.FormulaEvaluator;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.ss.usermodel.Workbook;
-import org.apache.poi.ss.usermodel.WorkbookFactory;
 
 /**
  * Reads the client master (Master_MIS.xlsx, sheet "Master"): per client its name, PAN and up to two partners, each as
@@ -24,6 +14,7 @@ import org.apache.poi.ss.usermodel.WorkbookFactory;
  */
 final class MasterShareReader {
 
+    static final String SHEET = "Master";
     static final String NAME = "CLIENT NAME";
     static final String PAN = "PAN NO";
     /** Optional: the client's RM as Master MIS names it. */
@@ -54,57 +45,43 @@ final class MasterShareReader {
     }
 
     static Result read(byte[] content) {
-        try (Workbook wb = WorkbookFactory.create(new ByteArrayInputStream(content))) {
-            FormulaEvaluator eval = wb.getCreationHelper().createFormulaEvaluator();
-            DataFormatter fmt = new DataFormatter(Locale.ENGLISH);
-            Sheet sheet = wb.getSheet("Master") != null ? wb.getSheet("Master") : wb.getSheetAt(0);
-            Map<String, Integer> col = null;
-            int headerRow = -1;
-            for (int r = sheet.getFirstRowNum(); r <= Math.min(sheet.getLastRowNum(), HEADER_SEARCH_ROWS); r++) {
-                Map<String, Integer> found = headers(sheet.getRow(r), fmt, eval);
-                if (found.keySet().containsAll(REQUIRED)) {
-                    col = found;
-                    headerRow = r;
-                    break;
-                }
-            }
-            if (col == null) return new Result(List.of(), "Header row not found. Expected columns: " + String.join(", ", REQUIRED));
-            List<List<Integer>> groups = new ArrayList<>();
-            for (List<String> g : PARTNER_GROUPS) {
-                if (col.keySet().containsAll(g)) groups.add(g.stream().map(col::get).toList());
-            }
-
-            List<MasterRow> rows = new ArrayList<>();
-            for (int r = headerRow + 1; r <= sheet.getLastRowNum(); r++) {
-                Row row = sheet.getRow(r);
-                if (row == null) continue;
-                String name = text(row, col.get(NAME), fmt, eval);
-                String pan = text(row, col.get(PAN), fmt, eval);
-                if (name.isEmpty() && pan.isEmpty()) continue;
-                List<PartnerCell> partners = new ArrayList<>();
-                for (List<Integer> g : groups) {
-                    String partner = text(row, g.get(0), fmt, eval);
-                    if (partner.isEmpty()) continue;
-                    partners.add(cell(partner, text(row, g.get(1), fmt, eval), row.getCell(g.get(2))));
-                }
-                rows.add(new MasterRow(r + 1, name, pan, partners, col.containsKey(RM) ? text(row, col.get(RM), fmt, eval) : "",
-                        col.containsKey(BRANCH) ? text(row, col.get(BRANCH), fmt, eval) : ""));
-            }
-            return new Result(rows, null);
-        } catch (Exception e) {
-            return new Result(List.of(), "The file could not be read as an Excel workbook (.xlsx)");
+        ExcelFile.Table table;
+        try (ExcelFile file = ExcelFile.open(content)) {
+            var found = file.table(SHEET, REQUIRED, HEADER_SEARCH_ROWS);
+            if (found.isEmpty() || !found.get().missing().isEmpty()) found = file.table(null, REQUIRED, HEADER_SEARCH_ROWS);
+            table = found.orElse(null);
+        } catch (IllegalArgumentException e) {
+            return new Result(List.of(), ExcelFile.UNREADABLE);
         }
+        if (table == null || !table.missing().isEmpty()) {
+            return new Result(List.of(), "Header row not found. Expected columns: " + String.join(", ", REQUIRED));
+        }
+        List<List<String>> groups = PARTNER_GROUPS.stream().filter(g -> g.stream().allMatch(table::has)).toList();
+
+        List<MasterRow> rows = new ArrayList<>();
+        for (ExcelRow row : table.rows()) {
+            String name = clean(row.text(NAME));
+            String pan = clean(row.text(PAN));
+            if (name.isEmpty() && pan.isEmpty()) continue;
+            List<PartnerCell> partners = new ArrayList<>();
+            for (List<String> g : groups) {
+                String partner = clean(row.text(g.get(0)));
+                if (partner.isEmpty()) continue;
+                partners.add(cell(partner, clean(row.text(g.get(1))), row.value(g.get(2))));
+            }
+            rows.add(new MasterRow(row.rowNumber(), name, pan, partners, clean(row.text(RM)), clean(row.text(BRANCH))));
+        }
+        return new Result(rows, null);
     }
 
-    private static PartnerCell cell(String partner, String type, Cell pctCell) {
+    /** A % cell: a number is a fraction (0.8); text may be "0.8", "NA" or blank. */
+    private static PartnerCell cell(String partner, String type, Object pctCell) {
         String problem = null;
         BigDecimal pct = null;
-        CellType t = pctCell == null ? CellType.BLANK
-                : pctCell.getCellType() == CellType.FORMULA ? pctCell.getCachedFormulaResultType() : pctCell.getCellType();
-        if (t == CellType.NUMERIC) {
-            pct = BigDecimal.valueOf(pctCell.getNumericCellValue());
-        } else if (t == CellType.STRING) {
-            String s = pctCell.getStringCellValue().trim().replace("%", "");
+        if (pctCell instanceof BigDecimal d) {
+            pct = d;
+        } else if (pctCell != null) {
+            String s = pctCell.toString().trim().replace("%", "");
             if (!s.isEmpty() && !s.equalsIgnoreCase("NA")) {
                 try {
                     pct = new BigDecimal(s);
@@ -120,19 +97,8 @@ final class MasterShareReader {
         return new PartnerCell(partner, type, pct, problem);
     }
 
-    private static Map<String, Integer> headers(Row row, DataFormatter fmt, FormulaEvaluator eval) {
-        Map<String, Integer> found = new HashMap<>();
-        if (row == null) return found;
-        for (Cell cell : row) {
-            String h = Text.key(fmt.formatCellValue(cell, eval));
-            if (!h.isEmpty()) found.putIfAbsent(h, cell.getColumnIndex());
-        }
-        return found;
-    }
-
-    private static String text(Row row, int col, DataFormatter fmt, FormulaEvaluator eval) {
-        Cell cell = row.getCell(col);
-        String v = cell == null ? null : Text.clean(fmt.formatCellValue(cell, eval));
-        return v == null ? "" : v;
+    private static String clean(String s) {
+        String t = Text.clean(s);
+        return t == null ? "" : t;
     }
 }

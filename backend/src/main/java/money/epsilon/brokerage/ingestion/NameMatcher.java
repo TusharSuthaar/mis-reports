@@ -1,5 +1,6 @@
 package money.epsilon.brokerage.ingestion;
 
+import money.epsilon.brokerage.platform.text.Text;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -39,15 +40,15 @@ public class NameMatcher {
     public NameMatcher(String source, AliasService aliases, List<EmployeeView> rms, List<PartnerView> partners) {
         this.source = source;
         this.aliases = aliases;
-        this.rmsByName = rms.stream().collect(Collectors.groupingBy(e -> AliasService.normalise(e.name())));
+        this.rmsByName = rms.stream().collect(Collectors.groupingBy(e -> Text.key(e.name())));
         this.partners = partners;
     }
 
     public Match rm(String spelling) {
-        if (AliasService.normalise(spelling).isEmpty()) return new Match(Status.UNKNOWN, null, List.of());
+        if (Text.key(spelling).isEmpty()) return new Match(Status.UNKNOWN, null, List.of());
         Optional<Long> remembered = aliases.resolve(source, EntityType.RM, spelling);
         if (remembered.isPresent()) return new Match(Status.REMEMBERED, remembered.get(), List.of());
-        List<EmployeeView> same = rmsByName.getOrDefault(AliasService.normalise(spelling), List.of());
+        List<EmployeeView> same = rmsByName.getOrDefault(Text.key(spelling), List.of());
         if (same.size() == 1) return new Match(Status.MATCHED, same.get(0).id(), List.of());
         if (same.size() > 1) return new Match(Status.SEVERAL, null, same);
         return new Match(Status.UNKNOWN, null, List.of());
@@ -62,8 +63,8 @@ public class NameMatcher {
     }
 
     public Optional<PartnerView> partnerNamed(String name) {
-        String key = AliasService.normalise(name);
-        return partners.stream().filter(p -> p.type() == PartnerType.SUB_BROKER && AliasService.normalise(p.name()).equals(key)).findFirst();
+        String key = Text.key(name);
+        return partners.stream().filter(p -> p.type() == PartnerType.SUB_BROKER && Text.key(p.name()).equals(key)).findFirst();
     }
 
     public static PartnerService.PartnerInput newSubBroker(String name) {

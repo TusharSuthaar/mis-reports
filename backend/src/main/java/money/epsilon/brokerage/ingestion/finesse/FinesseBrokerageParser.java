@@ -4,9 +4,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeFormatterBuilder;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,6 +15,8 @@ import money.epsilon.brokerage.ingestion.parser.ParsedIncomeFile;
 import money.epsilon.brokerage.ingestion.parser.ParsedIncomeFile.Problem;
 import money.epsilon.brokerage.ingestion.parser.ParsedIncomeFile.Totals;
 import money.epsilon.brokerage.ingestion.parser.StagedIncomeRow;
+import money.epsilon.brokerage.platform.excel.ExcelFile;
+import money.epsilon.brokerage.platform.excel.ExcelRow;
 import org.springframework.stereotype.Component;
 
 /**
@@ -40,10 +39,9 @@ public class FinesseBrokerageParser implements IncomeFileParser {
     static final List<String> REQUIRED = List.of(CODE, NAME, AMOUNT, END);
 
     static final BigDecimal TOTAL_TOLERANCE = BigDecimal.ONE;
+    private static final int HEADER_SEARCH_ROWS = 15;
     private static final int SCALE = 4;
     private static final BigDecimal GST_RATE = new BigDecimal("0.18");
-    private static final DateTimeFormatter PERIOD = new DateTimeFormatterBuilder().parseCaseInsensitive()
-            .appendPattern("d-MMM-uuuu").toFormatter(Locale.ENGLISH);
 
     @Override
     public String source() {
@@ -54,15 +52,16 @@ public class FinesseBrokerageParser implements IncomeFileParser {
     public ParsedIncomeFile parse(byte[] content) {
         List<Problem> errors = new ArrayList<>();
         List<Problem> warnings = new ArrayList<>();
-        FinesseSheet.Read read;
-        try {
-            read = FinesseSheet.read(content, SHEET, REQUIRED);
+        ExcelFile.Table read;
+        try (ExcelFile file = ExcelFile.open(content)) {
+            var table = file.table(SHEET, REQUIRED, HEADER_SEARCH_ROWS);
+            if (table.isEmpty()) {
+                return failed("Sheet '" + SHEET + "' not found. This does not look like the Finesse MF brokerage file (sheets: "
+                        + String.join(", ", file.sheetNames()) + ")");
+            }
+            read = table.get();
         } catch (IllegalArgumentException e) {
             return failed(e.getMessage());
-        }
-        if (!read.sheetFound()) {
-            return failed("Sheet '" + SHEET + "' not found. This does not look like the Finesse MF brokerage file (sheets: "
-                    + String.join(", ", read.sheetNames()) + ")");
         }
         if (!read.missing().isEmpty()) return failed("Header row not found on '" + SHEET + "'. Missing columns: " + String.join(", ", read.missing()));
 
@@ -70,7 +69,7 @@ public class FinesseBrokerageParser implements IncomeFileParser {
         Map<YearMonth, BigDecimal> byMonth = new TreeMap<>();
         BigDecimal fileTotal = null;
         BigDecimal rawSum = BigDecimal.ZERO;
-        for (FinesseSheet.Line l : read.lines()) {
+        for (ExcelRow l : read.rows()) {
             String code = l.text(CODE).toUpperCase(Locale.ROOT);
             BigDecimal amount;
             try {
@@ -90,8 +89,10 @@ public class FinesseBrokerageParser implements IncomeFileParser {
             if (amount == null) amount = BigDecimal.ZERO;
             YearMonth month;
             try {
-                month = YearMonth.from(LocalDate.parse(l.text(END), PERIOD));
-            } catch (DateTimeParseException e) {
+                LocalDate end = l.date(END);
+                if (end == null) throw new IllegalArgumentException("blank");
+                month = YearMonth.from(end);
+            } catch (IllegalArgumentException e) {
                 errors.add(new Problem(l.rowNumber(), "Brokerage end period '" + l.text(END) + "' is not a date like 31-Aug-2026"));
                 continue;
             }

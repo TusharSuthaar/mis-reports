@@ -176,7 +176,7 @@ final class SharePlan {
                                          Map<String, List<ClientKey>> noPanByName, Map<String, Long> noPanRowsPerName,
                                          SharePlan plan) {
         boolean report = !r.partners().isEmpty();
-        String pan = normalisePan(r.pan());
+        String pan = PanCipher.normaliseOrNull(r.pan());
         String name = Text.key(r.clientName());
         if (pan != null) {
             String h = hash.apply(pan);
@@ -228,14 +228,6 @@ final class SharePlan {
             if (!x.partnerKey().equals(y.partnerKey()) || x.fraction().compareTo(y.fraction()) != 0) return false;
         }
         return true;
-    }
-
-    private static String normalisePan(String pan) {
-        try {
-            return PanCipher.normalise(pan);
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
     }
 
     int changeCount(Action action) {

@@ -104,15 +104,13 @@ class GuardrailsTest {
     }
 
     /**
-     * G-12 — name/PAN cleaning helpers live once, in platform. The copies below exist today and are to be removed in
-     * Phase B; the list may only shrink (a copy that is gone must be removed from it, a new copy fails).
+     * G-12 — name/PAN cleaning helpers live once, in platform ({@code Text.key / nameKey / compact},
+     * {@code PanCipher.normalise / normaliseOrNull}). Any copy elsewhere fails.
      */
     @Test
     void noNewCopiesOfSharedHelpers() throws IOException {
-        Set<String> knownCopies = Set.of("ingestion/upload/UploadService.java", "mapping/service/AliasService.java",
-                "masterimport/MasterImportProcessor.java", "masterimport/SheetSpec.java", "sharing/load/MasterClientPlan.java",
-                "sharing/load/SharePlan.java");
-        Pattern helper = Pattern.compile("static\\s+String\\s+(nameKey|normalisePan|normalise|key)\\s*\\(");
+        Set<String> knownCopies = Set.of(); // Phase B removed the last copies: keep it empty
+        Pattern helper = Pattern.compile("static\\s+String\\s+(nameKey|normalisePan|normalise|key|compact|pan|cleanName)\\s*\\(");
         Set<String> copies = new TreeSet<>();
         try (Stream<Path> files = Files.walk(MAIN)) {
             for (Path f : files.filter(p -> p.toString().endsWith(".java")).toList()) {
@@ -123,6 +121,40 @@ class GuardrailsTest {
         }
         assertThat(copies).as("name/PAN helpers outside platform (use platform.text.Text / PanCipher)").isSubsetOf(knownCopies);
         assertThat(knownCopies).as("copies already removed: take them off the list").isSubsetOf(copies);
+    }
+
+    /** G-16 — uploaded workbooks are read only through platform.excel.ExcelFile (one way to find headers and read cells). */
+    @Test
+    void onlyThePlatformExcelReaderOpensWorkbooks() throws IOException {
+        List<String> readers = new ArrayList<>();
+        try (Stream<Path> files = Files.walk(MAIN)) {
+            for (Path f : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+                String rel = MAIN.relativize(f).toString().replace('\\', '/');
+                if (rel.startsWith("platform/excel/")) continue;
+                String src = Files.readString(f);
+                if (src.contains("WorkbookFactory") || Pattern.compile("new\\s+XSSFWorkbook\\s*\\(\\s*\\w").matcher(src).find()) readers.add(rel);
+            }
+        }
+        assertThat(readers).as("read Excel with platform.excel.ExcelFile").isEmpty();
+    }
+
+    /**
+     * G-17 — every background job outside platform has the one import shape ({@code TransactionalJob}), and every upload
+     * endpoint checks its file the one way ({@code UploadedFile.of}).
+     */
+    @Test
+    void importsUseTheSharedPipeline() throws IOException {
+        List<String> problems = new ArrayList<>();
+        try (Stream<Path> files = Files.walk(MAIN)) {
+            for (Path f : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+                String rel = MAIN.relativize(f).toString().replace('\\', '/');
+                if (rel.startsWith("platform/")) continue;
+                String src = Files.readString(f);
+                if (src.contains("implements JobHandler")) problems.add(rel + ": extend TransactionalJob instead of implementing JobHandler");
+                if (src.contains("MultipartFile file") && !src.contains("UploadedFile.of(")) problems.add(rel + ": check uploads with UploadedFile.of");
+            }
+        }
+        assertThat(problems).isEmpty();
     }
 
     // ---- helpers -------------------------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 package money.epsilon.brokerage.ingestion.upload;
 
+import money.epsilon.brokerage.platform.importing.UploadedFile;
 import java.io.IOException;
 import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
@@ -38,16 +39,14 @@ class UploadController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     @PreAuthorize(Roles.MASTER_WRITE)
     Map<String, Long> upload(@RequestParam("file") MultipartFile file, @RequestParam String month) throws IOException {
-        String name = file.getOriginalFilename() == null ? "brokerage.xlsx" : file.getOriginalFilename();
-        if (file.isEmpty()) throw new IllegalArgumentException("The file is empty");
-        if (!name.toLowerCase().endsWith(".xlsx")) throw new IllegalArgumentException("Upload the Finesse MF brokerage .xlsx file");
+        UploadedFile f = UploadedFile.of(file, "brokerage.xlsx", "the Finesse MF brokerage file");
         YearMonth ym;
         try {
             ym = YearMonth.parse(month);
         } catch (DateTimeParseException e) {
             throw new IllegalArgumentException("Month must look like 2026-08");
         }
-        return Map.of("jobId", service.start(file.getBytes(), name, ym));
+        return Map.of("jobId", service.start(f, ym));
     }
 
     @GetMapping("/api/uploads/{id}/review")

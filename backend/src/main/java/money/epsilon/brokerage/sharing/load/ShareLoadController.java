@@ -1,5 +1,6 @@
 package money.epsilon.brokerage.sharing.load;
 
+import money.epsilon.brokerage.platform.importing.UploadedFile;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -38,17 +39,15 @@ class ShareLoadController {
     @PostMapping("/preview")
     @PreAuthorize(Roles.MASTER_WRITE)
     Preview preview(@RequestParam("file") MultipartFile file, @RequestParam("from") LocalDate from) throws IOException {
-        String name = file.getOriginalFilename() == null ? "master.xlsx" : file.getOriginalFilename();
-        if (file.isEmpty()) throw new IllegalArgumentException("The file is empty");
-        if (!name.toLowerCase().endsWith(".xlsx")) throw new IllegalArgumentException("Upload the master as an .xlsx file");
-        return service.preview(file.getBytes(), name, from);
+        UploadedFile f = UploadedFile.of(file, "master.xlsx", "Master MIS");
+        return service.preview(f.content(), f.name(), from);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
     @PreAuthorize(Roles.MASTER_WRITE)
     Map<String, Long> load(@Valid @RequestBody LoadRequest req) {
-        ShareLoadService.requireOwnToken(req.token());
+        service.checkToken(req.token());
         return Map.of("jobId", jobs.submit(ShareLoadJob.TYPE, mapper.valueToTree(new ShareLoadJob.Payload(req.token(), req.fileName(), req.from()))));
     }
 

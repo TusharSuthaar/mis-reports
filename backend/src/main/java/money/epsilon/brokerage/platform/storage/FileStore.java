@@ -35,6 +35,22 @@ public class FileStore {
         return relative;
     }
 
+    /**
+     * A file kept in {@code area}, by the token {@link #save} returned. The token must belong to that area (a browser
+     * cannot make the server read another area's files).
+     */
+    public byte[] read(String area, String token) {
+        checkToken(area, token);
+        return read(token);
+    }
+
+    /** @throws IllegalArgumentException unless {@code token} names a file in {@code area} */
+    public void checkToken(String area, String token) {
+        if (token == null || !token.startsWith(area + "/") || token.contains("..")) {
+            throw new IllegalArgumentException("Unknown file token; upload the file again");
+        }
+    }
+
     public byte[] read(String relative) {
         try {
             return Files.readAllBytes(resolve(relative));

@@ -3,7 +3,10 @@ package money.epsilon.brokerage.platform.dated;
 import java.time.LocalDate;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 import money.epsilon.brokerage.platform.audit.AuditService;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -11,6 +14,36 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public final class DatedHistory {
 
     private DatedHistory() {
+    }
+
+    /** What {@link #setFrom} did. */
+    public enum Outcome { UNCHANGED, CORRECTED, CHANGED }
+
+    /**
+     * "This value from {@code from}" on a dated history — the one way RM, partner share and similar values change:
+     * <ul>
+     *   <li>the open row already has the value → {@link Outcome#UNCHANGED} (nothing saved);</li>
+     *   <li>the open row starts on {@code from} → it was wrong from its first day: corrected in place, audited CORRECT;</li>
+     *   <li>otherwise the open row is closed the day before and a new row starts (CLOSE + CREATE).</li>
+     * </ul>
+     * The caller checks the locked-months window and any business preconditions first.
+     */
+    public static <T extends DatedRow> Outcome setFrom(Optional<T> latest, LocalDate from, Predicate<T> hasValue, Consumer<T> correct,
+                                                       Supplier<T> newRow, JpaRepository<T, Long> repo, AuditService audit, String entity,
+                                                       Function<T, ?> view, String reason) {
+        Optional<T> open = latest.filter(row -> row.getValidTo() == null);
+        if (open.filter(hasValue).isPresent()) return Outcome.UNCHANGED;
+        if (open.filter(row -> row.getValidFrom().equals(from)).isPresent()) {
+            T row = open.get();
+            Object before = view.apply(row);
+            correct.accept(row);
+            repo.saveAndFlush(row);
+            audit.record(entity, row.getId(), "CORRECT", before, view.apply(row));
+            return Outcome.CORRECTED;
+        }
+        makeRoom(latest, from, repo, audit, entity, view, reason);
+        add(newRow.get(), repo, audit, entity, view);
+        return Outcome.CHANGED;
     }
 
     /**

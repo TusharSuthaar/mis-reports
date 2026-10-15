@@ -1,5 +1,6 @@
 package money.epsilon.brokerage.ingestion.upload;
 
+import money.epsilon.brokerage.platform.importing.UploadedFile;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -38,6 +39,7 @@ import money.epsilon.brokerage.platform.security.CurrentUser;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.storage.FileStore;
 import money.epsilon.brokerage.platform.web.NotFoundException;
+import money.epsilon.brokerage.platform.text.Text;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -97,8 +99,8 @@ public class UploadService {
 
     /** Refuses a file uploaded before or a locked month, stores the file and starts reading it. @return the job id */
     @Transactional
-    public long start(byte[] content, String fileName, YearMonth month) {
-        String sha = sha256(content);
+    public long start(UploadedFile file, YearMonth month) {
+        String sha = file.sha256();
         if (uploads.existsBySha256AndStatusNot(sha, Upload.Status.DISCARDED)) {
             throw new RuleViolationException("This exact file was uploaded before");
         }
@@ -106,8 +108,8 @@ public class UploadService {
             throw new RuleViolationException("Upload the Finesse client master first: it says which PAN each client code belongs to");
         }
         PeriodView period = periods.forUpload(MF, month);
-        String path = files.save(AREA, content, ".xlsx");
-        return jobs.submit(UploadJob.TYPE, mapper.valueToTree(new UploadJob.Payload(path, fileName, sha, period.id())));
+        String path = files.save(AREA, file.content(), ".xlsx");
+        return jobs.submit(UploadJob.TYPE, mapper.valueToTree(new UploadJob.Payload(path, file.name(), sha, period.id())));
     }
 
     /** {@code notes}: things worth knowing that do not stop the file (late rows, rounding in the Total row). */
@@ -116,7 +118,7 @@ public class UploadService {
 
     /** Used by {@link UploadJob}, inside its transaction: reads the file, matches every code to a client, records every row. */
     StageResult stage(UploadJob.Payload p) {
-        ParsedIncomeFile parsed = parser.parse(files.read(p.path()));
+        ParsedIncomeFile parsed = parser.parse(files.read(AREA, p.path()));
         if (!parsed.ok()) return new StageResult(null, parsed.errors(), parsed.warnings().size(), List.of());
         if (uploads.existsBySha256AndStatusNot(p.sha256(), Upload.Status.DISCARDED)) {
             throw new RuleViolationException("This exact file was uploaded before");
@@ -188,8 +190,8 @@ public class UploadService {
             byPan.values().forEach(ids -> ids.sort(Comparator.comparing((Long id) -> !rmOn.containsKey(id)).thenComparing(id -> id)));
             for (ClientKey k : keys) {
                 if (!rmOn.containsKey(k.id())) continue;
-                inMasterByName.computeIfAbsent(nameKey(k.nameKey()), x -> new ArrayList<>()).add(k.id());
-                if (k.panHash() == null) inMasterNoPanByName.computeIfAbsent(nameKey(k.nameKey()), x -> new ArrayList<>()).add(k.id());
+                inMasterByName.computeIfAbsent(Text.nameKey(k.nameKey()), x -> new ArrayList<>()).add(k.id());
+                if (k.panHash() == null) inMasterNoPanByName.computeIfAbsent(Text.nameKey(k.nameKey()), x -> new ArrayList<>()).add(k.id());
             }
         }
 
@@ -201,7 +203,7 @@ public class UploadService {
          */
         Match match(Code fc) {
             if (fc == null) return new Match(null, MatchKind.NOT_IN_MASTER, "Code not in the Finesse client master");
-            String name = nameKey(fc.name());
+            String name = Text.nameKey(fc.name());
             if (fc.panHash() != null) {
                 Long own = inMaster(fc.panHash());
                 if (own != null) return new Match(own, MatchKind.PAN, null);
@@ -260,11 +262,6 @@ public class UploadService {
         int lines = (int) rows.stream().map(Row::clientId).distinct().count();
         return new Review(view(u, period, rows), rows.size(), lines, byPan, byGuardian, byName, missing, u.getStatus() == Upload.Status.STAGED,
                 period.status() == Period.Status.LOCKED);
-    }
-
-    /** Name match key: upper case, single spaces, dots ignored. */
-    static String nameKey(String name) {
-        return money.epsilon.brokerage.platform.text.Text.key(name == null ? "" : name.replace('.', ' '));
     }
 
     /** The upload's clients that have no RM on the month's last day, with why their code found no Master MIS client. */
@@ -459,14 +456,6 @@ public class UploadService {
         try {
             return mapper.readValue(json, Totals.class);
         } catch (JsonProcessingException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    private static String sha256(byte[] content) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
-        } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
     }

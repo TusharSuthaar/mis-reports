@@ -26,14 +26,9 @@ public class AliasService {
         this.audit = audit;
     }
 
-    /** Upper-case, trimmed, inner whitespace collapsed. Blank → empty string. */
-    public static String normalise(String raw) {
-        return Text.key(raw);
-    }
-
     @Transactional(readOnly = true)
     public Optional<Long> resolve(String source, EntityType type, String raw) {
-        return aliases.findBySourceAndEntityTypeAndRawValueNormalized(source, type, normalise(raw)).map(SourceAlias::getTargetId);
+        return aliases.findBySourceAndEntityTypeAndRawValueNormalized(source, type, Text.key(raw)).map(SourceAlias::getTargetId);
     }
 
     /**
@@ -42,7 +37,7 @@ public class AliasService {
      */
     @Transactional
     public boolean remember(String source, EntityType type, String raw, long targetId) {
-        String key = normalise(raw);
+        String key = Text.key(raw);
         if (key.isEmpty()) throw new IllegalArgumentException("An alias needs a spelling");
         Optional<SourceAlias> existing = aliases.findBySourceAndEntityTypeAndRawValueNormalized(source, type, key);
         if (existing.isPresent()) {

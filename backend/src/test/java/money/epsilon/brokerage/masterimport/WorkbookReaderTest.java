@@ -28,12 +28,12 @@ class WorkbookReaderTest {
 
     @Test
     void acceptsCommonTextDateFormats() {
-        assertThat(WorkbookReader.parseDate("2026-04-01", "From")).isEqualTo(LocalDate.of(2026, 4, 1));
-        assertThat(WorkbookReader.parseDate("01-04-2026", "From")).isEqualTo(LocalDate.of(2026, 4, 1));
-        assertThat(WorkbookReader.parseDate("1/4/2026", "From")).isEqualTo(LocalDate.of(2026, 4, 1));
-        assertThat(WorkbookReader.parseDate("01-Apr-2026", "From")).isEqualTo(LocalDate.of(2026, 4, 1));
-        assertThat(WorkbookReader.parseDate("01-APR-26", "From")).isEqualTo(LocalDate.of(2026, 4, 1));
-        assertThatThrownBy(() -> WorkbookReader.parseDate("April first", "From"))
+        assertThat(money.epsilon.brokerage.platform.excel.ExcelRow.parseDate("2026-04-01", "From")).isEqualTo(LocalDate.of(2026, 4, 1));
+        assertThat(money.epsilon.brokerage.platform.excel.ExcelRow.parseDate("01-04-2026", "From")).isEqualTo(LocalDate.of(2026, 4, 1));
+        assertThat(money.epsilon.brokerage.platform.excel.ExcelRow.parseDate("1/4/2026", "From")).isEqualTo(LocalDate.of(2026, 4, 1));
+        assertThat(money.epsilon.brokerage.platform.excel.ExcelRow.parseDate("01-Apr-2026", "From")).isEqualTo(LocalDate.of(2026, 4, 1));
+        assertThat(money.epsilon.brokerage.platform.excel.ExcelRow.parseDate("01-APR-26", "From")).isEqualTo(LocalDate.of(2026, 4, 1));
+        assertThatThrownBy(() -> money.epsilon.brokerage.platform.excel.ExcelRow.parseDate("April first", "From"))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("From");
     }
 

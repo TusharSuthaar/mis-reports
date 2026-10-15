@@ -1,25 +1,15 @@
 package money.epsilon.brokerage.ingestion.parser;
 
-import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import money.epsilon.brokerage.ingestion.parser.ParsedIncomeFile.Problem;
 import money.epsilon.brokerage.ingestion.parser.ParsedIncomeFile.Totals;
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.CellType;
-import org.apache.poi.ss.usermodel.DataFormatter;
-import org.apache.poi.ss.usermodel.FormulaEvaluator;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.ss.usermodel.Workbook;
-import org.apache.poi.ss.usermodel.WorkbookFactory;
+import money.epsilon.brokerage.platform.excel.ExcelFile;
+import money.epsilon.brokerage.platform.excel.ExcelRow;
 import org.springframework.stereotype.Component;
 
 /**
@@ -60,50 +50,33 @@ public class InvestwellIncomeParser implements IncomeFileParser {
         List<Problem> warnings = new ArrayList<>();
         List<StagedIncomeRow> rows = new ArrayList<>();
         Totals fileTotals = null;
-        try (Workbook wb = WorkbookFactory.create(new ByteArrayInputStream(content))) {
-            FormulaEvaluator eval = wb.getCreationHelper().createFormulaEvaluator();
-            DataFormatter fmt = new DataFormatter(Locale.ENGLISH);
-            Sheet sheet = wb.getSheetAt(0);
-            Map<String, Integer> col = null;
-            int headerRow = -1;
-            for (int r = sheet.getFirstRowNum(); r <= Math.min(sheet.getLastRowNum(), HEADER_SEARCH_ROWS); r++) {
-                Map<String, Integer> found = headers(sheet.getRow(r), fmt, eval);
-                if (found.keySet().containsAll(REQUIRED)) {
-                    col = found;
-                    headerRow = r;
-                    break;
-                }
-            }
-            if (col == null) {
-                errors.add(new Problem(0, "Header row not found. Expected columns: " + String.join(", ", REQUIRED)));
-                return new ParsedIncomeFile(rows, null, Totals.ZERO, errors, warnings);
-            }
-
-            Set<String> seenCodes = new HashSet<>();
-            for (int r = headerRow + 1; r <= sheet.getLastRowNum(); r++) {
-                Row row = sheet.getRow(r);
-                if (row == null) continue;
-                int excelRow = r + 1;
-                String client = text(row, col.get(CLIENT), fmt, eval);
-                if ("TOTAL".equalsIgnoreCase(client)) {
-                    fileTotals = new Totals(amount(row, col.get(INCOME), excelRow, errors), amount(row, col.get(GST), excelRow, errors),
-                            amount(row, col.get(NET), excelRow, errors));
-                    break;
-                }
-                String code = text(row, col.get(CODE), fmt, eval);
-                if (client.isEmpty() && code.isEmpty()) continue;
-
-                StagedIncomeRow staged = new StagedIncomeRow(excelRow, code, text(row, col.get(CODE2), fmt, eval), client,
-                        text(row, col.get(PAN), fmt, eval), col.containsKey(FAMILY_HEAD_CODE) ? text(row, col.get(FAMILY_HEAD_CODE), fmt, eval) : "",
-                        text(row, col.get(RM), fmt, eval), text(row, col.get(SUB_BROKER), fmt, eval),
-                        amount(row, col.get(INCOME), excelRow, errors), amount(row, col.get(GST), excelRow, errors),
-                        amount(row, col.get(NET), excelRow, errors));
-                rows.add(staged);
-                validate(staged, seenCodes, errors, warnings);
-            }
-        } catch (Exception e) {
-            errors.add(new Problem(0, "The file could not be read as an Excel workbook (.xlsx)"));
+        ExcelFile.Table table;
+        try (ExcelFile file = ExcelFile.open(content)) {
+            table = file.table(null, REQUIRED, HEADER_SEARCH_ROWS).orElse(null);
+        } catch (IllegalArgumentException e) {
+            errors.add(new Problem(0, ExcelFile.UNREADABLE));
             return new ParsedIncomeFile(List.of(), null, Totals.ZERO, errors, warnings);
+        }
+        if (table == null || !table.missing().isEmpty()) {
+            errors.add(new Problem(0, "Header row not found. Expected columns: " + String.join(", ", REQUIRED)));
+            return new ParsedIncomeFile(rows, null, Totals.ZERO, errors, warnings);
+        }
+
+        Set<String> seenCodes = new HashSet<>();
+        for (ExcelRow row : table.rows()) {
+            int excelRow = row.rowNumber();
+            String client = row.text(CLIENT);
+            if ("TOTAL".equalsIgnoreCase(client)) {
+                fileTotals = new Totals(amount(row, INCOME, errors), amount(row, GST, errors), amount(row, NET, errors));
+                break;
+            }
+            String code = row.text(CODE);
+            if (client.isEmpty() && code.isEmpty()) continue;
+
+            StagedIncomeRow staged = new StagedIncomeRow(excelRow, code, row.text(CODE2), client, row.text(PAN), row.text(FAMILY_HEAD_CODE),
+                    row.text(RM), row.text(SUB_BROKER), amount(row, INCOME, errors), amount(row, GST, errors), amount(row, NET, errors));
+            rows.add(staged);
+            validate(staged, seenCodes, errors, warnings);
         }
 
         Totals rowTotals = rows.stream().reduce(Totals.ZERO, Totals::plus, (a, b) -> a);
@@ -132,35 +105,13 @@ public class InvestwellIncomeParser implements IncomeFileParser {
         }
     }
 
-    private static Map<String, Integer> headers(Row row, DataFormatter fmt, FormulaEvaluator eval) {
-        Map<String, Integer> found = new HashMap<>();
-        if (row == null) return found;
-        for (Cell cell : row) {
-            String h = fmt.formatCellValue(cell, eval).trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
-            if (!h.isEmpty()) found.putIfAbsent(h, cell.getColumnIndex());
-        }
-        return found;
-    }
-
-    private static String text(Row row, int col, DataFormatter fmt, FormulaEvaluator eval) {
-        Cell cell = row.getCell(col);
-        return cell == null ? "" : fmt.formatCellValue(cell, eval).trim();
-    }
-
-    /** Numeric cells and numeric text; blanks are 0. Kept at 4 decimals (Investwell's precision). */
-    private static BigDecimal amount(Row row, int col, int excelRow, List<Problem> errors) {
-        Cell cell = row.getCell(col);
-        if (cell == null) return BigDecimal.ZERO.setScale(SCALE);
-        CellType type = cell.getCellType() == CellType.FORMULA ? cell.getCachedFormulaResultType() : cell.getCellType();
-        if (type == CellType.NUMERIC) {
-            return BigDecimal.valueOf(cell.getNumericCellValue()).setScale(SCALE, RoundingMode.HALF_UP);
-        }
-        String s = type == CellType.STRING ? cell.getStringCellValue().trim().replace(",", "") : "";
-        if (s.isEmpty()) return BigDecimal.ZERO.setScale(SCALE);
+    /** A number or numeric text, kept at 4 decimals (Investwell's precision); blank is 0; anything else is a row error. */
+    private static BigDecimal amount(ExcelRow row, String header, List<Problem> errors) {
         try {
-            return new BigDecimal(s).setScale(SCALE, RoundingMode.HALF_UP);
-        } catch (NumberFormatException e) {
-            errors.add(new Problem(excelRow, "'" + s + "' is not an amount"));
+            BigDecimal v = row.amount(header);
+            return (v == null ? BigDecimal.ZERO : v).setScale(SCALE, RoundingMode.HALF_UP);
+        } catch (IllegalArgumentException e) {
+            errors.add(new Problem(row.rowNumber(), "'" + row.text(header) + "' is not an amount"));
             return BigDecimal.ZERO.setScale(SCALE);
         }
     }

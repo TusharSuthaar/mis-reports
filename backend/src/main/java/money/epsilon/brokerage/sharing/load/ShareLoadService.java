@@ -139,9 +139,8 @@ public class ShareLoadService {
 
     /** Used by {@link ShareLoadJob}, inside its transaction. */
     LoadResult apply(String token, String fileName, LocalDate from) {
-        requireOwnToken(token);
         if (from == null) throw new IllegalArgumentException("A start date is required");
-        Result read = MasterShareReader.read(files.read(token));
+        Result read = MasterShareReader.read(files.read(STORE_AREA, token));
         if (read.error() != null) throw new IllegalArgumentException(read.error());
         String reason = "Master MIS " + fileName;
         MasterClientPlan cp = clientPlan(read, clients.keys(), from);
@@ -172,10 +171,9 @@ public class ShareLoadService {
                 plan.unmatched.size());
     }
 
-    static void requireOwnToken(String token) {
-        if (token == null || !token.startsWith(STORE_AREA + "/") || token.contains("..")) {
-            throw new IllegalArgumentException("Unknown file token; upload the file again");
-        }
+    /** The token must be a file this service stored. */
+    void checkToken(String token) {
+        files.checkToken(STORE_AREA, token);
     }
 
     private SharePlan plan(Result read) {

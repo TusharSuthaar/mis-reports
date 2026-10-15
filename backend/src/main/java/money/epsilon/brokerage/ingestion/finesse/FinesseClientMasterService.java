@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.Set;
 import money.epsilon.brokerage.platform.audit.AuditService;
 import money.epsilon.brokerage.platform.crypto.PanCipher;
+import money.epsilon.brokerage.platform.excel.ExcelFile;
+import money.epsilon.brokerage.platform.excel.ExcelRow;
 import money.epsilon.brokerage.platform.security.CurrentUser;
 import money.epsilon.brokerage.platform.text.Text;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
@@ -57,26 +59,26 @@ public class FinesseClientMasterService {
 
     @Transactional
     public LoadResult load(byte[] content, String fileName) {
-        FinesseSheet.Read read = FinesseSheet.read(content, SHEET, REQUIRED);
-        if (!read.sheetFound()) {
-            read = FinesseSheet.read(content, null, REQUIRED);
-        }
-        if (!read.missing().isEmpty()) {
-            throw new RuleViolationException("This is not the Finesse client master: columns missing " + String.join(", ", read.missing())
-                    + " (sheets: " + String.join(", ", read.sheetNames()) + ")");
+        ExcelFile.Table read;
+        try (ExcelFile file = ExcelFile.open(content)) {
+            read = file.table(SHEET, REQUIRED, 15).or(() -> file.table(null, REQUIRED, 15)).orElseThrow();
+            if (!read.missing().isEmpty()) {
+                throw new RuleViolationException("This is not the Finesse client master: columns missing " + String.join(", ", read.missing())
+                        + " (sheets: " + String.join(", ", file.sheetNames()) + ")");
+            }
         }
         Map<String, Code> existing = all();
         Set<String> seen = new HashSet<>();
         int added = 0, updated = 0, unchanged = 0, withPan = 0, withGuardian = 0, none = 0, invalid = 0;
         String by = CurrentUser.username();
-        for (FinesseSheet.Line l : read.lines()) {
+        for (ExcelRow l : read.rows()) {
             String code = l.text(CODE).toUpperCase();
             if (code.isEmpty()) continue;
             if (!seen.add(code)) throw new RuleViolationException("Row " + l.rowNumber() + ": client code " + code + " appears more than once");
             String name = Text.clean(l.text(NAME));
             if (name == null) name = code;
-            String pan = pan(l.text(PAN));
-            String guardian = pan(l.text(GUARDIAN_PAN));
+            String pan = PanCipher.normaliseOrNull(l.text(PAN));
+            String guardian = PanCipher.normaliseOrNull(l.text(GUARDIAN_PAN));
             if (pan == null && !l.text(PAN).isBlank()) invalid++;
             if (guardian == null && !l.text(GUARDIAN_PAN).isBlank()) invalid++;
             if (pan != null) withPan++;
@@ -147,15 +149,6 @@ public class FinesseClientMasterService {
         return new Code(rs.getString("code"), rs.getString("name"), rs.getString("family_head_code"),
                 pe == null ? null : panCipher.decrypt(pe), rs.getString("pan_hash"),
                 ge == null ? null : panCipher.decrypt(ge), rs.getString("guardian_pan_hash"));
-    }
-
-    private static String pan(String raw) {
-        if (raw == null || raw.isBlank()) return null;
-        try {
-            return PanCipher.normalise(raw);
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
     }
 
     private static boolean eq(String a, String b) {

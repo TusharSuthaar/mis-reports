@@ -228,7 +228,7 @@ class MasterImportProcessor {
 
     static EmployeeType employeeType(String s) {
         if (s == null) return null;
-        return switch (key(s)) {
+        return switch (Text.compact(s)) {
             case "RM" -> EmployeeType.RM;
             case "HOUSE" -> EmployeeType.HOUSE;
             default -> throw new IllegalArgumentException("Type must be RM or HOUSE, not '" + s + "'");
@@ -237,7 +237,7 @@ class MasterImportProcessor {
 
     static PartnerType partnerType(String s) {
         if (s == null) throw new IllegalArgumentException("Partner type is required");
-        return switch (key(s)) {
+        return switch (Text.compact(s)) {
             case "SUBBROKER" -> PartnerType.SUB_BROKER;
             case "REFERRAL", "REFERRALPARTNER" -> PartnerType.REFERRAL;
             case "POSP" -> PartnerType.POSP;
@@ -247,15 +247,11 @@ class MasterImportProcessor {
 
     static PartnerStatus partnerStatus(String s) {
         if (s == null) return null;
-        return switch (key(s)) {
+        return switch (Text.compact(s)) {
             case "ACTIVE" -> PartnerStatus.ACTIVE;
             case "INACTIVE" -> PartnerStatus.INACTIVE;
             default -> throw new IllegalArgumentException("Status must be ACTIVE or INACTIVE, not '" + s + "'");
         };
-    }
-
-    private static String key(String s) {
-        return s.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "");
     }
 
     private static String rootMessage(Throwable e) {

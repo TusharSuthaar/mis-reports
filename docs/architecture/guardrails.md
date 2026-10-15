@@ -16,10 +16,13 @@ checklist asks for it.
 | G-09 | Every business rule has an ID in [business-rules.md](../product/business-rules.md) and at least one test that proves it. | `GuardrailsTest.everyBusinessRuleIsProvedByATestThatExists` |
 | G-10 | No real client data in the repo: `private-data/` and `.env` are ignored; tests use made-up names and PANs. | `.gitignore`, review |
 | G-11 | PAN only through `PanCipher` (encrypt, hash, mask). Never log or show a full PAN except to FINANCE/ADMIN. | Review |
-| G-12 | Shared helpers live once, in `platform` (name/PAN cleaning, Excel reading…). No new copies. | `GuardrailsTest.noNewCopiesOfSharedHelpers` |
+| G-12 | Name and PAN cleaning live once: `Text.key / nameKey / compact`, `PanCipher.normalise / normaliseOrNull`. No copies anywhere else. | `GuardrailsTest.noNewCopiesOfSharedHelpers` |
 | G-13 | `main` only moves with a green build (backend + frontend tests). | GitHub Actions `ci.yml` |
 | G-14 | Ledger lines, splits and the audit log are append-only: correct by voiding / adding, never by updating. | Database triggers, `UploadIT`, `MonthLifecycleIT`, `MigrationIT` |
 | G-15 | Rules the business may change (GST rate, sharing order…) are settings, not constants in code. | Review (settings screen: Phase E) |
+| G-16 | Uploaded Excel is read only with `platform.excel.ExcelFile` (headers by name, exact amounts, dates, row-numbered errors). | `GuardrailsTest.onlyThePlatformExcelReaderOpensWorkbooks` |
+| G-17 | Every upload is checked with `UploadedFile.of`; every background job extends `TransactionalJob` (one transaction, all or nothing). | `GuardrailsTest.importsUseTheSharedPipeline` |
+| G-18 | A dated value (RM, share…) changes only through `DatedHistory.setFrom`: same value → nothing, same first day → corrected, otherwise a new row from the date. | Review, `ShareIT`, `TimelineTest` |
 
 ## Before you commit
 1. `backend/mvnw-docker.sh verify` and `cd frontend && npm test` are green.

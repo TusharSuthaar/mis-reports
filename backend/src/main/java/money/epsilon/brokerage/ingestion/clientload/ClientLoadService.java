@@ -1,5 +1,6 @@
 package money.epsilon.brokerage.ingestion.clientload;
 
+import money.epsilon.brokerage.platform.text.Text;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -88,7 +89,7 @@ public class ClientLoadService {
         }).sorted(Comparator.comparing(RmLine::net).reversed()).toList();
 
         List<PartnerLine> partnerLines = group(rows, StagedIncomeRow::rawPartner).entrySet().stream()
-                .filter(e -> !AliasService.normalise(e.getKey()).isEmpty())
+                .filter(e -> !Text.key(e.getKey()).isEmpty())
                 .map(e -> {
                     Match m = matcher.subBroker(e.getKey());
                     String name = m.id() == null ? null : partners.get(m.id()).name();
@@ -108,10 +109,9 @@ public class ClientLoadService {
         return e.branchName() == null ? e.name() : e.name() + " — " + e.branchName();
     }
 
-    static void requireOwnToken(String token) {
-        if (token == null || !token.startsWith(STORE_AREA + "/") || token.contains("..")) {
-            throw new IllegalArgumentException("Unknown file token; upload the file again");
-        }
+    /** The token must be a file this service stored. */
+    void checkToken(String token) {
+        files.checkToken(STORE_AREA, token);
     }
 
     private static Map<String, List<StagedIncomeRow>> group(List<StagedIncomeRow> rows, Function<StagedIncomeRow, String> key) {
@@ -135,9 +135,8 @@ public class ClientLoadService {
 
     /** Used by {@link ClientLoadJob}: reads the stored file again and applies it with the decisions. */
     LoadResult apply(String token, String fileName, Decisions d) {
-        requireOwnToken(token);
         if (d.from() == null) throw new IllegalArgumentException("A start date is required");
-        ParsedIncomeFile parsed = parser.parse(files.read(token));
+        ParsedIncomeFile parsed = parser.parse(files.read(STORE_AREA, token));
         if (!parsed.ok()) {
             throw new IllegalArgumentException("The file has problems and cannot be loaded: " + parsed.errors().get(0).message());
         }
@@ -152,7 +151,7 @@ public class ClientLoadService {
             Long chosen = d.rmChoices() == null ? null : d.rmChoices().get(spelling);
             if (chosen != null) {
                 rmFor.put(spelling, chosen);
-                if (matcher.rm(spelling).status() != Status.MATCHED && !AliasService.normalise(spelling).isEmpty()
+                if (matcher.rm(spelling).status() != Status.MATCHED && !Text.key(spelling).isEmpty()
                         && aliases.remember(source, EntityType.RM, spelling, chosen)) {
                     remembered++;
                 }
@@ -165,7 +164,7 @@ public class ClientLoadService {
         // Sub-brokers: become partners (merged when the user named an existing / other partner).
         int partnersCreated = 0;
         for (String spelling : group(parsed.rows(), StagedIncomeRow::rawPartner).keySet()) {
-            if (AliasService.normalise(spelling).isEmpty()) continue;
+            if (Text.key(spelling).isEmpty()) continue;
             String wanted = d.partnerNames() == null ? null : d.partnerNames().get(spelling);
             Match m = matcher.subBroker(spelling);
             if ((wanted == null || wanted.isBlank()) && m.id() != null) continue;
@@ -179,7 +178,7 @@ public class ClientLoadService {
                 partnersCreated++;
                 matcher = new NameMatcher(source, aliases, allRms, partners.list());
             }
-            if (!AliasService.normalise(spelling).equals(AliasService.normalise(name))
+            if (!Text.key(spelling).equals(Text.key(name))
                     && aliases.remember(source, EntityType.PARTNER, spelling, partnerId)) {
                 remembered++;
             }

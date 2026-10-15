@@ -45,6 +45,15 @@ public class PanCipher {
         return p;
     }
 
+    /** Like {@link #normalise}, but an invalid PAN gives null instead of an error (for reading files). */
+    public static String normaliseOrNull(String pan) {
+        try {
+            return normalise(pan);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
     /** ABCDE1234F → ABCDE****F */
     public static String mask(String pan) {
         if (pan == null) return null;

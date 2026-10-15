@@ -21,6 +21,19 @@ public final class Text {
         return t == null ? "" : t.toUpperCase(Locale.ROOT);
     }
 
+    /**
+     * Name-matching key: {@link #key} with dots ignored, so "A. K. SHAH", "a k  shah" and "A.K. Shah" match. Used for client
+     * and partner names across files.
+     */
+    public static String nameKey(String s) {
+        return key(s == null ? null : s.replace('.', ' '));
+    }
+
+    /** Compact key: upper case letters and digits only, for headers and codes ("Sub-Broker %" → "SUBBROKER"). */
+    public static String compact(String s) {
+        return s == null ? "" : s.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
+    }
+
     /** {@link #clean} that refuses blanks. */
     public static String required(String s, String field) {
         String t = clean(s);

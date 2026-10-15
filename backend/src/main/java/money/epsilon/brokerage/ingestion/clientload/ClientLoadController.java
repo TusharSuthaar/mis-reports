@@ -1,5 +1,6 @@
 package money.epsilon.brokerage.ingestion.clientload;
 
+import money.epsilon.brokerage.platform.importing.UploadedFile;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -39,17 +40,15 @@ class ClientLoadController {
     @PostMapping("/preview")
     @PreAuthorize(Roles.MASTER_WRITE)
     Preview preview(@RequestParam("file") MultipartFile file) throws IOException {
-        String name = file.getOriginalFilename() == null ? "income.xlsx" : file.getOriginalFilename();
-        if (file.isEmpty()) throw new IllegalArgumentException("The file is empty");
-        if (!name.toLowerCase().endsWith(".xlsx")) throw new IllegalArgumentException("Upload the Investwell .xlsx file");
-        return service.preview(file.getBytes(), name);
+        UploadedFile f = UploadedFile.of(file, "income.xlsx", "the Investwell MF file");
+        return service.preview(f.content(), f.name());
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
     @PreAuthorize(Roles.MASTER_WRITE)
     Map<String, Long> load(@Valid @RequestBody LoadRequest req) {
-        ClientLoadService.requireOwnToken(req.token());
+        service.checkToken(req.token());
         var payload = new ClientLoadJob.Payload(req.token(), req.fileName(), new Decisions(req.from(), req.rmChoices(), req.partnerNames()));
         return Map.of("jobId", jobs.submit(ClientLoadJob.TYPE, mapper.valueToTree(payload)));
     }
