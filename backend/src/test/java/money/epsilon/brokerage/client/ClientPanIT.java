@@ -82,6 +82,35 @@ class ClientPanIT extends IntegrationTestBase {
     }
 
     @Test
+    void aClientIsAddedByHandWithItsRmAndAudited() throws Exception {
+        long rm = getJson("/api/clients/" + one, admin, 200).get("client").get("rmId").asLong();
+        postJson("/api/clients", Map.of("name", "BY HAND " + tag, "pan", panTwo, "rmId", rm, "from", "2026-09-01"), admin, 409); // PAN taken
+        long id = postJson("/api/clients", Map.of("name", "BY HAND " + tag, "pan", panNew, "rmId", rm, "from", "2026-09-01", "reason", "new account"),
+                admin, 201).get("id").asLong();
+        JsonNode c = getJson("/api/clients/" + id, admin, 200).get("client");
+        assertThat(c.get("pan").asText()).isEqualTo(panNew);
+        assertThat(c.get("rmId").asLong()).isEqualTo(rm);
+        JsonNode changes = getJson("/api/clients/" + id + "/changes", admin, 200);
+        assertThat(changes.get(0).get("action").asText()).isEqualTo("CREATE");
+        assertThat(changes.toString()).doesNotContain(panNew);
+        postJson("/api/clients", Map.of("name", "X", "rmId", rm, "from", "2026-09-01"), loginAs("FINANCE"), 403);
+    }
+
+    @Test
+    void needsAttentionListsFindSharedPansAndClientsWithoutPan() throws Exception {
+        long minor = clientService.createUncoded("SHARED MINOR " + tag, panOne);   // old data: PAN ONE's PAN on a second record
+        JsonNode counts = getJson("/api/clients/attention", admin, 200);
+        assertThat(counts.get("sharedPan").asLong()).isGreaterThanOrEqualTo(2);
+        JsonNode shared = getJson("/api/clients?attention=SHARED_PAN&size=200&q=" + tag, admin, 200);
+        assertThat(shared.get("items").findValuesAsText("id")).contains(String.valueOf(one), String.valueOf(minor));
+        postJson("/api/clients/" + minor + "/pan/guardian", Map.of(), admin, 204);
+        assertThat(getJson("/api/clients?attention=SHARED_PAN&size=200&q=" + tag, admin, 200).get("total").asInt()).isZero();
+        assertThat(getJson("/api/clients?attention=NO_PAN&size=200&q=" + tag, admin, 200).get("items").findValuesAsText("id"))
+                .contains(String.valueOf(minor));
+        getJson("/api/clients?attention=SOMETHING", admin, 400);
+    }
+
+    @Test
     void financeCannotChangeAPan() throws Exception {
         postJson("/api/clients/" + one + "/pan", Map.of("pan", panNew), loginAs("FINANCE"), 403);
     }

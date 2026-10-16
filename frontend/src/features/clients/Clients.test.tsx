@@ -38,6 +38,41 @@ const page: Page<ClientRow> = {
   total: 2,
 };
 
+describe('client master screen', () => {
+  it('shows what needs attention and adds a client by hand with its RM', async () => {
+    document.cookie = 'XSRF-TOKEN=tok';
+    let sent: Record<string, unknown> | null = null;
+    fakeApi({
+      'GET /api/auth/me': ok(me('HO')),
+      'GET /api/employees': ok(rms),
+      'GET /api/clients/attention': ok({ sharedPan: 63, noRm: 4, noPan: 120 }),
+      'GET /api/clients': ok(page),
+      'POST /api/clients': (init) => {
+        sent = JSON.parse(String(init?.body));
+        return { status: 201, body: { id: 100 } };
+      },
+      'GET /api/clients/100': ok({ client: page.items[0], iwellCode2: 'x', familyHeadCode: null, familyHeadName: null }),
+      'GET /api/clients/100/rm': ok([]),
+      'GET /api/clients/100/changes': ok([{ id: 1, action: 'CREATE', after: { maskedPan: 'PQRST****K', reason: 'Added on the Clients screen' }, by: 'ho', at: '2026-10-16T00:00:00Z' }]),
+    });
+    renderAt('/clients');
+
+    const show = await screen.findByLabelText('Show');
+    expect(await within(show).findByRole('option', { name: 'PAN on more than one record (63)' })).toBeInTheDocument();
+    await userEvent.selectOptions(show, 'SHARED_PAN');
+    expect(screen.getByText(/It's the\s+guardian's PAN/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add client' }));
+    const form = await screen.findByRole('dialog', { name: 'Add client' });
+    await userEvent.type(within(form).getByLabelText('Client name'), 'NEW ONE');
+    await userEvent.type(within(form).getByLabelText(/^PAN/), 'pqrst6789k');
+    await userEvent.selectOptions(within(form).getByLabelText('RM'), '1');
+    await userEvent.click(within(form).getByRole('button', { name: 'Add client' }));
+    expect(sent).toMatchObject({ name: 'NEW ONE', pan: 'PQRST6789K', rmId: 1 });
+    expect(await screen.findByText('Changes to this record (1)')).toBeInTheDocument();
+  });
+});
+
 describe('clients', () => {
   it('lists clients, flags those without an RM, and offers a simple change RM form', async () => {
     fakeApi({

@@ -9,7 +9,7 @@ import { canEditMasters } from '../../app/permissions';
 import { DatedChangeForm } from '../../components/DatedChangeForm';
 import { HistoryTable } from '../../components/HistoryTable';
 import { SidePanel } from '../../components/SidePanel';
-import { formatDate, todayIso } from '../../format';
+import { formatDate, formatDateTime, todayIso } from '../../format';
 
 const PAGE_SIZE = 50;
 
@@ -19,12 +19,15 @@ export function ClientsPage() {
   const [urlParams] = useSearchParams();
   const [search, setSearch] = useState(urlParams.get('q') ?? '');
   const [query, setQuery] = useState(urlParams.get('q') ?? '');
-  const [needsRm, setNeedsRm] = useState(false);
+  const [show, setShow] = useState<Show>('');
+  const [adding, setAdding] = useState(false);
+  const attention = useLoad<{ sharedPan: number; noRm: number; noPan: number }>('/api/clients/attention');
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [open, setOpen] = useState<number | null>(null);
   const employees = useLoad<Employee[]>('/api/employees');
-  const params = new URLSearchParams({ page: String(page), size: String(PAGE_SIZE), needsRm: String(needsRm) });
+  const params = new URLSearchParams({ page: String(page), size: String(PAGE_SIZE), needsRm: String(show === 'NO_RM') });
+  if (show === 'SHARED_PAN' || show === 'NO_PAN') params.set('attention', show);
   if (query) params.set('q', query);
   const clients = useLoad<Page<ClientRow>>(`/api/clients?${params}`);
   const ids = clients.data?.items.map((c) => c.id).join(',') ?? '';
@@ -53,24 +56,41 @@ export function ClientsPage() {
 
   return (
     <section>
-      <h1>Clients</h1>
+      <div className="page-head">
+        <h1>Clients</h1>
+        {canEdit && (
+          <button type="button" onClick={() => setAdding(true)}>
+            Add client
+          </button>
+        )}
+      </div>
       <div className="filters">
         <label>
           Search
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, client code or full PAN" />
         </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={needsRm}
+        <label>
+          Show
+          <select
+            value={show}
             onChange={(e) => {
               setPage(0);
-              setNeedsRm(e.target.checked);
+              setShow(e.target.value as Show);
             }}
-          />
-          Only clients without an RM
+          >
+            <option value="">All clients</option>
+            <option value="NO_RM">Without an RM{attention.data ? ` (${attention.data.noRm})` : ''}</option>
+            <option value="SHARED_PAN">PAN on more than one record{attention.data ? ` (${attention.data.sharedPan})` : ''}</option>
+            <option value="NO_PAN">Without a PAN{attention.data ? ` (${attention.data.noPan})` : ''}</option>
+          </select>
         </label>
       </div>
+      {show === 'SHARED_PAN' && (
+        <p className="muted">
+          One PAN, several records (old data). Usually a minor carries the guardian&apos;s PAN: open the minor and use &ldquo;It&apos;s the
+          guardian&apos;s PAN&rdquo;. A duplicate made by a file: open the right client, Edit PAN, and move it.
+        </p>
+      )}
       {canEdit && selected.size > 0 && (
         <BulkRmBar
           ids={[...selected]}
@@ -82,7 +102,7 @@ export function ClientsPage() {
         />
       )}
       {clients.error && <p className="error">{clients.error}</p>}
-      {data && data.total === 0 && <p className="muted">{query || needsRm ? 'No clients match.' : 'No clients yet. Load them from the MF file under Setup → Load clients.'}</p>}
+      {data && data.total === 0 && <p className="muted">{query || show ? 'No clients match.' : 'No clients yet. Load them from the MF file under Setup → Load clients.'}</p>}
       {data && data.total > 0 && (
         <>
           <table>
@@ -141,6 +161,19 @@ export function ClientsPage() {
           </div>
         </>
       )}
+      {adding && (
+        <SidePanel title="Add client" onClose={() => setAdding(false)}>
+          <AddClientForm
+            rms={rms}
+            onDone={(id) => {
+              setAdding(false);
+              clients.reload();
+              attention.reload();
+              setOpen(id);
+            }}
+          />
+        </SidePanel>
+      )}
       {open !== null && (
         <ClientPanel
           id={open}
@@ -150,10 +183,94 @@ export function ClientsPage() {
           onChanged={() => {
             clients.reload();
             shares.reload();
+            attention.reload();
           }}
         />
       )}
     </section>
+  );
+}
+
+type Show = '' | 'NO_RM' | 'SHARED_PAN' | 'NO_PAN';
+
+/** A client not in any file yet: name, PAN (must be new), RM from a date. */
+function AddClientForm({ rms, onDone }: { rms: Employee[]; onDone: (id: number) => void }) {
+  const [name, setName] = useState('');
+  const [pan, setPan] = useState('');
+  const [rmId, setRmId] = useState('');
+  const [from, setFrom] = useState(todayIso());
+  const [reason, setReason] = useState('');
+  const { busy, error, run } = useSubmit();
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    let id = 0;
+    const ok = await run(async () => {
+      const r = await api<{ id: number }>('/api/clients', {
+        method: 'POST',
+        body: { name, pan: pan.trim() || null, rmId: Number(rmId), from, reason },
+      });
+      id = r.id;
+    });
+    if (ok) onDone(id);
+  }
+  return (
+    <form onSubmit={submit}>
+      <label>
+        Client name
+        <input value={name} onChange={(e) => setName(e.target.value)} required />
+      </label>
+      <label>
+        PAN <span className="muted">(leave blank for a minor: matched by guardian PAN)</span>
+        <input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
+      </label>
+      <RmSelect rms={rms} value={rmId} onChange={setRmId} />
+      <label>
+        RM from
+        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} required />
+      </label>
+      <label>
+        Reason
+        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. new account" />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <button type="submit" disabled={busy || !name.trim() || !rmId}>
+        Add client
+      </button>
+    </form>
+  );
+}
+
+/** The record's own audited changes: added, PAN corrections (who, when, why). */
+function RecordChanges({ clientId }: { clientId: number }) {
+  const changes = useLoad<{ id: number; action: string; after: { maskedPan?: string | null; reason?: string | null } | null; by: string; at: string }[]>(
+    `/api/clients/${clientId}/changes`,
+  );
+  if (!changes.data || changes.data.length === 0) return null;
+  return (
+    <details className="past">
+      <summary>Changes to this record ({changes.data.length})</summary>
+      <table className="compact">
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>What</th>
+            <th>By</th>
+          </tr>
+        </thead>
+        <tbody>
+          {changes.data.map((a) => (
+            <tr key={a.id}>
+              <td>{formatDateTime(a.at)}</td>
+              <td>
+                {a.action === 'CREATE' ? 'Added' : a.action === 'PAN_CHANGE' ? `PAN → ${a.after?.maskedPan ?? 'none'}` : a.action}
+                {a.after?.reason && <div className="muted">{a.after.reason}</div>}
+              </td>
+              <td>{a.by}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
   );
 }
 
@@ -266,6 +383,7 @@ function ClientPanel({ id, rms, canEdit, onClose, onChanged }: { id: number; rms
             {history.data && <HistoryTable label="RM" rows={history.data.map((h) => ({ ...h, name: h.targetName }))} />}
           </details>
           <PartnerSection clientId={id} canEdit={canEdit} onChanged={onChanged} />
+          <RecordChanges key={`${id}-${c.pan}`} clientId={id} />
         </>
       )}
     </SidePanel>

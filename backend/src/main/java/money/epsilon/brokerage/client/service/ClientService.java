@@ -66,6 +66,14 @@ public class ClientService {
      */
     @Transactional(readOnly = true)
     public PageResponse<ClientView> page(String q, boolean needsRm, Long rmId, int page, int size) {
+        return page(q, needsRm, rmId, null, page, size);
+    }
+
+    /** {@code attention}: null, "SHARED_PAN" (a PAN on more than one client record) or "NO_PAN". */
+    @Transactional(readOnly = true)
+    public PageResponse<ClientView> page(String q, boolean needsRm, Long rmId, String attention, int page, int size) {
+        String only = attention == null ? "" : attention;
+        if (!only.isEmpty() && !only.equals("SHARED_PAN") && !only.equals("NO_PAN")) throw new IllegalArgumentException("Unknown list: " + attention);
         String query = Text.clean(q) == null ? "" : Text.clean(q).toLowerCase();
         String panHash = "";
         try {
@@ -84,10 +92,13 @@ public class ClientService {
                                OR EXISTS (SELECT 1 FROM client_external_id e WHERE e.client_id = c.id AND lower(e.code) LIKE :like))
                           AND (:needsRm = false OR a.id IS NULL)
                           AND (:rmId = 0 OR a.rm_id = :rmId)
-                        ORDER BY lower(c.name), c.id
+                          AND (:only <> 'NO_PAN' OR c.pan_hash IS NULL)
+                          AND (:only <> 'SHARED_PAN' OR c.pan_hash IN (SELECT pan_hash FROM client WHERE pan_hash IS NOT NULL
+                                                                       GROUP BY pan_hash HAVING count(*) > 1))
+                        ORDER BY (CASE WHEN :only = 'SHARED_PAN' THEN c.pan_hash END), lower(c.name), c.id
                         LIMIT :size OFFSET :offset""")
                 .param("source", "FINESSE").param("q", query).param("panHash", panHash).param("like", "%" + query + "%")
-                .param("needsRm", needsRm).param("rmId", rmId == null ? 0L : rmId)
+                .param("needsRm", needsRm).param("rmId", rmId == null ? 0L : rmId).param("only", only)
                 .param("size", size).param("offset", (long) page * size)
                 .query((rs, n) -> new Row(rs.getLong("id"), rs.getString("name"), rs.getString("pan_encrypted"), rs.getString("code"),
                         (Long) rs.getObject("rm_id"), rs.getLong("total")))
@@ -191,6 +202,49 @@ public class ClientService {
                 normalisedPan == null ? null : panCipher.encrypt(normalisedPan),
                 normalisedPan == null ? null : panCipher.hash(normalisedPan), null));
         return c.getId();
+    }
+
+    /** How many clients each "needs attention" list has. */
+    @Transactional(readOnly = true)
+    public Attention attention() {
+        return jdbc.sql("""
+                        SELECT (SELECT count(*) FROM client WHERE pan_hash IN (SELECT pan_hash FROM client WHERE pan_hash IS NOT NULL
+                                                                              GROUP BY pan_hash HAVING count(*) > 1)) AS shared_pan,
+                               (SELECT count(*) FROM client c WHERE NOT EXISTS
+                                   (SELECT 1 FROM client_rm_assignment a WHERE a.client_id = c.id AND a.valid_to IS NULL)) AS no_rm,
+                               (SELECT count(*) FROM client WHERE pan_hash IS NULL) AS no_pan""")
+                .query((rs, n) -> new Attention(rs.getLong("shared_pan"), rs.getLong("no_rm"), rs.getLong("no_pan"))).single();
+    }
+
+    public record Attention(long sharedPan, long noRm, long noPan) {
+    }
+
+    /**
+     * A client added by hand (Client master screen): name, optional PAN (refused if another client has it), and its RM
+     * from a date. Audited. @return the new client's id
+     */
+    @Transactional
+    public long addByHand(String name, String pan, long rmId, LocalDate from, String reason) {
+        String normalised = pan == null || pan.isBlank() ? null : PanCipher.normalise(pan);
+        if (normalised != null) {
+            List<String> others = jdbc.sql("SELECT name FROM client WHERE pan_hash = ?").param(panCipher.hash(normalised)).query(String.class).list();
+            if (!others.isEmpty()) {
+                throw new RuleViolationException("PAN " + PanCipher.mask(normalised) + " is already on " + String.join(", ", others)
+                        + ": open that client instead");
+            }
+        }
+        long id = createUncoded(name, normalised);
+        audit.record("CLIENT", id, "CREATE", null, new PanAudit(normalised == null ? null : PanCipher.mask(normalised),
+                "Added on the Clients screen" + (reason == null || reason.isBlank() ? "" : ": " + Text.clean(reason))));
+        setRm(id, rmId, from, reason == null || reason.isBlank() ? "Added on the Clients screen" : Text.clean(reason));
+        return id;
+    }
+
+    /** The client record's own audited changes (added, PAN corrections), newest first. */
+    @Transactional(readOnly = true)
+    public List<AuditService.AuditView> changes(long clientId) {
+        find(clientId);
+        return audit.search(new AuditService.AuditFilter("CLIENT", String.valueOf(clientId), null, null, null, null), 0, 100).items();
     }
 
     /** Points a source code at a client (adds the link, or moves it when the code now belongs to another client). */

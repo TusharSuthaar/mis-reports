@@ -12,6 +12,7 @@ import money.epsilon.brokerage.client.service.ClientService;
 import money.epsilon.brokerage.client.service.ClientService.ClientDetail;
 import money.epsilon.brokerage.client.service.ClientService.ClientView;
 import money.epsilon.brokerage.org.service.OrgViews.HistoryEntry;
+import money.epsilon.brokerage.platform.audit.AuditService.AuditView;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.web.PageResponse;
 import org.springframework.http.HttpStatus;
@@ -42,12 +43,39 @@ class ClientController {
     PageResponse<ClientView> list(@RequestParam(required = false) String q,
                                   @RequestParam(defaultValue = "false") boolean needsRm,
                                   @RequestParam(required = false) Long rmId,
+                                  @RequestParam(required = false) String attention,
                                   @RequestParam(defaultValue = "0") int page,
                                   @RequestParam(defaultValue = "50") int size) {
         if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
             throw new IllegalArgumentException("page must be >= 0 and size between 1 and " + MAX_PAGE_SIZE);
         }
-        return service.page(q, needsRm, rmId, page, size);
+        return service.page(q, needsRm, rmId, attention == null || attention.isBlank() ? null : attention.trim(), page, size);
+    }
+
+    /** Counts for the "needs attention" lists (shared PAN, no RM, no PAN). */
+    @GetMapping("/attention")
+    @PreAuthorize(Roles.MASTER_READ)
+    ClientService.Attention attention() {
+        return service.attention();
+    }
+
+    /** Add a client by hand, with its RM from a date. */
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize(Roles.MASTER_WRITE)
+    Map<String, Long> add(@Valid @RequestBody AddClientRequest req) {
+        return Map.of("id", service.addByHand(req.name(), req.pan(), req.rmId(), req.from(), req.reason()));
+    }
+
+    /** The client record's audited changes (added, PAN corrections). */
+    @GetMapping("/{id}/changes")
+    @PreAuthorize(Roles.MASTER_READ)
+    List<AuditView> changes(@PathVariable long id) {
+        return service.changes(id);
+    }
+
+    record AddClientRequest(@NotBlank @Size(max = 300) String name, @Size(max = 20) String pan, @NotNull Long rmId,
+                            @NotNull LocalDate from, @Size(max = 500) String reason) {
     }
 
     @GetMapping("/{id}")
