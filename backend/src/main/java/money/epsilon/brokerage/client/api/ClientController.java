@@ -75,7 +75,7 @@ class ClientController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize(Roles.MASTER_WRITE)
     void changePan(@PathVariable long id, @Valid @RequestBody ChangePanRequest req) {
-        service.changePan(id, req.pan(), req.reason());
+        service.changePan(id, req.pan(), req.reason(), Boolean.TRUE.equals(req.takeFromOther()));
     }
 
     /** Change the RM of several clients from the same date, all or none. */
@@ -85,7 +85,8 @@ class ClientController {
         return Map.of("changed", service.changeRmForAll(req.clientIds(), req.rmId(), req.from(), req.reason()));
     }
 
-    record ChangePanRequest(@NotBlank @Size(max = 20) String pan, @Size(max = 500) String reason) {
+    /** {@code takeFromOther}: move the PAN from another client record that has no RM (a duplicate). */
+    record ChangePanRequest(@NotBlank @Size(max = 20) String pan, @Size(max = 500) String reason, Boolean takeFromOther) {
     }
 
     record ChangeRmRequest(@NotNull Long rmId, @NotNull LocalDate from, @Size(max = 500) String reason) {

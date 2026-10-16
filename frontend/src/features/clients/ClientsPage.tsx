@@ -467,6 +467,7 @@ function PanEdit({ clientId, onDone }: { clientId: number; onDone: () => void })
   const [open, setOpen] = useState(false);
   const [pan, setPan] = useState('');
   const [reason, setReason] = useState('');
+  const [move, setMove] = useState(false);
   const { busy, error, run } = useSubmit();
   if (!open) {
     return (
@@ -480,10 +481,11 @@ function PanEdit({ clientId, onDone }: { clientId: number; onDone: () => void })
       className="inline-form"
       onSubmit={async (e: FormEvent) => {
         e.preventDefault();
-        if (await run(() => api(`/api/clients/${clientId}/pan`, { method: 'POST', body: { pan, reason } }))) {
+        if (await run(() => api(`/api/clients/${clientId}/pan`, { method: 'POST', body: { pan, reason, takeFromOther: move } }))) {
           setOpen(false);
           setPan('');
           setReason('');
+          setMove(false);
           onDone();
         }
       }}
@@ -497,6 +499,12 @@ function PanEdit({ clientId, onDone }: { clientId: number; onDone: () => void })
         Cancel
       </button>
       {error && <span className="error">{error}</span>}
+      {error?.includes('is already on') && (
+        <label className="check">
+          <input type="checkbox" checked={move} onChange={(e) => setMove(e.target.checked)} />
+          That record is a duplicate: move the PAN to this client (only if it has no RM)
+        </label>
+      )}
     </form>
   );
 }

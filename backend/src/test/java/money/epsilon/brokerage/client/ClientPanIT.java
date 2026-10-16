@@ -55,6 +55,20 @@ class ClientPanIT extends IntegrationTestBase {
     }
 
     @Test
+    void aPanOnADuplicateWithoutRmIsMovedToTheRightClient() throws Exception {
+        // A file created a second record with the correct PAN before the master was fixed: no RM on it.
+        long duplicate = clientService.createUncoded("PAN ONE " + tag, panNew);
+        postJson("/api/clients/" + one + "/pan", Map.of("pan", panNew), admin, 409);                          // refused unless asked
+        postJson("/api/clients/" + one + "/pan", Map.of("pan", panTwo, "takeFromOther", true), admin, 409);  // PAN TWO has an RM
+        postJson("/api/clients/" + one + "/pan", Map.of("pan", panNew, "reason", "file PAN is right", "takeFromOther", true), admin, 204);
+
+        assertThat(getJson("/api/clients/" + one, admin, 200).get("client").get("pan").asText()).isEqualTo(panNew);
+        assertThat(getJson("/api/clients/" + duplicate, admin, 200).get("client").get("pan").isNull()).isTrue();
+        JsonNode audit = getJson("/api/audit?entity=CLIENT&entityId=" + duplicate + "&size=5", admin, 200).get("items").get(0);
+        assertThat(audit.toString()).contains("PAN moved to client " + one).doesNotContain(panNew);
+    }
+
+    @Test
     void financeCannotChangeAPan() throws Exception {
         postJson("/api/clients/" + one + "/pan", Map.of("pan", panNew), loginAs("FINANCE"), 403);
     }

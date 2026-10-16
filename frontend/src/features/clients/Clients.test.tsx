@@ -86,7 +86,7 @@ describe('clients', () => {
     await userEvent.type(within(panel).getByLabelText('New PAN'), 'zyxwv9876a');
     await userEvent.type(within(panel).getByLabelText('Reason for the PAN change'), 'typo');
     await userEvent.click(within(panel).getByRole('button', { name: 'Save PAN' }));
-    expect(sent).toEqual({ pan: 'ZYXWV9876A', reason: 'typo' });
+    expect(sent).toEqual({ pan: 'ZYXWV9876A', reason: 'typo', takeFromOther: false });
   });
 
   it('sets one RM for all selected clients', async () => {

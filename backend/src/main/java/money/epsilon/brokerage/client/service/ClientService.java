@@ -263,15 +263,35 @@ public class ClientService {
      */
     @Transactional
     public void changePan(long clientId, String pan, String reason) {
+        changePan(clientId, pan, reason, false);
+    }
+
+    /**
+     * Corrects the client's PAN. With {@code takeFromOther}, a PAN that sits on another client record without an RM
+     * (a duplicate a file created before the PAN was fixed) is moved here: the other record keeps no PAN. Both audited.
+     */
+    @Transactional
+    public void changePan(long clientId, String pan, String reason, boolean takeFromOther) {
         Client c = find(clientId);
         String normalised = PanCipher.normalise(pan);
         if (normalised == null) throw new IllegalArgumentException("Enter the PAN");
         String hash = panCipher.hash(normalised);
         if (hash.equals(c.getPanHash())) throw new RuleViolationException(c.getName() + " already has this PAN");
-        List<String> others = jdbc.sql("SELECT name FROM client WHERE pan_hash = ? AND id <> ?").params(hash, clientId)
-                .query(String.class).list();
+        List<Long> others = jdbc.sql("SELECT id FROM client WHERE pan_hash = ? AND id <> ?").params(hash, clientId).query(Long.class).list();
         if (!others.isEmpty()) {
-            throw new RuleViolationException("PAN " + PanCipher.mask(normalised) + " is already on " + String.join(", ", others));
+            Client other = find(others.get(0));
+            if (!takeFromOther) {
+                throw new RuleViolationException("PAN " + PanCipher.mask(normalised) + " is already on " + other.getName()
+                        + " (client " + other.getId() + ")");
+            }
+            if (!assignments.findByClientIdOrderByValidFromDesc(other.getId()).isEmpty()) {
+                throw new RuleViolationException(other.getName() + " (client " + other.getId() + ") has an RM, so it is a real client: "
+                        + "correct the PAN in Master MIS instead");
+            }
+            other.changePan(null, null);
+            clients.saveAndFlush(other);
+            audit.record("CLIENT", other.getId(), "PAN_CHANGE", new PanAudit(PanCipher.mask(normalised), null),
+                    new PanAudit(null, "PAN moved to client " + clientId + (reason == null ? "" : ": " + Text.clean(reason))));
         }
         String before = c.getPanEncrypted() == null ? null : PanCipher.mask(panCipher.decrypt(c.getPanEncrypted()));
         c.changePan(panCipher.encrypt(normalised), hash);
