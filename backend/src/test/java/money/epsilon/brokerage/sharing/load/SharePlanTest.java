@@ -212,6 +212,18 @@ class SharePlanTest {
     }
 
     @Test
+    void aClientsOwnPercentSetByHandStaysWhileTheRowShowsTheSamePercent() {
+        List<Existing> partners = List.of(new Existing(5, PartnerType.REFERRAL, "REFERRAL B", false));
+        Map<Long, Map<PartnerType, Current>> now = Map.of(1L, Map.of(PartnerType.REFERRAL, new Current(5, new BigDecimal("0.500000"))));
+        // The row's 50% equals the partner's general %, which alone would mean "follow the card" (MF 0%).
+        SharePlan plan = SharePlan.build(List.of(row(2, "A", "AAAAA1111A", partner("REFERRAL B", "Referral Partner", "0.5"))),
+                List.of(client(1, "A", "AAAAA1111A")), HASH, partners, now, NO_ALIAS,
+                Map.of("REFERRAL|REFERRAL B", REFERRAL_CARD), Map.of());
+        assertThat(plan.changes).isEmpty();
+        assertThat(plan.unchanged).isEqualTo(1);
+    }
+
+    @Test
     void aPartnerMarkedUnderProcessIsPending() {
         SharePlan plan = SharePlan.build(List.of(
                         row(2, "A", "AAAAA1111A", partner("NEW REFERRER", "Referral Partner (Under Process)", "0.5"))),

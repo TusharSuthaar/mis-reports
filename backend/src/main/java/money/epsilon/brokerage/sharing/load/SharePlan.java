@@ -177,6 +177,11 @@ final class SharePlan {
                 Map<Product, BigDecimal> rates = sheetRates.get(d.type() + "|" + d.partnerKey());
                 if (rates == null && p != null) rates = appRates.get(p.id());
                 BigDecimal fraction = clientException(d.rawPct(), rates);
+                // A client's own % set by hand stays while the row shows that same % (it may equal the partner's general %).
+                if (fraction == null && c != null && p != null && c.partnerId() == p.id() && c.clientFraction() != null
+                        && d.rawPct() != null && c.clientFraction().compareTo(d.rawPct()) == 0) {
+                    fraction = c.clientFraction();
+                }
                 if (fraction == null) plan.followsPartner++;
                 else plan.exceptions++;
                 if (fraction != null && fraction.signum() == 0) plan.zeroPct++;
