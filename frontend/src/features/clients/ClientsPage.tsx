@@ -471,9 +471,24 @@ function PanEdit({ clientId, onDone }: { clientId: number; onDone: () => void })
   const { busy, error, run } = useSubmit();
   if (!open) {
     return (
-      <button type="button" className="link" onClick={() => setOpen(true)}>
-        Edit PAN
-      </button>
+      <>
+        <button type="button" className="link" onClick={() => setOpen(true)}>
+          Edit PAN
+        </button>
+        <button
+          type="button"
+          className="link"
+          disabled={busy}
+          title="For a minor: the guardian's record keeps the PAN; this client is then matched by guardian PAN"
+          onClick={async () => {
+            if (!window.confirm("This PAN is the guardian's? It will be removed from this client; the guardian keeps it.")) return;
+            if (await run(() => api(`/api/clients/${clientId}/pan/guardian`, { method: 'POST', body: { reason: "Guardian's PAN" } }))) onDone();
+          }}
+        >
+          It's the guardian's PAN
+        </button>
+        {error && <span className="error">{error}</span>}
+      </>
     );
   }
   return (

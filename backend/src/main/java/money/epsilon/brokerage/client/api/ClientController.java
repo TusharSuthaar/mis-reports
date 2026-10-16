@@ -78,6 +78,17 @@ class ClientController {
         service.changePan(id, req.pan(), req.reason(), Boolean.TRUE.equals(req.takeFromOther()));
     }
 
+    /** The client's PAN is its guardian's (a minor): remove it from this record (the guardian keeps it). */
+    @PostMapping("/{id}/pan/guardian")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize(Roles.MASTER_WRITE)
+    void markGuardianPan(@PathVariable long id, @Valid @RequestBody GuardianPanRequest req) {
+        service.markGuardianPan(id, req.reason());
+    }
+
+    record GuardianPanRequest(@Size(max = 500) String reason) {
+    }
+
     /** Change the RM of several clients from the same date, all or none. */
     @PostMapping("/rm")
     @PreAuthorize(Roles.MASTER_WRITE)

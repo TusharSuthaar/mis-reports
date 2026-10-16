@@ -299,6 +299,26 @@ public class ClientService {
         audit.record("CLIENT", clientId, "PAN_CHANGE", new PanAudit(before, null), new PanAudit(PanCipher.mask(normalised), Text.clean(reason)));
     }
 
+    /**
+     * The client's PAN is really its guardian's (a minor), and another client — the guardian — has that PAN: the PAN
+     * is removed from this record, so the minor's codes map to the guardian by guardian PAN (R-03). Audited.
+     */
+    @Transactional
+    public void markGuardianPan(long clientId, String reason) {
+        Client c = find(clientId);
+        if (c.getPanHash() == null) throw new RuleViolationException(c.getName() + " has no PAN");
+        List<String> guardians = jdbc.sql("SELECT name FROM client WHERE pan_hash = ? AND id <> ?").params(c.getPanHash(), clientId)
+                .query(String.class).list();
+        if (guardians.isEmpty()) {
+            throw new RuleViolationException("No other client has this PAN, so it is " + c.getName() + "'s own: correct it instead");
+        }
+        String before = PanCipher.mask(panCipher.decrypt(c.getPanEncrypted()));
+        c.changePan(null, null);
+        clients.saveAndFlush(c);
+        audit.record("CLIENT", clientId, "PAN_CHANGE", new PanAudit(before, null),
+                new PanAudit(null, "Guardian's PAN (on " + String.join(", ", guardians) + ")" + (reason == null ? "" : ": " + Text.clean(reason))));
+    }
+
     record PanAudit(String maskedPan, String reason) {
     }
 

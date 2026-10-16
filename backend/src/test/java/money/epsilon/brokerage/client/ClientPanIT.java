@@ -69,6 +69,19 @@ class ClientPanIT extends IntegrationTestBase {
     }
 
     @Test
+    void aMinorsRecordCarryingTheGuardiansPanGivesItUp() throws Exception {
+        long minor = clientService.createUncoded("MINOR " + tag, panNew);
+        long guardian = clientService.createUncoded("GUARDIAN " + tag, panNew);   // old data: two records, one PAN
+        postJson("/api/clients/" + one + "/pan/guardian", Map.of(), admin, 409);    // nobody else has PAN ONE's PAN
+        postJson("/api/clients/" + minor + "/pan/guardian", Map.of("reason", "minor"), admin, 204);
+
+        assertThat(getJson("/api/clients/" + minor, admin, 200).get("client").get("pan").isNull()).isTrue();
+        assertThat(getJson("/api/clients?q=" + panNew, admin, 200).get("items")).singleElement()
+                .satisfies(c -> assertThat(c.get("id").asLong()).isEqualTo(guardian));
+        postJson("/api/clients/" + minor + "/pan/guardian", Map.of(), admin, 409);  // no PAN any more
+    }
+
+    @Test
     void financeCannotChangeAPan() throws Exception {
         postJson("/api/clients/" + one + "/pan", Map.of("pan", panNew), loginAs("FINANCE"), 403);
     }
