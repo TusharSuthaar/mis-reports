@@ -21,3 +21,9 @@ Read [docs/README.md](docs/README.md) first, then [docs/architecture/guardrails.
 - `backend/mvnw-docker.sh verify` — all backend tests (needs Docker)
 - `cd frontend && npm test` — frontend tests
 - `docker compose up -d --build` — run the app on http://localhost:5180
+
+## Working lean (token use)
+- One task per session; the docs and these rules carry the context, not a long chat.
+- Test runs: show only the summary and failing tests (e.g. `grep -E "Tests run:.*(Fail|Err)|ERROR\]   "`), never whole logs.
+- Read only the lines you need; don't re-read a file you just edited.
+- Local helper scripts (API login/calls, real-data scan before commit) live in `private-data/tools/` (not in Git).
