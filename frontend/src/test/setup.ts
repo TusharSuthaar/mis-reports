@@ -1,6 +1,10 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
-import { afterEach, vi } from 'vitest';
+import { afterEach, beforeEach, vi } from 'vitest';
+import { setAmountUnit } from '../components/Amount';
+
+// Tests check exact rupee figures.
+beforeEach(() => setAmountUnit('full'));
 
 afterEach(() => {
   cleanup();

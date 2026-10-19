@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type FormEvent } from 'react';
-import { api } from '../../api/client';
-import type { Branch, BranchPartner, Employee, HistoryEntry, OrgChart, Partner, Region } from '../../api/types';
+import { api, errorText } from '../../api/client';
+import type { Branch, BranchPartner, ChartBranch, ChartPerson, Employee, HistoryEntry, OrgChart, Partner, Region } from '../../api/types';
 import { useLoad } from '../../api/useLoad';
 import { useSubmit } from '../../api/useSubmit';
 import { useAuth } from '../../app/auth';
@@ -11,45 +11,35 @@ import { NameForm } from '../../components/NameForm';
 import { SidePanel } from '../../components/SidePanel';
 import { formatDate, todayIso } from '../../format';
 
-/** One row per RM, shaped like the report: Region | RD | Branch | RM. Empty branches/regions get a row too. */
-export interface OrgRow {
-  key: string;
-  regionId: number | null;
-  region: string;
-  rd: string;
-  branchId: number | null;
-  branch: string;
-  rmId: number | null;
-  rm: string;
-  house: boolean;
+/**
+ * The org as a tree: Region (RD) → Branch → RMs, in the regions' set order. A search keeps a whole region when the region or
+ * its RD matches, otherwise only the branches that match (by name or by one of their RMs).
+ */
+export function filterOrg(chart: OrgChart, search: string): OrgChart {
+  const q = search.trim().toLowerCase();
+  if (!q) return chart;
+  const has = (v: string | undefined | null) => !!v && v.toLowerCase().includes(q);
+  const branchMatches = (b: ChartBranch) => has(b.name) || b.people.some((p) => has(p.name));
+  return {
+    ...chart,
+    regions: chart.regions
+      .map((r) => (has(r.name) || has(r.rd?.name) ? r : { ...r, branches: r.branches.filter(branchMatches) }))
+      .filter((r) => has(r.name) || has(r.rd?.name) || r.branches.length > 0),
+    branchesWithoutRegion: chart.branchesWithoutRegion.filter(branchMatches),
+    peopleWithoutBranch: chart.peopleWithoutBranch.filter((p) => has(p.name)),
+  };
 }
 
-export function orgRows(chart: OrgChart): OrgRow[] {
-  const rows: OrgRow[] = [];
-  const empty = { branchId: null, branch: '', rmId: null, rm: '', house: false };
-  for (const r of chart.regions) {
-    const base = { regionId: r.id, region: r.name, rd: r.rd?.name ?? '' };
-    if (r.branches.length === 0) rows.push({ key: `r${r.id}`, ...base, ...empty });
-    for (const b of r.branches) {
-      if (b.people.length === 0) rows.push({ key: `b${b.id}`, ...base, ...empty, branchId: b.id, branch: b.name });
-      for (const p of b.people) {
-        rows.push({ key: `p${p.id}`, ...base, branchId: b.id, branch: b.name, rmId: p.id, rm: p.name, house: p.type === 'HOUSE' });
-      }
-    }
-  }
-  for (const b of chart.branchesWithoutRegion) {
-    const base = { regionId: null, region: '', rd: '', branchId: b.id, branch: b.name };
-    if (b.people.length === 0) rows.push({ key: `b${b.id}`, ...base, rmId: null, rm: '', house: false });
-    for (const p of b.people) rows.push({ key: `p${p.id}`, ...base, rmId: p.id, rm: p.name, house: p.type === 'HOUSE' });
-  }
-  for (const p of chart.peopleWithoutBranch) {
-    rows.push({ key: `p${p.id}`, regionId: null, region: '', rd: '', branchId: null, branch: '', rmId: p.id, rm: p.name, house: p.type === 'HOUSE' });
-  }
-  return rows;
+export function isEmptyOrg(chart: OrgChart): boolean {
+  return chart.regions.length === 0 && chart.branchesWithoutRegion.length === 0 && chart.peopleWithoutBranch.length === 0;
 }
+
+const HOUSE_HELP =
+  'A house book holds clients that have no person as their RM, such as HEAD OFFICE or STAFF. It sits in a branch and shows ' +
+  'in the reports like an RM, but it cannot be an RD or one of a partner’s RMs. To add a person, use Add RM.';
 
 type Panel =
-  | { kind: 'add-region' | 'add-branch' | 'add-rm' }
+  | { kind: 'add-region' | 'add-branch' | 'add-rm' | 'add-house' }
   | { kind: 'region' | 'branch' | 'rm'; id: number };
 
 /** The whole org on one screen. Every change is "what, and from when". */
@@ -75,75 +65,163 @@ export function OrgPage() {
     reloadAll();
   };
 
-  const rows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const all = chart.data ? orgRows(chart.data) : [];
-    return q ? all.filter((r) => [r.region, r.rd, r.branch, r.rm].some((v) => v.toLowerCase().includes(q))) : all;
-  }, [chart.data, search]);
+  const tree = useMemo(() => (chart.data ? filterOrg(chart.data, search) : null), [chart.data, search]);
 
-  const link = (label: string, open: Panel | null) =>
-    label && open ? (
-      <button type="button" className="cell-link" onClick={() => setPanel(open)}>
-        {label}
-      </button>
+  const counts = useLoad<Record<string, number>>('/api/clients/count-by-rm');
+  const open = (p: Panel) => () => setPanel(p);
+  // Which regions are opened up. null = as first shown: only the first region; a search opens them all.
+  const [opened, setOpened] = useState<Set<number> | null>(null);
+  const isOpen = (id: number, idx: number) => (search.trim() ? true : opened ? opened.has(id) : idx === 0);
+  const toggle = (id: number, idx: number) => {
+    const next = new Set(opened ?? (tree?.regions[0] ? [tree.regions[0].id] : []));
+    if (isOpen(id, idx)) next.delete(id);
+    else next.add(id);
+    setOpened(next);
+  };
+  const allOpen = !!tree && tree.regions.every((r, i) => isOpen(r.id, i));
+
+
+  const rmTable = (list: ChartPerson[]) =>
+    list.length === 0 ? (
+      <p className="muted org-none">No RM yet.</p>
     ) : (
-      <span className="muted">—</span>
+      <table className="org-rms">
+        <thead>
+          <tr>
+            <th className="org-no">#</th>
+            <th>Relationship Manager</th>
+            {counts.data && <th className="num">Clients</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((p, i) => (
+            <tr key={p.id}>
+              <td className="org-no">{i + 1}</td>
+              <td>
+                <button type="button" className="cell-link" aria-label={p.name} onClick={open({ kind: 'rm', id: p.id })}>
+                  {p.name}
+                </button>
+                {p.type === 'HOUSE' && <span className="badge">house</span>}
+              </td>
+              {counts.data && <td className="num">{(counts.data[p.id] ?? 0).toLocaleString('en-IN')}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     );
+  const branchBlocks = (list: ChartBranch[]) =>
+    list.map((b, j) => (
+      <div key={b.id} className="org-branch">
+        <div className="org-branch-head">
+          <span className="org-no">{j + 1}.</span>
+          <button type="button" className="cell-link" onClick={open({ kind: 'branch', id: b.id })}>
+            {b.name}
+          </button>
+          <span className="pill">{b.people.length} RM{b.people.length === 1 ? '' : 's'}</span>
+        </div>
+        {rmTable(b.people)}
+      </div>
+    ));
 
   return (
     <section>
       <div className="page-head">
-        <h1>Org</h1>
+        <div>
+          <h1>Organisation</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            Manage regions, branches and relationship managers. Click any name to change it.
+          </p>
+        </div>
         {canEdit && (
           <div className="actions">
-            <button type="button" className="secondary" onClick={() => setPanel({ kind: 'add-region' })}>
+            <button type="button" className="secondary" onClick={open({ kind: 'add-region' })}>
               Add region
             </button>
-            <button type="button" className="secondary" onClick={() => setPanel({ kind: 'add-branch' })}>
+            <button type="button" className="secondary" onClick={open({ kind: 'add-branch' })}>
               Add branch
             </button>
-            <button type="button" onClick={() => setPanel({ kind: 'add-rm' })}>
+            <button type="button" className="secondary" onClick={open({ kind: 'add-house' })}>
+              Add house book
+            </button>
+            <button type="button" onClick={open({ kind: 'add-rm' })}>
               Add RM
             </button>
           </div>
         )}
       </div>
-      <div className="filters">
+      <div className="filters list-filters">
         <label>
           As on
           <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
         </label>
-        <label>
+        <label className="grow">
           Search
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Region, branch or RM" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Region, branch or RM…" />
         </label>
+        {tree && tree.regions.length > 1 && !search.trim() && (
+          <button type="button" className="link" onClick={() => setOpened(allOpen ? new Set() : new Set(tree.regions.map((r) => r.id)))}>
+            {allOpen ? 'Collapse all' : 'Expand all'}
+          </button>
+        )}
       </div>
       {chart.error && <p className="error">{chart.error}</p>}
-      {chart.data && rows.length === 0 && <p className="muted">{search ? 'Nothing matches.' : 'Nothing set up for this date yet.'}</p>}
-      {rows.length > 0 && (
-        <table>
-          <thead>
-            <tr>
-              <th>Region</th>
-              <th>RD</th>
-              <th>Branch</th>
-              <th>RM</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.key}>
-                <td>{link(r.region, r.regionId === null ? null : { kind: 'region', id: r.regionId })}</td>
-                <td>{r.rd || <span className="muted">—</span>}</td>
-                <td>{link(r.branch, r.branchId === null ? null : { kind: 'branch', id: r.branchId })}</td>
-                <td>
-                  {link(r.rm, r.rmId === null ? null : { kind: 'rm', id: r.rmId })}
-                  {r.house && <span className="badge">house</span>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {tree && isEmptyOrg(tree) && <div className="empty">{search ? 'Nothing matches.' : 'Nothing set up for this date yet.'}</div>}
+      {tree && !isEmptyOrg(tree) && (
+        <div className="org-tree">
+          {tree.regions.map((r, i) => {
+            const shown = isOpen(r.id, i);
+            return (
+              <article key={r.id} className={shown ? 'org-region open' : 'org-region'}>
+                <header className="org-region-head" onClick={() => toggle(r.id, i)}>
+                  <button
+                    type="button"
+                    className="org-toggle"
+                    aria-expanded={shown}
+                    aria-label={`${shown ? 'Collapse' : 'Expand'} ${r.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggle(r.id, i);
+                    }}
+                  >
+                    ›
+                  </button>
+                  <span className="org-no">{i + 1}.</span>
+                  <button
+                    type="button"
+                    className="cell-link org-region-name"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPanel({ kind: 'region', id: r.id });
+                    }}
+                  >
+                    {r.name}
+                  </button>
+                  <span className={r.rd ? 'muted' : 'badge warn'}>— RD: {r.rd?.name ?? 'none'}</span>
+                  <span className="pill">{r.branches.length} branch{r.branches.length === 1 ? '' : 'es'}</span>
+                </header>
+                {shown && <div className="org-region-body">{r.branches.length === 0 ? <p className="muted org-none">No branch yet.</p> : branchBlocks(r.branches)}</div>}
+              </article>
+            );
+          })}
+          {tree.branchesWithoutRegion.length > 0 && (
+            <article className="org-region open">
+              <header className="org-region-head">
+                <span className="muted">Branches not in a region</span>
+              </header>
+              <div className="org-region-body">{branchBlocks(tree.branchesWithoutRegion)}</div>
+            </article>
+          )}
+          {tree.peopleWithoutBranch.length > 0 && (
+            <article className="org-region open">
+              <header className="org-region-head">
+                <span className="muted">Not in a branch (e.g. RDs only)</span>
+              </header>
+              <div className="org-region-body">
+                <div className="org-branch">{rmTable(tree.peopleWithoutBranch)}</div>
+              </div>
+            </article>
+          )}
+        </div>
       )}
 
       {panel?.kind === 'add-region' && (
@@ -161,6 +239,11 @@ export function OrgPage() {
           <AddRmForm branches={branches.data ?? []} onDone={done} />
         </SidePanel>
       )}
+      {panel?.kind === 'add-house' && (
+        <SidePanel title="Add house book" onClose={close}>
+          <AddRmForm branches={branches.data ?? []} house onDone={done} />
+        </SidePanel>
+      )}
       {panel?.kind === 'region' && (
         <RegionPanel
           region={regions.data?.find((x) => x.id === panel.id)}
@@ -174,7 +257,19 @@ export function OrgPage() {
         <BranchPanel branch={branches.data?.find((x) => x.id === panel.id)} regions={regions.data ?? []} canEdit={canEdit} onClose={close} onChanged={reloadAll} />
       )}
       {panel?.kind === 'rm' && (
-        <RmPanel rm={employees.data?.find((x) => x.id === panel.id)} branches={branches.data ?? []} canEdit={canEdit} onClose={close} onChanged={reloadAll} />
+        <RmPanel
+          rm={employees.data?.find((x) => x.id === panel.id)}
+          branches={branches.data ?? []}
+          people={employees.data ?? []}
+          rdOf={(chart.data?.regions ?? []).filter((r) => r.rd?.id === panel.id).map((r) => r.name)}
+          clients={counts.data?.[panel.id]}
+          canEdit={canEdit}
+          onClose={close}
+          onChanged={() => {
+            reloadAll();
+            counts.reload();
+          }}
+        />
       )}
     </section>
   );
@@ -235,11 +330,10 @@ function AddBranchForm({ regions, onDone }: { regions: Region[]; onDone: () => v
   );
 }
 
-function AddRmForm({ branches, onDone }: { branches: Branch[]; onDone: () => void }) {
+function AddRmForm({ branches, house = false, onDone }: { branches: Branch[]; house?: boolean; onDone: () => void }) {
   const [name, setName] = useState('');
   const [branchId, setBranchId] = useState('');
   const [from, setFrom] = useState(todayIso());
-  const [house, setHouse] = useState(false);
   const { busy, error, run } = useSubmit();
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -248,8 +342,9 @@ function AddRmForm({ branches, onDone }: { branches: Branch[]; onDone: () => voi
   }
   return (
     <form onSubmit={submit}>
+      {house && <p className="muted">{HOUSE_HELP}</p>}
       <label>
-        RM name (as in the Investwell file)
+        {house ? 'Name (e.g. DIRECT, HO WALK-IN)' : 'RM name (as in the Master MIS)'}
         <input value={name} onChange={(e) => setName(e.target.value)} required />
       </label>
       <Select label="Branch" value={branchId} onChange={setBranchId} options={branches} />
@@ -257,13 +352,9 @@ function AddRmForm({ branches, onDone }: { branches: Branch[]; onDone: () => voi
         From
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} required />
       </label>
-      <label className="check">
-        <input type="checkbox" checked={house} onChange={(e) => setHouse(e.target.checked)} />
-        House book (HEAD OFFICE, STAFF): no RM share
-      </label>
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={busy}>
-        Add RM
+        {house ? 'Add house book' : 'Add RM'}
       </button>
     </form>
   );
@@ -291,6 +382,7 @@ function RegionPanel({ region, rms, canEdit, onClose, onChanged }: { region?: Re
             <Select label="RD" value={rdId} onChange={setRdId} options={rms.filter((e) => e.id !== region.currentRd?.id)} />
           </DatedChangeForm>
           <NameForm key={region.name} label="Rename region" initial={region.name} submitLabel="Rename" onSubmit={(name) => api(`/api/regions/${region.id}`, { method: 'PATCH', body: { name } })} onDone={onChanged} />
+          <RegionLayoutForm key={`${region.id}-${region.position}-${region.endBranchRows}`} region={region} onDone={onChanged} />
         </>
       )}
       <PastChanges path={`/api/regions/${region.id}/rd`} label="RD" />
@@ -393,10 +485,36 @@ function BranchPartnerBlock({ branchId, branchName, canEdit }: { branchId: numbe
   );
 }
 
-function RmPanel({ rm, branches, canEdit, onClose, onChanged }: { rm?: Employee; branches: Branch[]; canEdit: boolean; onClose: () => void; onChanged: () => void }) {
+function RmPanel({
+  rm,
+  branches,
+  people,
+  rdOf,
+  clients,
+  canEdit,
+  onClose,
+  onChanged,
+}: {
+  rm?: Employee;
+  branches: Branch[];
+  people: Employee[];
+  rdOf: string[];
+  clients?: number;
+  canEdit: boolean;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
   const [branchId, setBranchId] = useState('');
+  const [leaving, setLeaving] = useState(false);
   const { error, run } = useSubmit();
   if (!rm) return null;
+  if (leaving) {
+    return (
+      <SidePanel title={`${rm.name} is leaving`} onClose={onClose}>
+        <HandoverForm rm={rm} people={people} rdOf={rdOf} clients={clients} onCancel={() => setLeaving(false)} onDone={onChanged} />
+      </SidePanel>
+    );
+  }
   return (
     <SidePanel title={rm.name} onClose={onClose}>
       <p>Branch now: {rm.branchName ?? <span className="muted">none</span>}</p>
@@ -424,12 +542,196 @@ function RmPanel({ rm, branches, canEdit, onClose, onChanged }: { rm?: Employee;
                 if (await run(() => api(`/api/employees/${rm.id}`, { method: 'PATCH', body: { type: e.target.checked ? 'HOUSE' : 'RM' } }))) onChanged();
               }}
             />
-            House book (HEAD OFFICE, STAFF): no RM share
+            House book: not a person (like HEAD OFFICE, STAFF)
           </label>
+          <p className="muted">{HOUSE_HELP}</p>
           {error && <p className="error">{error}</p>}
+          {rm.status === 'ACTIVE' && (
+            <div className="separated">
+              <button type="button" className="secondary" onClick={() => setLeaving(true)}>
+                Leaving the company — hand over…
+              </button>
+            </div>
+          )}
         </>
       )}
       <PastChanges path={`/api/employees/${rm.id}/branch`} label="Branch" />
     </SidePanel>
+  );
+}
+
+/** Where the region sits in lists and in the END region section, and whether the END shows its branches as rows. */
+function RegionLayoutForm({ region, onDone }: { region: Region; onDone: () => void }) {
+  const [position, setPosition] = useState(String(region.position));
+  const [branchRows, setBranchRows] = useState(region.endBranchRows);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      await api(`/api/regions/${region.id}`, { method: 'PATCH', body: { position: Number(position), endBranchRows: branchRows } });
+      onDone();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form onSubmit={submit}>
+      <h3>Order and END</h3>
+      <label>
+        Position (1 = first)
+        <input type="number" min={1} value={position} onChange={(e) => setPosition(e.target.value)} required />
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={branchRows} onChange={(e) => setBranchRows(e.target.checked)} />
+        Show its branches as rows above it in the END region section
+      </label>
+      {error && <p className="error">{error}</p>}
+      <button type="submit" disabled={busy}>
+        Save
+      </button>
+    </form>
+  );
+}
+
+type HandoverResult = { leaver: Employee; replacement: Employee; rdRegionIds: number[] };
+
+function nextDay(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const n = new Date(y, m - 1, d + 1);
+  const pad = (v: number) => String(v).padStart(2, '0');
+  return `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`;
+}
+
+/**
+ * R-61: the RM leaves on their last working day and, from the next day, the person picked (or a new RM made in the same
+ * branch) has all their clients and partners, and their RD regions unless unticked. One step, all or nothing.
+ */
+function HandoverForm({ rm, people, rdOf, clients, onCancel, onDone }: { rm: Employee; people: Employee[]; rdOf: string[]; clients?: number; onCancel: () => void; onDone: () => void }) {
+  const [lastDay, setLastDay] = useState(todayIso());
+  const [mode, setMode] = useState<'existing' | 'new'>('new');
+  const [replacementId, setReplacementId] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newCode, setNewCode] = useState('');
+  const [takeOverRd, setTakeOverRd] = useState(true);
+  const [note, setNote] = useState('');
+  const [done, setDone] = useState<HandoverResult | null>(null);
+  const { busy, error, run } = useSubmit();
+  const others = people.filter((p) => p.id !== rm.id && p.status === 'ACTIVE').sort((a, b) => a.name.localeCompare(b.name));
+  const picked = others.find((p) => String(p.id) === replacementId);
+  const takerIsHouse = mode === 'existing' && picked?.type === 'HOUSE';
+  const from = lastDay ? nextDay(lastDay) : '';
+  const ready = !!lastDay && (mode === 'new' ? newName.trim() !== '' : replacementId !== '');
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const reason = note.trim() || undefined;
+    const body =
+      mode === 'new'
+        ? { lastDay, newRmName: newName.trim(), newRmCode: newCode.trim() || undefined, takeOverRd, reason }
+        : { lastDay, replacementId: Number(replacementId), takeOverRd: takerIsHouse ? false : takeOverRd, reason };
+    const out: { result?: HandoverResult } = {};
+    const ok = await run(async () => {
+      out.result = await api<HandoverResult>(`/api/employees/${rm.id}/hand-over`, { method: 'POST', body });
+    });
+    if (ok && out.result) {
+      setDone(out.result);
+      onDone();
+    }
+  };
+
+  if (done) {
+    return (
+      <p role="status" className="success">
+        Done. {rm.name}’s last working day is {formatDate(lastDay)}. From {formatDate(from)} <strong>{done.replacement.name}</strong> has their clients
+        {done.replacement.type === 'RM' ? ' and partners' : ''}
+        {done.rdRegionIds.length > 0 ? ` and is RD of ${rdOf.join(', ')}` : ''}.
+      </p>
+    );
+  }
+
+  return (
+    <form className="handover" onSubmit={submit}>
+      <label>
+        Last working day
+        <input type="date" value={lastDay} onChange={(e) => setLastDay(e.target.value)} required />
+      </label>
+
+      <fieldset>
+        <legend>Who takes over</legend>
+        <label className="check">
+          <input type="radio" name="taker" checked={mode === 'new'} onChange={() => setMode('new')} />
+          A new RM{rm.branchName ? ` (joins ${rm.branchName})` : ''}
+        </label>
+        <label className="check">
+          <input type="radio" name="taker" checked={mode === 'existing'} onChange={() => setMode('existing')} />
+          Someone already here
+        </label>
+      </fieldset>
+
+      {mode === 'new' ? (
+        <>
+          <label>
+            New RM’s name
+            <input value={newName} onChange={(e) => setNewName(e.target.value)} required />
+          </label>
+          <label>
+            Emp code (optional — made for you if blank)
+            <input value={newCode} onChange={(e) => setNewCode(e.target.value)} />
+          </label>
+        </>
+      ) : (
+        <label>
+          Takes over
+          <select value={replacementId} onChange={(e) => setReplacementId(e.target.value)} required>
+            <option value="">Choose…</option>
+            {others.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.branchName ? ` — ${p.branchName}` : ''}
+                {p.type === 'HOUSE' ? ' (house book)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      <div className="handover-summary">
+        <strong>From {from ? formatDate(from) : '…'} they get:</strong>
+        <ul>
+          <li>
+            {clients == null ? 'All' : clients.toLocaleString('en-IN')} client{clients === 1 ? '' : 's'} of {rm.name}
+          </li>
+          <li>{takerIsHouse ? 'Partners: not moved (a house book has no partners; the links end)' : 'Their partners (sub-brokers, referral partners)'}</li>
+          {rdOf.length > 0 && !takerIsHouse && (
+            <li>
+              <label className="check">
+                <input type="checkbox" checked={takeOverRd} onChange={(e) => setTakeOverRd(e.target.checked)} />
+                RD of {rdOf.join(', ')}
+              </label>
+            </li>
+          )}
+        </ul>
+        <p className="muted">Earlier months keep {rm.name}. Everything stays in the history.</p>
+      </div>
+
+      <label>
+        Note (optional)
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Resigned" />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <div className="actions">
+        <button type="submit" disabled={!ready || busy}>
+          {busy ? 'Handing over…' : 'Hand over'}
+        </button>
+        <button type="button" className="secondary" onClick={onCancel}>
+          Back
+        </button>
+      </div>
+    </form>
   );
 }

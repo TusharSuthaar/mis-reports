@@ -35,18 +35,45 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
  */
 public final class EndWorkbook {
 
-    /** One DATA row. Percent fields are fractions (0.5 = 50%); null amounts mean nothing. */
+    /**
+     * One DATA row. Percent fields are fractions (0.5 = 50%); null amounts mean nothing. An MF row has the MF figures; an
+     * FD row (R-74) has {@code fd} (its commission excl. GST) and {@code aum} (the amount invested).
+     */
     public record EndRow(String region, String rd, String branch, String rm, String subBroker, BigDecimal subBrokerPct,
                          String referral, BigDecimal referralPct, String posp, String client, String pan,
                          BigDecimal mfTrail, BigDecimal gst, BigDecimal mfNet,
-                         BigDecimal subBrokerAmount, BigDecimal referralAmount, BigDecimal pospAmount, String remarks) {
+                         BigDecimal subBrokerAmount, BigDecimal referralAmount, BigDecimal pospAmount, String remarks,
+                         BigDecimal aum, BigDecimal fd, BigDecimal bonds, BigDecimal aif) {
+        public EndRow(String region, String rd, String branch, String rm, String subBroker, BigDecimal subBrokerPct,
+                      String referral, BigDecimal referralPct, String posp, String client, String pan,
+                      BigDecimal mfTrail, BigDecimal gst, BigDecimal mfNet,
+                      BigDecimal subBrokerAmount, BigDecimal referralAmount, BigDecimal pospAmount, String remarks) {
+            this(region, rd, branch, rm, subBroker, subBrokerPct, referral, referralPct, posp, client, pan, mfTrail, gst, mfNet,
+                    subBrokerAmount, referralAmount, pospAmount, remarks, null, null, null, null);
+        }
+
+        /** MF net + the other products: the row's revenue excl. GST. */
+        BigDecimal totalRev() {
+            return nz(mfNet).add(nz(fd)).add(nz(bonds)).add(nz(aif));
+        }
     }
 
     /** A branch total from the previous locked month (Total Rev excl. GST and Net Revenue). */
     public record BranchTotal(String region, String branch, BigDecimal gross, BigDecimal net) {
     }
 
-    public record Input(YearMonth month, boolean draft, List<EndRow> rows, YearMonth previousMonth, List<BranchTotal> previous) {
+    /**
+     * {@code regions}: the region section's order; a region with {@code branchRows} gets one row per branch above it. Regions
+     * found in the data but not listed come after, by name.
+     */
+    public record Input(YearMonth month, boolean draft, List<EndRow> rows, YearMonth previousMonth, List<BranchTotal> previous,
+                        List<RegionLayout> regions) {
+        public Input(YearMonth month, boolean draft, List<EndRow> rows, YearMonth previousMonth, List<BranchTotal> previous) {
+            this(month, draft, rows, previousMonth, previous, List.of());
+        }
+    }
+
+    public record RegionLayout(String name, boolean branchRows) {
     }
 
     static final String[] DATA_HEADERS = {"Region", "RD", "Branch", "Relationship Manager", "Sub-Broker", "Referral Partners",
@@ -57,6 +84,7 @@ public final class EndWorkbook {
     static final String SUB_BROKER_TYPE = "Sub broker", REFERRAL_TYPE = "Referral Partner", POSP_TYPE = "POSP";
 
     // DATA column positions (0-based)
+    static final int FD_COL = 15, BONDS_COL = 16;
     static final int REGION = 0, BRANCH = 2, RM = 3, SUB_BROKER = 4, REFERRAL = 5, POSP = 7, AUM = 10, MF_TRAIL = 11,
             MF_NET = 13, PRE_IPO = 14, AIF = 21, TOTAL_REV = 22, REF_SHARING = 23, POSP_SHARING = 24, TOTAL_SHARING = 25,
             NET_REVENUE = 26, SB_SHARING = 29, REF_ONLY_SHARING = 30;
@@ -99,6 +127,8 @@ public final class EndWorkbook {
         w.wb.setSheetOrder("Summary", 1);
         w.wb.setActiveSheet(1);
         w.wb.setSelectedTab(1);
+        // Store each formula's result too: previews (phone, mail, OneDrive web) do not recalculate.
+        w.wb.getCreationHelper().createFormulaEvaluator().evaluateAll();
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             w.wb.write(out);
             w.wb.close();
@@ -141,18 +171,21 @@ public final class EndWorkbook {
             cell(row, 7, e.posp(), text);
             cell(row, 8, e.client(), text);
             cell(row, 9, e.pan(), text);
-            row.createCell(AUM).setCellStyle(money);               // AUM/Inv Amt: blank in v1
+            num(row, AUM, e.aum());                                // AUM/Inv Amt: the FD amount on an FD row
             num(row, MF_TRAIL, e.mfTrail());
             num(row, MF_TRAIL + 1, e.gst());
             num(row, MF_NET, e.mfNet());
-            for (int c = PRE_IPO; c <= AIF; c++) row.createCell(c).setCellStyle(money); // other products: not live yet
+            for (int c = PRE_IPO; c <= AIF; c++) row.createCell(c).setCellStyle(money); // other products: FD below, the rest not live yet
+            num(row, FD_COL, e.fd());
+            num(row, BONDS_COL, e.bonds());
+            num(row, AIF, e.aif());
             BigDecimal refSharing = nz(e.subBrokerAmount()).add(nz(e.referralAmount()));
             BigDecimal totalSharing = refSharing.add(nz(e.pospAmount()));
-            num(row, TOTAL_REV, e.mfNet());
+            num(row, TOTAL_REV, e.totalRev());
             num(row, REF_SHARING, refSharing);
             num(row, POSP_SHARING, nz(e.pospAmount()));
             num(row, TOTAL_SHARING, totalSharing);
-            num(row, NET_REVENUE, e.mfNet().subtract(totalSharing));
+            num(row, NET_REVENUE, e.totalRev().subtract(totalSharing));
             cell(row, 27, brokerType(e), text);
             cell(row, 28, e.remarks(), text);
             num(row, SB_SHARING, nz(e.subBrokerAmount()));
@@ -300,41 +333,79 @@ public final class EndWorkbook {
             cell(mh2, 15 + 2 * i, "Net", header);
         }
         Map<String, BigDecimal[]> prevByRegion = new TreeMap<>();
+        Map<String, BigDecimal[]> prevByBranch = new TreeMap<>();
         for (BranchTotal b : in.previous()) {
-            BigDecimal[] v = prevByRegion.computeIfAbsent(Objects.toString(b.region(), ""), k -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
-            v[0] = v[0].add(nz(b.gross()));
-            v[1] = v[1].add(nz(b.net()));
+            String region = Objects.toString(b.region(), "");
+            add(prevByRegion.computeIfAbsent(region, k -> zeros()), b);
+            add(prevByBranch.computeIfAbsent(region + " " + b.branch(), k -> zeros()), b);
         }
-        Set<String> regions = new java.util.TreeSet<>(prevByRegion.keySet());
-        for (EndRow e : in.rows()) regions.add(Objects.toString(e.region(), ""));
+        Map<String, Set<String>> branchesOf = new TreeMap<>();
+        for (EndRow e : in.rows()) branchesOf.computeIfAbsent(Objects.toString(e.region(), ""), k -> new java.util.TreeSet<>()).add(e.branch());
+        for (BranchTotal b : in.previous()) branchesOf.computeIfAbsent(Objects.toString(b.region(), ""), k -> new java.util.TreeSet<>()).add(b.branch());
+
+        java.util.LinkedHashMap<String, Boolean> regions = new java.util.LinkedHashMap<>();
+        for (RegionLayout layout : in.regions()) regions.put(layout.name(), layout.branchRows());
+        new java.util.TreeSet<>(branchesOf.keySet()).forEach(name -> regions.putIfAbsent(name, false));
+
         int m = 2;
-        int firstMom = m + 1;
-        for (String region : regions) {
-            Row mr = row(s, m++);
-            cell(mr, 12, region, text);
-            BigDecimal[] p = prevByRegion.get(region);
-            if (p != null) {
-                formula(mr, 14, p[0].toPlainString() + "/(10^5)", lakhs);
-                formula(mr, 15, p[1].toPlainString() + "/(10^5)", lakhs);
-            } else {
-                mr.createCell(14).setCellStyle(lakhs);
-                mr.createCell(15).setCellStyle(lakhs);
+        List<Integer> regionRows = new java.util.ArrayList<>();
+        for (Map.Entry<String, Boolean> region : regions.entrySet()) {
+            String name = region.getKey();
+            if (region.getValue()) {
+                for (String branch : branchesOf.getOrDefault(name, Set.of())) {
+                    Row br = row(s, m++);
+                    cell(br, 12, branch, rmLabel);
+                    String byBranch = "," + dataRange(REGION) + "," + quoted(name) + "," + dataRange(BRANCH) + ",M" + m + ")/(10^5)";
+                    momRow(br, m, prevByBranch.get(name + " " + branch),
+                            "SUMIFS(" + dataRange(TOTAL_REV) + byBranch, "SUMIFS(" + dataRange(NET_REVENUE) + byBranch);
+                }
             }
-            formula(mr, 16, "SUMIFS(" + dataRange(TOTAL_REV) + "," + dataRange(REGION) + ",M" + m + ")/(10^5)", lakhs);
-            formula(mr, 17, "SUMIFS(" + dataRange(NET_REVENUE) + "," + dataRange(REGION) + ",M" + m + ")/(10^5)", lakhs);
-            formula(mr, 18, mom("Q", "O", m), percent);
-            formula(mr, 19, mom("R", "P", m), percent);
+            Row mr = row(s, m++);
+            regionRows.add(m);
+            cell(mr, 12, name, bold);
+            momRow(mr, m, prevByRegion.get(name),
+                    "SUMIFS(" + dataRange(TOTAL_REV) + "," + dataRange(REGION) + ",M" + m + ")/(10^5)",
+                    "SUMIFS(" + dataRange(NET_REVENUE) + "," + dataRange(REGION) + ",M" + m + ")/(10^5)");
         }
         Row mt = row(s, m++);
         cell(mt, 12, "TOTAL", bold);
         for (int c = 14; c <= 17; c++) {
             String cc = col(c);
-            formula(mt, c, regions.isEmpty() ? "0" : "SUM(" + cc + firstMom + ":" + cc + (m - 1) + ")", lakhs);
+            // Region rows only: branch rows are already inside their region.
+            formula(mt, c, regionRows.isEmpty() ? "0" : "SUM(" + String.join(",", regionRows.stream().map(x -> cc + x).toList()) + ")", lakhs);
         }
         formula(mt, 18, mom("Q", "O", m), percent);
         formula(mt, 19, mom("R", "P", m), percent);
         cell(row(s, m + 1), 12, "MOM figures in lakhs", text);
         if (in.draft()) cell(row(s, m + 2), 12, "DRAFT — " + cur + " is not locked yet", bold);
+    }
+
+    /** O–T of one region-section row: previous month as values (blank if none), this month as formulas, MOM %. */
+    private void momRow(Row r, int excelRow, BigDecimal[] previous, String gross, String net) {
+        if (previous != null) {
+            formula(r, 14, previous[0].toPlainString() + "/(10^5)", lakhs);
+            formula(r, 15, previous[1].toPlainString() + "/(10^5)", lakhs);
+        } else {
+            r.createCell(14).setCellStyle(lakhs);
+            r.createCell(15).setCellStyle(lakhs);
+        }
+        formula(r, 16, gross, lakhs);
+        formula(r, 17, net, lakhs);
+        formula(r, 18, mom("Q", "O", excelRow), percent);
+        formula(r, 19, mom("R", "P", excelRow), percent);
+    }
+
+    private static BigDecimal[] zeros() {
+        return new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO};
+    }
+
+    private static void add(BigDecimal[] v, BranchTotal b) {
+        v[0] = v[0].add(nz(b.gross()));
+        v[1] = v[1].add(nz(b.net()));
+    }
+
+    private static String quoted(String text) {
+        return "\"" + text.replace("\"", "\"\"") + "\"";
     }
 
     private static String mom(String now, String before, int r) {

@@ -53,6 +53,13 @@ class ClientController {
     }
 
     /** Counts for the "needs attention" lists (shared PAN, no RM, no PAN). */
+    /** RM id → how many clients have that RM today (the Organisation screen's counts). */
+    @GetMapping("/count-by-rm")
+    @PreAuthorize(Roles.MASTER_READ)
+    java.util.Map<Long, Long> countByRm() {
+        return service.countByRm();
+    }
+
     @GetMapping("/attention")
     @PreAuthorize(Roles.MASTER_READ)
     ClientService.Attention attention() {
@@ -115,6 +122,18 @@ class ClientController {
     }
 
     record GuardianPanRequest(@Size(max = 500) String reason) {
+    }
+
+    /** Two records of one person: this one is merged into {@code intoClientId} and removed (R-07). */
+    @PostMapping("/{id}/merge")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize(Roles.MASTER_WRITE)
+    void merge(@PathVariable long id, @Valid @RequestBody MergeRequest req) {
+        service.merge(id, req.intoClientId(), Boolean.TRUE.equals(req.keepThisPan()), req.reason());
+    }
+
+    /** {@code keepThisPan}: the kept client takes this record's PAN; the other PAN is remembered as a former PAN. */
+    record MergeRequest(@NotNull Long intoClientId, Boolean keepThisPan, @Size(max = 500) String reason) {
     }
 
     /** Change the RM of several clients from the same date, all or none. */

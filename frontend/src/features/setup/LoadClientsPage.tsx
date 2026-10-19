@@ -3,6 +3,7 @@ import { api, errorText } from '../../api/client';
 import type { LoadPreview, LoadResult, MatchStatus } from '../../api/types';
 import { useJob, jobErrorText } from '../../api/useJob';
 import { formatMoney } from '../../format';
+import { JobProgressBar } from '../../components/JobProgressBar';
 
 const STATUS_TEXT: Record<MatchStatus, string> = {
   MATCHED: 'same name',
@@ -196,7 +197,7 @@ export function LoadClientsPage() {
         </>
       )}
 
-      {running && <p className="muted">Loading… this can take a minute.</p>}
+      {running && <JobProgressBar job={job} label="Loading clients…" />}
       {jobError && <p className="error">{jobError}</p>}
       {job?.status === 'FAILED' && <p className="error">Nothing was loaded: {jobErrorText(job)}</p>}
       {job?.status === 'DONE' && job.result && (

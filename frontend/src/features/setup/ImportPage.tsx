@@ -4,6 +4,7 @@ import type { ImportResult } from '../../api/types';
 import { useJob, jobErrorText } from '../../api/useJob';
 import { useAuth } from '../../app/auth';
 import { canEditMasters } from '../../app/permissions';
+import { JobProgressBar } from '../../components/JobProgressBar';
 
 /** Upload the masters workbook: "Check file" is a dry run, "Import" applies it (all or nothing). */
 export function ImportPage() {
@@ -59,7 +60,7 @@ export function ImportPage() {
       )}
       {error && <p className="error">{error}</p>}
       {jobError && <p className="error">{jobError}</p>}
-      {running && <p className="muted">Working…</p>}
+      {running && <JobProgressBar job={job} label="Importing…" />}
       {job?.status === 'FAILED' && <p className="error">The import failed: {jobErrorText(job)}</p>}
       {result && <ImportResultView result={result} />}
     </section>

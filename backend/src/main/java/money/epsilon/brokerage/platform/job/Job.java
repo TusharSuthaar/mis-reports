@@ -50,6 +50,10 @@ class Job {
     @Column(name = "request_id")
     private String requestId;
 
+    /** Last {@link JobProgress.Snapshot} as JSON; written by the runner outside the job's transaction. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String progress;
+
     protected Job() {
     }
 
@@ -106,4 +110,5 @@ class Job {
     Instant getStartedAt() { return startedAt; }
     Instant getFinishedAt() { return finishedAt; }
     String getRequestId() { return requestId; }
+    String getProgress() { return progress; }
 }

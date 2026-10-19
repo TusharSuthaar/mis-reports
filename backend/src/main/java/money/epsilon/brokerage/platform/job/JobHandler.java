@@ -15,4 +15,12 @@ public interface JobHandler {
 
     /** @return the job result, stored as JSON (may be null) */
     JsonNode run(JsonNode payload) throws Exception;
+
+    /**
+     * True for work that changes data from a plan made at its start (imports, loads, processing): two at once would both
+     * plan from the same data (e.g. both add the same clients). A second one is refused while one is queued or running.
+     */
+    default boolean oneAtATime() {
+        return false;
+    }
 }

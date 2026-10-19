@@ -16,6 +16,10 @@ public interface ClientRmAssignmentRepository extends JpaRepository<ClientRmAssi
 
     List<ClientRmAssignment> findByClientIdInAndValidToIsNull(Collection<Long> clientIds);
 
+    List<ClientRmAssignment> findByRmIdAndValidToIsNull(Long rmId);
+
+    List<ClientRmAssignment> findByRmIdAndValidFromAfter(Long rmId, LocalDate day);
+
     @Query("select a from ClientRmAssignment a where a.clientId = :clientId and a.validFrom <= :day and (a.validTo is null or a.validTo >= :day)")
     Optional<ClientRmAssignment> findOn(Long clientId, LocalDate day);
 

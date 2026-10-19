@@ -48,6 +48,37 @@ class JobIT extends IntegrationTestBase {
     }
 
     @Test
+    void aJobReportsItsProgressFromInsideItsOwnTransaction() {
+        long id = jobs.submit(TestJobHandlers.PROGRESS, null);
+
+        awaitFinished(id);
+        actAs(ADMIN);
+        var progress = jobs.get(id).progress();
+        assertThat(progress.get("step").asInt()).isEqualTo(2);
+        assertThat(progress.get("steps").asInt()).isEqualTo(2);
+        assertThat(progress.get("label").asText()).isEqualTo("Saving");
+        assertThat(progress.get("done").asInt()).isEqualTo(2);
+        assertThat(progress.get("total").asInt()).isEqualTo(2);
+    }
+
+    @Test
+    void anImportCannotStartWhileTheSameImportIsStillRunning() {
+        TestJobHandlers.release = new java.util.concurrent.CountDownLatch(1);
+        long first = jobs.submit(TestJobHandlers.SLOW_IMPORT, null);
+        try {
+            assertThatThrownBy(() -> jobs.submit(TestJobHandlers.SLOW_IMPORT, null))
+                    .isInstanceOf(money.epsilon.brokerage.platform.web.RuleViolationException.class)
+                    .hasMessageContaining("already running");
+        } finally {
+            TestJobHandlers.release.countDown();
+        }
+        awaitFinished(first);
+        long second = jobs.submit(TestJobHandlers.SLOW_IMPORT, null);
+        awaitFinished(second);
+        assertThat(repository.findById(second).orElseThrow().getStatus()).isEqualTo(JobStatus.DONE);
+    }
+
+    @Test
     void failingJobEndsFailedWithError() {
         long id = jobs.submit(TestJobHandlers.FAIL, null);
 

@@ -43,6 +43,12 @@ public class JobService {
         if (!runner.supports(type)) {
             throw new IllegalArgumentException("Unknown job type: " + type);
         }
+        if (runner.oneAtATime(type)) {
+            repository.findFirstByTypeAndStatusInOrderByIdAsc(type, EnumSet.of(JobStatus.QUEUED, JobStatus.RUNNING)).ifPresent(j -> {
+                throw new money.epsilon.brokerage.platform.web.RuleViolationException("\"" + runner.titleOf(type) + "\" is already running (started by "
+                        + j.getCreatedBy() + "). Wait until it finishes, then check again: it may already have done this.");
+            });
+        }
         long id = repository.save(new Job(type, runner.toJson(payload), CurrentUser.username(), RequestContext.requestIdOrNew())).getId();
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
@@ -80,7 +86,7 @@ public class JobService {
 
     private JobView toView(Job j) {
         return new JobView(j.getId(), j.getType(), runner.titleOf(j.getType()), j.getStatus(), readJson(j.getResult()), j.getError(),
-                j.getCreatedBy(), j.getCreatedAt(), j.getStartedAt(), j.getFinishedAt(), j.getRequestId());
+                j.getCreatedBy(), j.getCreatedAt(), j.getStartedAt(), j.getFinishedAt(), j.getRequestId(), readJson(j.getProgress()));
     }
 
     private JsonNode readJson(String json) {
@@ -93,6 +99,6 @@ public class JobService {
 
     /** {@code reference}: quote it when a job fails; the same reference is on every log line of the job. */
     public record JobView(Long id, String type, String title, JobStatus status, JsonNode result, String error, String createdBy,
-                          Instant createdAt, Instant startedAt, Instant finishedAt, String reference) {
+                          Instant createdAt, Instant startedAt, Instant finishedAt, String reference, JsonNode progress) {
     }
 }

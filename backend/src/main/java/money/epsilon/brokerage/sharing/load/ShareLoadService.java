@@ -8,6 +8,7 @@ import java.util.Map;
 import money.epsilon.brokerage.client.service.ClientService;
 import money.epsilon.brokerage.org.service.EmployeeService;
 import money.epsilon.brokerage.org.service.OrgViews.EmployeeView;
+import money.epsilon.brokerage.platform.job.JobProgress;
 import money.epsilon.brokerage.platform.text.Text;
 import money.epsilon.brokerage.sharing.load.MasterClientPlan.RmMatch;
 import money.epsilon.brokerage.mapping.domain.SourceAlias.EntityType;
@@ -109,7 +110,7 @@ public class ShareLoadService {
                     0, 0, 0, 0, 0, List.of(), List.of(), null);
         }
         List<ClientService.ClientKey> keys = clients.keys();
-        MasterClientPlan cp = clientPlan(read, keys, from);
+        MasterClientPlan cp = clientPlan(read, clients.matchKeys(), from);
         Rates rates = rates(content, from);
         SharePlan plan = plan(read, rates);
         Map<Long, EmployeeView> people = employees.list().stream().collect(java.util.stream.Collectors.toMap(EmployeeView::id, e -> e));
@@ -178,24 +179,34 @@ public class ShareLoadService {
     /** Used by {@link ShareLoadJob}, inside its transaction. */
     LoadResult apply(String token, String fileName, LocalDate from) {
         if (from == null) throw new IllegalArgumentException("A start date is required");
+        JobProgress progress = JobProgress.current();
+        progress.steps(4);
+        progress.step("Reading the Master MIS", 0);
         byte[] content = files.read(STORE_AREA, token);
         Result read = MasterShareReader.read(content);
         if (read.error() != null) throw new IllegalArgumentException(read.error());
         String reason = "Master MIS " + fileName;
-        MasterClientPlan cp = clientPlan(read, clients.keys(), from);
+        MasterClientPlan cp = clientPlan(read, clients.matchKeys(), from);
+        progress.step("Adding clients and setting their RM", cp.newClients.size() + cp.rmChanges.size());
         for (MasterClientPlan.NewClient n : cp.newClients) {
             long id = clients.createUncoded(n.name(), n.pan());
             clients.setRmFrom(id, n.rmId(), from, reason);
+            progress.advance();
         }
-        for (MasterClientPlan.RmChange c : cp.rmChanges) clients.setRmFrom(c.clientId(), c.toRmId(), from, reason);
+        for (MasterClientPlan.RmChange c : cp.rmChanges) {
+            clients.setRmFrom(c.clientId(), c.toRmId(), from, reason);
+            progress.advance();
+        }
         Rates rates = rates(content, from);
         SharePlan plan = plan(read, rates);
 
         // Partners: create the missing ones (from client rows and partner sheets), then their status and % per product.
+        progress.step("Setting partners and their % per product", plan.newPartners.size() + rates.byKey().size());
         Map<String, Long> created = new HashMap<>();
         for (var e : plan.newPartners.entrySet()) {
             NewPartner np = e.getValue();
             created.put(e.getKey(), partners.create(new PartnerInput(np.type(), np.name(), null, null, null, null, null)).id());
+            progress.advance();
         }
         for (var e : rates.sheet().entrySet()) {
             if (rates.partnerIdByKey().containsKey(e.getKey()) || created.containsKey(e.getKey())) continue;
@@ -222,8 +233,10 @@ public class ShareLoadService {
             for (var pr : e.getValue().entrySet()) {
                 if (shares.setProductPercent(id, pr.getKey(), pr.getValue().multiply(HUNDRED), from, reason)) productPercents++;
             }
+            progress.advance();
         }
         int set = 0, ended = 0;
+        progress.step("Linking clients to their partners", plan.changes.size());
         for (Change c : plan.changes) {
             if (c.action() == Action.END) {
                 shares.end(c.clientId(), c.role(), from.minusDays(1), reason);
@@ -233,6 +246,7 @@ public class ShareLoadService {
                 shares.apply(c.clientId(), partnerId, c.fraction() == null ? null : c.fraction().multiply(HUNDRED), from, reason);
                 set++;
             }
+            progress.advance();
         }
         return new LoadResult(fileName, cp.newClients.size(), cp.rmChanges.size(), set, ended, plan.unchanged, created.size(), plan.zeroPct,
                 plan.unmatched.size(), productPercents, plan.exceptions);
@@ -261,7 +275,7 @@ public class ShareLoadService {
             byProduct.forEach((product, pct) -> f.put(product, fraction(pct)));
             appRates.put(id, f);
         });
-        return SharePlan.build(read.rows(), keys, panCipher::hash, existing, current,
+        return SharePlan.build(read.rows(), clients.matchKeys(), panCipher::hash, existing, current,
                 name -> aliases.resolve(ClientService.INVESTWELL, EntityType.PARTNER, name).orElse(null), rates.byKey(), appRates);
     }
 

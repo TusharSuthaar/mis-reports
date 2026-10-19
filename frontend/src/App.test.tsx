@@ -81,8 +81,8 @@ describe('role-based navigation', () => {
     renderAt('/users');
 
     expect(await screen.findByRole('heading', { name: 'Not allowed' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Users & audit' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Audit log' })).not.toBeInTheDocument();
   });
 
@@ -94,7 +94,7 @@ describe('role-based navigation', () => {
     renderAt('/audit');
 
     expect(await screen.findByRole('heading', { name: 'Audit log' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Users' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Users & audit' })).toBeInTheDocument();
     expect(await screen.findByText('No audit entries match.')).toBeInTheDocument();
   });
 });

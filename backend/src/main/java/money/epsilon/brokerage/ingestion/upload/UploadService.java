@@ -186,6 +186,8 @@ public class UploadService {
         Matcher(PeriodView period) {
             List<ClientKey> keys = clients.keys();
             for (ClientKey k : keys) if (k.panHash() != null) byPan.computeIfAbsent(k.panHash(), x -> new ArrayList<>()).add(k.id());
+            // A PAN corrected on the Clients screen: codes still filed under the old PAN find the corrected client (R-06).
+            clients.formerPans().forEach((hash, id) -> byPan.computeIfAbsent(hash, x -> new ArrayList<>()).add(id));
             rmOn = clients.rmsOn(keys.stream().map(ClientKey::id).toList(), period.toDate());
             byPan.values().forEach(ids -> ids.sort(Comparator.comparing((Long id) -> !rmOn.containsKey(id)).thenComparing(id -> id)));
             for (ClientKey k : keys) {

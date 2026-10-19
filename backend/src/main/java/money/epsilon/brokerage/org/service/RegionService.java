@@ -54,7 +54,7 @@ public class RegionService {
     public List<RegionView> list() {
         Map<Long, Employee> people = employees.findAll().stream().collect(Collectors.toMap(Employee::getId, Function.identity()));
         return regions.findAll().stream()
-                .sorted(Comparator.comparing(r -> r.getName().toLowerCase()))
+                .sorted(ORDER)
                 .map(r -> view(r, people))
                 .toList();
     }
@@ -75,7 +75,7 @@ public class RegionService {
         if (regions.findByNameIgnoreCase(clean).isPresent()) {
             throw new RuleViolationException("Region '" + clean + "' already exists");
         }
-        Region region = regions.save(new Region(clean));
+        Region region = regions.save(new Region(clean, regions.maxPosition() + 1));
         RegionView view = view(region, null);
         audit.record(AUDIT_REGION, region.getId(), "CREATE", null, view);
         return view;
@@ -117,8 +117,6 @@ public class RegionService {
             throw new RuleViolationException(rd.getName() + " is already the RD of this region");
         }
         DatedHistory.makeRoom(regionLatest, from, rds, audit, AUDIT_RD, this::auditView, reason);
-        Optional<RdAssignment> personLatest = rds.findFirstByEmployeeIdOrderByValidFromDesc(employeeId);
-        DatedHistory.makeRoom(personLatest, from, rds, audit, AUDIT_RD, this::auditView, reason);
         DatedHistory.add(new RdAssignment(regionId, employeeId, from, rd.getExitedOn(), reason), rds, audit, AUDIT_RD, this::auditView);
     }
 
@@ -135,6 +133,25 @@ public class RegionService {
         return AssignmentAudit.of(a.getRegionId(), a.getEmployeeId(), a);
     }
 
+    /** Moves the region to {@code position} (1 = first; the others shift) and/or sets its END branch rows. */
+    @Transactional
+    public RegionView arrange(long id, Integer position, Boolean endBranchRows) {
+        Region region = find(id);
+        RegionView before = view(region, null);
+        if (position != null) {
+            List<Region> ordered = new java.util.ArrayList<>(regions.findAll().stream().sorted(ORDER).toList());
+            ordered.removeIf(r -> r.getId().equals(id));
+            ordered.add(Math.max(0, Math.min(position - 1, ordered.size())), region);
+            for (int i = 0; i < ordered.size(); i++) ordered.get(i).setPosition(i + 1);
+        }
+        if (endBranchRows != null) region.setEndBranchRows(endBranchRows);
+        RegionView after = view(region, null);
+        audit.record(AUDIT_REGION, id, "UPDATE", before, after);
+        return after;
+    }
+
+    static final Comparator<Region> ORDER = Comparator.comparingInt(Region::getPosition).thenComparing(r -> r.getName().toLowerCase());
+
     private Region find(long id) {
         return regions.findById(id).orElseThrow(() -> new NotFoundException("Region " + id + " not found"));
     }
@@ -145,6 +162,6 @@ public class RegionService {
                 .map(a -> people != null ? people.get(a.getEmployeeId()) : employees.findById(a.getEmployeeId()).orElse(null))
                 .map(e -> new PersonRef(e.getId(), e.getEmpCode(), e.getName()))
                 .orElse(null);
-        return new RegionView(r.getId(), r.getName(), rd);
+        return new RegionView(r.getId(), r.getName(), rd, r.getPosition(), r.isEndBranchRows());
     }
 }

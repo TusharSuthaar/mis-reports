@@ -12,7 +12,7 @@ reads or writes those tables with SQL — it calls the owner's public service.
 | `platform` | `app_user`, `audit_log`, `job`, `error_log`, `spring_session`, `spring_session_attributes` | Shared kernel: login, roles, users, audit log, background jobs, request IDs + JSON logs, activity, error log, PAN crypto, dated history, Excel reading, upload/import pipeline, file storage, errors | `AuditService`, `JobService`, `PanCipher`, `DatedHistory`, `Text`, `ExcelFile`, `UploadedFile`, `TransactionalJob`, `FileStore`, `RequestContext`, `ActivityService` |
 | `org` | `region`, `branch`, `employee`, `branch_region_assignment`, `rd_assignment`, `rm_branch_assignment` | Regions, branches, RMs/RDs and their history; org chart on any date | `EmployeeService`, `OrgChartService` |
 | `partner` | `partner`, `partner_rm_link` | Sub brokers, referral partners, POSPs; partner↔RM links | `PartnerService`, `PartnerRmLinkService` |
-| `client` | `client`, `client_external_id`, `client_rm_assignment` | Clients (one per PAN), their codes in source systems, RM over time, PAN search/edit | `ClientService` |
+| `client` | `client`, `client_external_id`, `client_rm_assignment`, `client_former_pan` | Clients (one per PAN), their codes in source systems, RM over time, PAN search/edit | `ClientService` |
 | `mapping` | `source_alias` | Remembered spellings: "this name in a file = that RM / partner" | `AliasService` |
 | `sharing` | `client_partner_share`, `partner_product_share`, `branch_partner` | Which partner shares each client and each partner's % per product, over time (client exceptions on the link); branch rules (a partner for every client of a branch); Master MIS upload; partner merge | `ShareService`, `ShareLoadService`, `PartnerMergeService` |
 | `ingestion` | `finesse_client`, `upload`, `staged_row` | Finesse client master; monthly brokerage upload → review → save | `UploadService`, `FinesseClientMasterService` |
@@ -20,6 +20,11 @@ reads or writes those tables with SQL — it calls the owner's public service.
 | `ledger` | `brokerage_line` | Append-only brokerage lines per client per month (+ corrections) | `LedgerService` |
 | `attribution` | `attribution_run`, `brokerage_split` | Splits each line: sub broker, referral, Epsilon; RM/branch snapshot | `AttributionService` |
 | `reporting` | `v_line_split` | END file and reports, read from the stored split only | `EndFileService` |
+| `tax` | `product_tax_rate` | Products & taxes: GST and TDS % per product, dated | `ProductTaxService` |
+| `intermediary` | `intermediary`, `intermediary_terms` | Platforms investments are booked through (GoldenPi, SMC…) and their dated brokerage terms; "Platforms" on screen | `IntermediaryService` |
+| `bond` | `bond_entry` | Bond deals entered on the Bonds screen, with their brokerage (gross, TDS, GST, net, invoice) | `BondService` |
+| `aif` | `aif_entry`, `aif_instalment` | AIF commitments entered on the AIF screen, their drawdowns, brokerage and per-deal sharing % | `AifService` |
+| `fd` | `fd_entry` | FD bookings entered on the FD screen, with their commission (gross, TDS, GST, net, invoice) | `FdService` |
 | `masterimport` | — | One-off org/partner masters workbook import (uses other modules' services) | `MasterImportProcessor` |
 
 ## Allowed directions (simplified)
@@ -30,5 +35,9 @@ org  ←  partner, client, sharing, attribution, reporting
 client  ←  ingestion, sharing, attribution, reporting
 period / ledger  ←  ingestion, attribution, reporting
 attribution  ←  ingestion (void a month's split), reporting (read-only view)
+sharing (Product)  ←  tax
+client, org, partner, tax  ←  fd  ←  attribution (FD lines), reporting (FD labels)
+client, org, partner, tax, intermediary  ←  bond  ←  attribution (bond lines), reporting (bond labels)
+client, org, partner, tax, intermediary  ←  aif  ←  attribution (AIF lines), reporting (AIF labels)
 ```
 No cycles between modules (checked by `ArchitectureTest`).

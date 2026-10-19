@@ -329,6 +329,20 @@ public class ShareService {
         return result;
     }
 
+    /**
+     * A partner's share for one product on a day, as the split needs it: its % from the rate card (0 while its approval is
+     * pending). {@code fraction} is null when the partner has no % for the product — the caller stops (R-54).
+     */
+    @Transactional(readOnly = true)
+    public ProductShare productShare(long partnerId, Product product, LocalDate day) {
+        PartnerView p = partners.get(partnerId);
+        BigDecimal fraction = p.status() == PartnerStatus.PENDING ? BigDecimal.ZERO : partnerFractionOn(partnerId, product.code(), day);
+        return new ProductShare(p.id(), p.type(), p.name(), fraction);
+    }
+
+    public record ProductShare(long partnerId, PartnerType role, String partnerName, BigDecimal fraction) {
+    }
+
     private BigDecimal partnerFractionOn(long partnerId, String product, LocalDate day) {
         return productShares.findAllOn(Set.of(partnerId), product, day).stream().findFirst().map(PartnerProductShare::getShare).orElse(null);
     }

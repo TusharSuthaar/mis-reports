@@ -261,6 +261,123 @@ class MonthLifecycleIT extends IntegrationTestBase {
                 .param(String.valueOf(periodId)).query(Long.class).single()).isEqualTo(2);
     }
 
+    @Test
+    void theMonthsFdEntriesAreSplitWithTheirPartnersFdPercentAndShownInTheEndFile() throws Exception {
+        long periodId = saveMonth(file(100));   // MF: client 1 net 100, client 2 net 50, no partners
+        Map<String, Object> fd = new java.util.HashMap<>();
+        fd.put("clientId", client1Id);
+        fd.put("month", month + "-01");
+        fd.put("rmId", rmId);
+        fd.put("partnerId", refId);
+        fd.put("fdName", "FD CO " + tag);
+        fd.put("fdNo", "N" + tag);
+        fd.put("interestFrequency", "CUMULATIVE");
+        fd.put("depositDate", month + "-01");
+        fd.put("periodMonths", 12);
+        fd.put("maturityDate", month.plusMonths(12) + "-01");
+        fd.put("ratePercent", 8);
+        fd.put("amount", 100000);
+        fd.put("certificate", "RECEIVED");
+        fd.put("marginPercent", 1);   // commission 1,000 excl. GST
+        postJson("/api/fd", fd, admin, 201);
+
+        // The referral partner chosen on the FD has no FD % yet: Process stops and names it.
+        JsonNode failed = runJob(postJson("/api/months/" + periodId + "/process", Map.of(), admin, 202).get("jobId").asLong());
+        assertThat(failed.get("status").asText()).isEqualTo("FAILED");
+        assertThat(failed.get("error").asText()).contains("no FD %").contains("REF " + tag);
+
+        postJson("/api/partners/" + refId + "/products", Map.of("product", "FD", "percent", 50, "from", month + "-01"), admin, 204);
+        JsonNode run = process(periodId);
+        assertThat(run.get("net").decimalValue()).isEqualByComparingTo("1150");      // MF 150 + FD 1,000
+        assertThat(run.get("partners").decimalValue()).isEqualByComparingTo("500");   // 50% of the FD commission
+        // Re-running keeps one FD line (the earlier one is voided, never changed).
+        process(periodId);
+        assertThat(jdbc.sql("SELECT count(*) FROM brokerage_line WHERE period_id = ? AND product_type = 'FD' AND NOT voided").param(periodId)
+                .query(Long.class).single()).isEqualTo(1);
+
+        MockHttpServletResponse end = mvc.perform(get("/api/months/" + periodId + "/end-file").session(admin)).andExpect(status().isOk()).andReturn().getResponse();
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(end.getContentAsByteArray()))) {
+            var data = wb.getSheetAt(2);
+            var row = StreamSupport.stream(data.spliterator(), false)
+                    .filter(r -> r.getCell(28) != null && r.getCell(28).getStringCellValue().startsWith("FD: FD CO " + tag)).findFirst().orElseThrow();
+            assertThat(row.getCell(8).getStringCellValue()).isEqualTo("ONE " + tag);
+            assertThat(row.getCell(10).getNumericCellValue()).isEqualTo(100000.0);   // AUM / amount invested
+            assertThat(row.getCell(15).getNumericCellValue()).isEqualTo(1000.0);     // FD column
+            assertThat(row.getCell(22).getNumericCellValue()).isEqualTo(1000.0);     // Total Rev
+            assertThat(row.getCell(26).getNumericCellValue()).isEqualTo(500.0);      // Net Revenue
+            assertThat(row.getCell(5).getStringCellValue()).isEqualTo("REF " + tag);
+        }
+    }
+
+    @Test
+    void theMonthsBondDealsAreSplitWithTheirPartnersBondsPercentAndShownInTheEndFile() throws Exception {
+        long periodId = saveMonth(file(100));   // MF: client 1 net 100, client 2 net 50
+        long platform = postJson("/api/platforms", Map.of("name", "PF " + tag), admin, 201).get("id").asLong();
+        postJson("/api/platforms/" + platform + "/terms", Map.of("gstInclusive", false, "tdsPercent", 5, "ourShare", 100, "from", month + "-01"), admin, 204);
+        Map<String, Object> bond = new java.util.HashMap<>();
+        bond.put("clientId", client2Id);
+        bond.put("month", month + "-01");
+        bond.put("rmId", rmId);
+        bond.put("partnerId", sbId);
+        bond.put("platformId", platform);
+        bond.put("bondName", "BOND CO " + tag);
+        bond.put("isin", "ISIN" + tag);
+        bond.put("investmentDate", month + "-05");
+        bond.put("quantity", 10);
+        bond.put("investmentAmount", 400000);
+        bond.put("accruedInterest", 1000);
+        bond.put("markupPercent", 0.5);   // gross 2,000 (GST on top)
+        postJson("/api/bonds", bond, admin, 201);
+
+        postJson("/api/partners/" + sbId + "/products", Map.of("product", "BOND", "percent", 40, "from", month + "-01"), admin, 204);
+        JsonNode run = process(periodId);
+        assertThat(run.get("net").decimalValue()).isEqualByComparingTo("2150");     // MF 150 + bond 2,000
+        assertThat(run.get("partners").decimalValue()).isEqualByComparingTo("800");  // 40% of the bond's gross
+
+        MockHttpServletResponse end = mvc.perform(get("/api/months/" + periodId + "/end-file").session(admin)).andExpect(status().isOk()).andReturn().getResponse();
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(end.getContentAsByteArray()))) {
+            var row = StreamSupport.stream(wb.getSheetAt(2).spliterator(), false)
+                    .filter(r -> r.getCell(28) != null && r.getCell(28).getStringCellValue().startsWith("Bond: BOND CO " + tag)).findFirst().orElseThrow();
+            assertThat(row.getCell(8).getStringCellValue()).isEqualTo("TWO " + tag);
+            assertThat(row.getCell(10).getNumericCellValue()).isEqualTo(401000.0);   // AUM = consideration
+            assertThat(row.getCell(16).getNumericCellValue()).isEqualTo(2000.0);     // Bonds column
+            assertThat(row.getCell(26).getNumericCellValue()).isEqualTo(1200.0);     // Net Revenue
+        }
+    }
+
+    @Test
+    void anAifDealsOwnSharingPercentIsUsedAndItShowsInTheEndFile() throws Exception {
+        long periodId = saveMonth(file(100));   // MF: client 1 net 100, client 2 net 50
+        long platform = postJson("/api/platforms", Map.of("name", "AIFPF " + tag), admin, 201).get("id").asLong();
+        postJson("/api/platforms/" + platform + "/terms", Map.of("gstInclusive", false, "tdsPercent", 2, "ourShare", 100, "from", month + "-01"), admin, 204);
+        // The referral partner's general AIF % is 20; this deal was agreed at 50.
+        postJson("/api/partners/" + refId + "/products", Map.of("product", "AIF", "percent", 20, "from", month + "-01"), admin, 204);
+        Map<String, Object> aif = new java.util.HashMap<>();
+        aif.put("clientId", client1Id);
+        aif.put("month", month + "-01");
+        aif.put("rmId", rmId);
+        aif.put("partnerId", refId);
+        aif.put("sharingPercent", 50);
+        aif.put("platformId", platform);
+        aif.put("fundName", "FUND " + tag);
+        aif.put("commitment", 1000000);
+        aif.put("markupPercent", 1);    // gross 10,000
+        postJson("/api/aif", aif, admin, 201);
+
+        JsonNode run = process(periodId);
+        assertThat(run.get("net").decimalValue()).isEqualByComparingTo("10150");     // MF 150 + AIF 10,000
+        assertThat(run.get("partners").decimalValue()).isEqualByComparingTo("5000");  // the deal's 50%, not the partner's 20%
+
+        MockHttpServletResponse end = mvc.perform(get("/api/months/" + periodId + "/end-file").session(admin)).andExpect(status().isOk()).andReturn().getResponse();
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(end.getContentAsByteArray()))) {
+            var row = StreamSupport.stream(wb.getSheetAt(2).spliterator(), false)
+                    .filter(r -> r.getCell(28) != null && ("AIF: FUND " + tag).equals(r.getCell(28).getStringCellValue())).findFirst().orElseThrow();
+            assertThat(row.getCell(10).getNumericCellValue()).isEqualTo(1000000.0);   // AUM = commitment
+            assertThat(row.getCell(21).getNumericCellValue()).isEqualTo(10000.0);     // AIF column
+            assertThat(row.getCell(26).getNumericCellValue()).isEqualTo(5000.0);      // Net Revenue
+        }
+    }
+
     // ---- helpers -------------------------------------------------------------------------------------------
 
     long saveMonth(byte[] f) throws Exception {

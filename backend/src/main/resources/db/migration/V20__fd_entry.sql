@@ -1,0 +1,41 @@
+-- FD bookings entered on the FD screen (one row per FD). Revenue figures are stored as worked out on save, with the
+-- GST/TDS % used, so a later rate change never alters a saved entry (R-70).
+CREATE TABLE fd_entry (
+    id                 BIGSERIAL PRIMARY KEY,
+    month              DATE           NOT NULL CHECK (extract(day FROM month) = 1),
+    rm_id              BIGINT         NOT NULL,
+    partner_id         BIGINT,
+    client_id          BIGINT         NOT NULL,
+    mobile             VARCHAR(20),
+    email              VARCHAR(200),
+    address            VARCHAR(500),
+    fd_name            VARCHAR(200)   NOT NULL,
+    fd_no              VARCHAR(60),
+    interest_frequency VARCHAR(20)    NOT NULL,
+    issuer             VARCHAR(200),
+    deposit_date       DATE           NOT NULL,
+    maturity_date      DATE           NOT NULL CHECK (maturity_date > deposit_date),
+    rate_percent       NUMERIC(6, 2)  NOT NULL CHECK (rate_percent >= 0 AND rate_percent <= 100),
+    amount             NUMERIC(16, 2) NOT NULL CHECK (amount > 0),
+    maturity_value     NUMERIC(16, 2),
+    certificate        VARCHAR(20)    NOT NULL,
+    margin_percent     NUMERIC(6, 3)  NOT NULL CHECK (margin_percent >= 0 AND margin_percent <= 100),
+    gross              NUMERIC(16, 2) NOT NULL,
+    tds_applied        BOOLEAN        NOT NULL,
+    tds_percent        NUMERIC(6, 3)  NOT NULL,
+    tds                NUMERIC(16, 2) NOT NULL,
+    gst_percent        NUMERIC(6, 3)  NOT NULL,
+    gst                NUMERIC(16, 2) NOT NULL,
+    net                NUMERIC(16, 2) NOT NULL,
+    invoice            NUMERIC(16, 2) NOT NULL,
+    invoice_raised     BOOLEAN        NOT NULL DEFAULT false,
+    payment_status     VARCHAR(20)    NOT NULL DEFAULT 'PENDING',
+    remarks            VARCHAR(1000),
+    status             VARCHAR(20)    NOT NULL DEFAULT 'ACTIVE',
+    created_by         VARCHAR(50)    NOT NULL,
+    created_at         TIMESTAMPTZ    NOT NULL DEFAULT now(),
+    updated_by         VARCHAR(50)    NOT NULL,
+    updated_at         TIMESTAMPTZ    NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_fd_entry_month ON fd_entry (month);
+CREATE INDEX ix_fd_entry_client ON fd_entry (client_id);

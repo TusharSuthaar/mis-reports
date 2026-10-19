@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.util.List;
 import money.epsilon.brokerage.org.domain.EmployeeType;
 import money.epsilon.brokerage.org.service.EmployeeService;
+import money.epsilon.brokerage.org.service.RmHandoverService;
 import money.epsilon.brokerage.org.service.OrgViews.EmployeeView;
 import money.epsilon.brokerage.org.service.OrgViews.HistoryEntry;
 import money.epsilon.brokerage.platform.security.Roles;
@@ -27,8 +28,10 @@ import org.springframework.web.bind.annotation.RestController;
 class EmployeeController {
 
     private final EmployeeService service;
+    private final RmHandoverService handover;
 
-    EmployeeController(EmployeeService service) {
+    EmployeeController(EmployeeService service, RmHandoverService handover) {
+        this.handover = handover;
         this.service = service;
     }
 
@@ -65,6 +68,20 @@ class EmployeeController {
     @PreAuthorize(Roles.MASTER_WRITE)
     EmployeeView exit(@PathVariable long id, @Valid @RequestBody EndRequest req) {
         return service.exit(id, req.lastDay(), req.reason());
+    }
+
+    /** The RM leaves and someone takes over their clients, partners and (if asked) RD regions from the next day (R-61). */
+    @PostMapping("/{id}/hand-over")
+    @PreAuthorize(Roles.MASTER_WRITE)
+    RmHandoverService.Result handOver(@PathVariable long id, @Valid @RequestBody HandoverRequest req) {
+        return handover.handOver(id, new RmHandoverService.Handover(req.lastDay(), req.replacementId(), req.newRmName(), req.newRmCode(),
+                !Boolean.FALSE.equals(req.takeOverRd()), req.reason()));
+    }
+
+    record HandoverRequest(@NotNull LocalDate lastDay, Long replacementId,
+                           @Size(max = 200) String newRmName,
+                           @Size(max = 50) String newRmCode, Boolean takeOverRd,
+                           @Size(max = 500) String reason) {
     }
 
     @GetMapping("/{id}/branch")

@@ -42,6 +42,12 @@ public abstract class TransactionalJob<P> implements JobHandler {
         return title;
     }
 
+    /** Imports plan from the data at their start, so they never overlap. */
+    @Override
+    public final boolean oneAtATime() {
+        return true;
+    }
+
     @Override
     public final JsonNode run(JsonNode payloadJson) throws Exception {
         P payload = mapper.treeToValue(payloadJson, payloadType);

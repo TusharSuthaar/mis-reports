@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.StreamSupport;
 import money.epsilon.brokerage.IntegrationTestBase;
@@ -104,14 +105,45 @@ class OrgIT extends IntegrationTestBase {
         postJson("/api/regions/" + north + "/rd", Map.of("employeeId", rd, "from", "2026-04-01"), admin, 204);
         assertThat(rdOf(north)).isEqualTo(rd);
 
-        // The same person becomes RD of another region: their old RD row closes, so 'north' has no RD from then on.
+        // The same person can also be RD of another region; 'north' keeps them.
         postJson("/api/regions/" + south + "/rd", Map.of("employeeId", rd, "from", "2026-08-01"), admin, 204);
         assertThat(rdOf(south)).isEqualTo(rd);
-        JsonNode northHistory = getJson("/api/regions/" + north + "/rd", admin, 200);
-        assertThat(northHistory.get(0).get("validTo").asText()).isEqualTo("2026-07-31");
-        JsonNode chart = getJson("/api/org?date=2026-07-31", admin, 200);
-        assertThat(regionNode(chart, north).get("rd").get("id").asLong()).isEqualTo(rd);
+        assertThat(rdOf(north)).isEqualTo(rd);
     }
+
+    @Test
+    void regionsKeepTheirChosenOrder() throws Exception {
+        long a = region(uniqueName("ALPHA"));
+        long b = region(uniqueName("BETA"));
+        JsonNode moved = patchJson("/api/regions/" + b, Map.of("position", 1, "endBranchRows", true), admin, 200);
+        assertThat(moved.get("position").asInt()).isEqualTo(1);
+        assertThat(moved.get("endBranchRows").asBoolean()).isTrue();
+
+        JsonNode list = getJson("/api/regions", admin, 200);
+        assertThat(list.get(0).get("id").asLong()).isEqualTo(b);
+        List<Long> ids = StreamSupport.stream(list.spliterator(), false).map(r -> r.get("id").asLong()).toList();
+        assertThat(ids.indexOf(b)).isLessThan(ids.indexOf(a));
+        JsonNode chart = getJson("/api/org", admin, 200);
+        assertThat(chart.get("regions").get(0).get("id").asLong()).isEqualTo(b);
+        // Renaming keeps the place.
+        assertThat(patchJson("/api/regions/" + b, Map.of("name", uniqueName("BETA2")), admin, 200).get("position").asInt()).isEqualTo(1);
+    }
+
+    @Test
+    void onePersonCanBeRdOfSeveralRegionsUntilTheyExit() throws Exception {
+        long ho = region(uniqueName("HO"));
+        long llp = region(uniqueName("LLP"));
+        long rd = employee("RM", null);
+        postJson("/api/regions/" + ho + "/rd", Map.of("employeeId", rd, "from", "2026-08-01"), admin, 204);
+        postJson("/api/regions/" + llp + "/rd", Map.of("employeeId", rd, "from", "2026-08-01"), admin, 204);
+        assertThat(rdOf(ho)).isEqualTo(rd);
+        assertThat(rdOf(llp)).isEqualTo(rd);
+
+        postJson("/api/employees/" + rd + "/exit", Map.of("lastDay", "2026-09-30", "reason", "Resigned"), admin, 200);
+        assertThat(getJson("/api/regions/" + ho + "/rd", admin, 200).get(0).get("validTo").asText()).isEqualTo("2026-09-30");
+        assertThat(getJson("/api/regions/" + llp + "/rd", admin, 200).get(0).get("validTo").asText()).isEqualTo("2026-09-30");
+    }
+
 
     @Test
     void exitClosesBranchAndRdOnTheLastDay() throws Exception {

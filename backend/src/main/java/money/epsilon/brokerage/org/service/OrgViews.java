@@ -15,7 +15,7 @@ public final class OrgViews {
     public record PersonRef(Long id, String empCode, String name) {
     }
 
-    public record RegionView(Long id, String name, PersonRef currentRd) {
+    public record RegionView(Long id, String name, PersonRef currentRd, int position, boolean endBranchRows) {
     }
 
     public record BranchView(Long id, String name, Long regionId, String regionName) {

@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 interface JobRepository extends JpaRepository<Job, Long> {
 
     List<Job> findByStatusIn(Collection<JobStatus> statuses);
+
+    java.util.Optional<Job> findFirstByTypeAndStatusInOrderByIdAsc(String type, Collection<JobStatus> statuses);
 }

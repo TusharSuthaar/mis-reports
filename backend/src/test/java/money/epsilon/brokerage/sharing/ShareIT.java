@@ -302,6 +302,26 @@ class ShareIT extends IntegrationTestBase {
     }
 
     @Test
+    void aPanCorrectedOnTheClientsScreenStillMatchesAMasterWithTheOldPan() throws Exception {
+        long region = postJson("/api/regions", Map.of("name", "FR " + tag), admin, 201).get("id").asLong();
+        long branch = postJson("/api/branches", Map.of("name", "FB " + tag, "regionId", region, "from", "2026-01-01"), admin, 201).get("id").asLong();
+        postJson("/api/employees", Map.of("name", "FRM " + tag, "type", "RM", "branchId", branch, "from", "2026-01-01"), admin, 201);
+        String wrongPan = money.epsilon.brokerage.ingestion.FinesseFiles.pan(Long.parseLong(tag) * 10 + 8);
+        String rightPan = money.epsilon.brokerage.ingestion.FinesseFiles.pan(Long.parseLong(tag) * 10 + 9);
+        byte[] file = masterWithRms(new String[]{"FRM " + tag, "TYPO PAN " + tag, wrongPan});
+        load(preview(file, "2026-08-01"), "2026-08-01");
+        long client = getJson("/api/clients?q=" + wrongPan, admin, 200).get("items").get(0).get("id").asLong();
+
+        postJson("/api/clients/" + client + "/pan", Map.of("pan", rightPan, "reason", "typo in master"), admin, 204);
+
+        // The master still has the wrong PAN: it finds the corrected client, it does not add a new one.
+        JsonNode again = preview(file, "2026-08-01");
+        assertThat(again.get("newClients").asInt()).isZero();
+        assertThat(again.get("rmChangeCount").asInt()).isZero();
+        assertThat(getJson("/api/clients?q=TYPO PAN " + tag, admin, 200).get("total").asInt()).isEqualTo(1);
+    }
+
+    @Test
     void theMasterAddsClientsByPanOrByNameAndSetsTheirRm() throws Exception {
         long region = postJson("/api/regions", Map.of("name", "MR " + tag), admin, 201).get("id").asLong();
         long branch = postJson("/api/branches", Map.of("name", "MB " + tag, "regionId", region, "from", "2026-01-01"), admin, 201).get("id").asLong();

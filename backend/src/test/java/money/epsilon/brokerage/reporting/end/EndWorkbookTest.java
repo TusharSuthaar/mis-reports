@@ -85,6 +85,34 @@ class EndWorkbookTest {
     }
 
     @Test
+    void regionSectionFollowsTheOrgOrderAndShowsBranchRowsAboveARegion() throws Exception {
+        List<EndWorkbook.RegionLayout> layout = List.of(new EndWorkbook.RegionLayout("BIHAR & EUP", true), new EndWorkbook.RegionLayout("EMPTY LLP", false));
+        try (XSSFWorkbook wb = open(EndWorkbook.build(new EndWorkbook.Input(SEP, false, rows(), null, List.of(), layout)))) {
+            Sheet summary = wb.getSheet("Summary");
+            List<String> labels = new java.util.ArrayList<>();
+            for (int r = 2; r <= 6; r++) labels.add(summary.getRow(r).getCell(12).getStringCellValue());
+            assertThat(labels).containsExactly("KOLKATA", "PATNA", "BIHAR & EUP", "EMPTY LLP", "TOTAL");
+            double kolkata = summary.getRow(2).getCell(16).getNumericCellValue();
+            double patna = summary.getRow(3).getCell(16).getNumericCellValue();
+            double region = summary.getRow(4).getCell(16).getNumericCellValue();
+            assertThat(kolkata + patna).isEqualTo(region, within(1e-9));
+            assertThat(region * 100_000).isEqualTo(155.0, within(1e-6));
+            // TOTAL counts the region once, not its branch rows again.
+            assertThat(summary.getRow(6).getCell(16).getNumericCellValue()).isEqualTo(region, within(1e-9));
+        }
+    }
+
+    @Test
+    void formulaResultsAreStoredSoPreviewsShowNumbers() throws Exception {
+        try (XSSFWorkbook wb = open(EndWorkbook.build(new EndWorkbook.Input(SEP, false, rows(), null, List.of())))) {
+            Row total = wb.getSheet("Data_Sep'26").getRow(5);
+            assertThat(total.getCell(EndWorkbook.TOTAL_REV).getNumericCellValue()).isEqualTo(155.0, within(1e-9));
+            Row grand = find(wb.getSheet("Summary"), "Grand Total");
+            assertThat(grand.getCell(1).getNumericCellValue()).isEqualTo(155.0, within(1e-9));
+        }
+    }
+
+    @Test
     void everyFormulaWorksAndTheTotalsAgree() throws Exception {
         List<BranchTotal> previous = List.of(new BranchTotal("BIHAR & EUP", "PATNA", new BigDecimal("80"), new BigDecimal("50")));
         try (XSSFWorkbook wb = open(EndWorkbook.build(new EndWorkbook.Input(SEP, true, rows(), YearMonth.of(2026, 8), previous)))) {

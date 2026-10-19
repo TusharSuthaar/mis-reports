@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useState, type FormEvent } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { PARTNER_TYPE_LABEL, type ClientDetail, type ClientRow, type Employee, type HistoryEntry, type Page, type Partner, type Share } from '../../api/types';
 import { useLoad } from '../../api/useLoad';
@@ -9,6 +9,10 @@ import { canEditMasters } from '../../app/permissions';
 import { DatedChangeForm } from '../../components/DatedChangeForm';
 import { HistoryTable } from '../../components/HistoryTable';
 import { SidePanel } from '../../components/SidePanel';
+import { Tabs, useTab } from '../../components/Tabs';
+import type { AifEntry, BondEntry, FdEntry } from '../../api/types';
+import { Amount } from '../../components/Amount';
+import { formatMonth } from '../fd/FdPage';
 import { formatDate, formatDateTime, todayIso } from '../../format';
 
 const PAGE_SIZE = 50;
@@ -16,15 +20,21 @@ const PAGE_SIZE = 50;
 export function ClientsPage() {
   const { user } = useAuth();
   const canEdit = canEditMasters(user?.role);
-  const [urlParams] = useSearchParams();
+  const [urlParams, setUrlParams] = useSearchParams();
+  const navigate = useNavigate();
   const [search, setSearch] = useState(urlParams.get('q') ?? '');
   const [query, setQuery] = useState(urlParams.get('q') ?? '');
-  const [show, setShow] = useState<Show>('');
+  const show = (urlParams.get('show') ?? '') as Show;
+  const setShow = (v: Show) => {
+    const next = new URLSearchParams(urlParams);
+    if (v) next.set('show', v);
+    else next.delete('show');
+    setUrlParams(next, { replace: true });
+  };
   const [adding, setAdding] = useState(false);
   const attention = useLoad<{ sharedPan: number; noRm: number; noPan: number }>('/api/clients/attention');
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [open, setOpen] = useState<number | null>(null);
   const employees = useLoad<Employee[]>('/api/employees');
   const params = new URLSearchParams({ page: String(page), size: String(PAGE_SIZE), needsRm: String(show === 'NO_RM') });
   if (show === 'SHARED_PAN' || show === 'NO_PAN') params.set('attention', show);
@@ -42,7 +52,6 @@ export function ClientsPage() {
     return () => window.clearTimeout(t);
   }, [search]);
 
-  const close = useCallback(() => setOpen(null), []);
   const rms = (employees.data ?? []).filter((e) => e.status === 'ACTIVE');
   const data = clients.data;
   const lastPage = data ? Math.max(0, Math.ceil(data.total / PAGE_SIZE) - 1) : 0;
@@ -57,33 +66,47 @@ export function ClientsPage() {
   return (
     <section>
       <div className="page-head">
-        <h1>Clients</h1>
+        <div>
+          <h1>Clients</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            The client master: one record per PAN, with its RM and partners. Open a client to change anything about it.
+          </p>
+        </div>
         {canEdit && (
           <button type="button" onClick={() => setAdding(true)}>
             Add client
           </button>
         )}
       </div>
-      <div className="filters">
-        <label>
+      <div className="filters list-filters">
+        <label className="grow">
           Search
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, client code or full PAN" />
         </label>
-        <label>
-          Show
-          <select
-            value={show}
-            onChange={(e) => {
-              setPage(0);
-              setShow(e.target.value as Show);
-            }}
-          >
-            <option value="">All clients</option>
-            <option value="NO_RM">Without an RM{attention.data ? ` (${attention.data.noRm})` : ''}</option>
-            <option value="SHARED_PAN">PAN on more than one record{attention.data ? ` (${attention.data.sharedPan})` : ''}</option>
-            <option value="NO_PAN">Without a PAN{attention.data ? ` (${attention.data.noPan})` : ''}</option>
-          </select>
-        </label>
+        <div className="chip-row" role="group" aria-label="Show">
+          {(
+            [
+              ['', 'All clients', null],
+              ['NO_RM', 'Without an RM', attention.data?.noRm],
+              ['SHARED_PAN', 'PAN on several records', attention.data?.sharedPan],
+              ['NO_PAN', 'Without a PAN', attention.data?.noPan],
+            ] as [Show, string, number | null | undefined][]
+          ).map(([key, text, n]) => (
+            <button
+              key={key || 'all'}
+              type="button"
+              className={show === key ? 'chip active' : 'chip'}
+              aria-pressed={show === key}
+              onClick={() => {
+                setPage(0);
+                setShow(key);
+              }}
+            >
+              {text}
+              {n != null && <span className="count">{n}</span>}
+            </button>
+          ))}
+        </div>
       </div>
       {show === 'SHARED_PAN' && (
         <p className="muted">
@@ -136,9 +159,9 @@ export function ClientsPage() {
                   )}
                   <td className="mono">{c.iwellCode}</td>
                   <td>
-                    <button type="button" className="cell-link" onClick={() => setOpen(c.id)}>
+                    <Link to={`/clients/${c.id}`} className="cell-link">
                       {c.name}
-                    </button>
+                    </Link>
                   </td>
                   <td className="mono">{c.pan}</td>
                   <td>{c.rmName ?? <span className="badge warn-badge">needs RM</span>}</td>
@@ -169,23 +192,10 @@ export function ClientsPage() {
               setAdding(false);
               clients.reload();
               attention.reload();
-              setOpen(id);
+              navigate(`/clients/${id}`);
             }}
           />
         </SidePanel>
-      )}
-      {open !== null && (
-        <ClientPanel
-          id={open}
-          rms={rms}
-          canEdit={canEdit}
-          onClose={close}
-          onChanged={() => {
-            clients.reload();
-            shares.reload();
-            attention.reload();
-          }}
-        />
       )}
     </section>
   );
@@ -329,64 +339,160 @@ function BulkRmBar({ ids, rms, onDone }: { ids: number[]; rms: Employee[]; onDon
   );
 }
 
-function ClientPanel({ id, rms, canEdit, onClose, onChanged }: { id: number; rms: Employee[]; canEdit: boolean; onClose: () => void; onChanged: () => void }) {
+const PROFILE_TABS = [
+  { key: 'profile', label: 'Profile' },
+  { key: 'rm', label: 'RM history' },
+  { key: 'partners', label: 'Partners & sharing' },
+  { key: 'holdings', label: 'Holdings' },
+  { key: 'changes', label: 'Changes' },
+];
+
+/** One client on its own page: profile (PAN, codes, RM), RM history, partners, holdings in other products, changes. */
+export function ClientProfilePage() {
+  const { id: idParam } = useParams();
+  const id = Number(idParam);
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const canEdit = canEditMasters(user?.role);
   const detail = useLoad<ClientDetail>(`/api/clients/${id}`);
   const history = useLoad<HistoryEntry[]>(`/api/clients/${id}/rm`);
+  const employees = useLoad<Employee[]>('/api/employees');
+  const rms = (employees.data ?? []).filter((e) => e.status === 'ACTIVE');
   const [rmId, setRmId] = useState('');
+  const [tab, setTab] = useTab(PROFILE_TABS);
   const c = detail.data?.client;
+  const changed = () => {
+    detail.reload();
+    history.reload();
+  };
 
   return (
-    <SidePanel title={c?.name ?? 'Client'} onClose={onClose}>
+    <section aria-label={c?.name ?? 'Client'}>
+      <p style={{ margin: '0 0 8px' }}>
+        <Link to="/clients">← Clients</Link>
+      </p>
       {detail.error && <p className="error">{detail.error}</p>}
       {c && detail.data && (
         <>
-          <dl className="facts">
-            <dt>Code</dt>
-            <dd className="mono">{c.iwellCode}</dd>
-            <dt>PAN</dt>
-            <dd className="mono">
-              {c.pan ?? '—'}
+          <div className="page-head">
+            <div>
+              <h1>{c.name}</h1>
+              <div className="actions">
+                <span className="badge">{c.iwellCode ?? 'OFFLINE'}</span>
+                <span className="badge mono">{c.pan ?? 'no PAN'}</span>
+                {c.rmName ? <span className="badge ok">RM {c.rmName}</span> : <span className="badge warn">needs RM</span>}
+                {c.branchName && <span className="badge">{c.branchName}</span>}
+              </div>
+            </div>
+          </div>
+          <Tabs tabs={PROFILE_TABS} value={tab} onChange={setTab} />
+          {tab === 'profile' && (
+            <div className="grid-2">
+              <div className="panel-card">
+                <h2>Details</h2>
+                <dl className="facts">
+                  <dt>Code</dt>
+                  <dd className="mono">{c.iwellCode ?? '—'}</dd>
+                  <dt>Second code</dt>
+                  <dd className="mono">{detail.data.iwellCode2 ?? '—'}</dd>
+                  <dt>PAN</dt>
+                  <dd className="mono">
+                    {c.pan ?? '—'}
+                    {canEdit && <PanEdit clientId={id} currentPan={c.pan} onDone={changed} />}
+                  </dd>
+                  <dt>Family head</dt>
+                  <dd>{detail.data.familyHeadName ?? detail.data.familyHeadCode ?? '—'}</dd>
+                  <dt>RM now</dt>
+                  <dd>{c.rmName ? `${c.rmName}${c.branchName ? ` — ${c.branchName}` : ''}` : 'none'}</dd>
+                </dl>
+              </div>
               {canEdit && (
-                <PanEdit
-                  clientId={id}
-                  onDone={() => {
-                    detail.reload();
-                    onChanged();
-                  }}
-                />
+                <div className="panel-card">
+                  <DatedChangeForm
+                    title={c.rmId ? 'Change RM' : 'Set RM'}
+                    dateLabel="From"
+                    submitLabel="Save"
+                    canSubmit={rmId !== ''}
+                    onSubmit={(from) => api(`/api/clients/${id}/rm`, { method: 'POST', body: { rmId: Number(rmId), from } })}
+                    onDone={() => {
+                      setRmId('');
+                      changed();
+                    }}
+                  >
+                    <RmSelect rms={rms} value={rmId} onChange={setRmId} exclude={c.rmId} />
+                  </DatedChangeForm>
+                  <MergeForm client={c} onDone={() => navigate('/clients')} />
+                </div>
               )}
-            </dd>
-            <dt>Family head</dt>
-            <dd>{detail.data.familyHeadName ?? detail.data.familyHeadCode ?? '—'}</dd>
-            <dt>RM now</dt>
-            <dd>{c.rmName ? `${c.rmName}${c.branchName ? ` — ${c.branchName}` : ''}` : 'none'}</dd>
-          </dl>
-          {canEdit && (
-            <DatedChangeForm
-              title={c.rmId ? 'Change RM' : 'Set RM'}
-              dateLabel="From"
-              submitLabel="Save"
-              canSubmit={rmId !== ''}
-              onSubmit={(from) => api(`/api/clients/${id}/rm`, { method: 'POST', body: { rmId: Number(rmId), from } })}
-              onDone={() => {
-                setRmId('');
-                detail.reload();
-                history.reload();
-                onChanged();
-              }}
-            >
-              <RmSelect rms={rms} value={rmId} onChange={setRmId} exclude={c.rmId} />
-            </DatedChangeForm>
+            </div>
           )}
-          <details className="past">
-            <summary>Past RM changes</summary>
-            {history.data && <HistoryTable label="RM" rows={history.data.map((h) => ({ ...h, name: h.targetName }))} />}
-          </details>
-          <PartnerSection clientId={id} canEdit={canEdit} onChanged={onChanged} />
-          <RecordChanges key={`${id}-${c.pan}`} clientId={id} />
+          {tab === 'rm' && (
+            <div className="panel-card">
+              <h2>RM over time</h2>
+              {history.data && history.data.length > 0 ? (
+                <HistoryTable label="RM" rows={history.data.map((h) => ({ ...h, name: h.targetName }))} />
+              ) : (
+                <p className="muted">No RM yet.</p>
+              )}
+            </div>
+          )}
+          {tab === 'partners' && (
+            <div className="panel-card">
+              <PartnerSection clientId={id} canEdit={canEdit} onChanged={changed} />
+            </div>
+          )}
+          {tab === 'holdings' && <Holdings clientId={id} name={c.name} />}
+          {tab === 'changes' && (
+            <div className="panel-card">
+              <RecordChanges key={`${id}-${c.pan}`} clientId={id} />
+            </div>
+          )}
         </>
       )}
-    </SidePanel>
+    </section>
+  );
+}
+
+/** The client's FD, bond and AIF entries (all months). */
+function Holdings({ clientId, name }: { clientId: number; name: string }) {
+  const q = `?q=${encodeURIComponent(name)}&includeCancelled=false`;
+  const fd = useLoad<FdEntry[]>(`/api/fd${q}`);
+  const bonds = useLoad<BondEntry[]>(`/api/bonds${q}`);
+  const aif = useLoad<AifEntry[]>(`/api/aif${q}`);
+  const rows = [
+    ...(fd.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `FD-${e.id}`, product: 'FD', tab: 'FD', id: e.id, month: e.month, item: e.fdName, amount: e.amount, gross: e.gross })),
+    ...(bonds.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `B-${e.id}`, product: 'Bond', tab: 'BOND', id: e.id, month: e.month, item: e.bondName, amount: e.consideration, gross: e.gross })),
+    ...(aif.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `A-${e.id}`, product: 'AIF', tab: 'AIF', id: e.id, month: e.month, item: e.fundName, amount: e.commitment, gross: e.gross })),
+  ].sort((a, b) => b.month.localeCompare(a.month));
+  if (!fd.data || !bonds.data || !aif.data) return <p className="muted">Loading…</p>;
+  if (rows.length === 0) return <div className="empty">No FD, bond or AIF entries for this client.</div>;
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Month</th>
+          <th>FD / bond / fund</th>
+          <th className="num">Amount</th>
+          <th className="num">Gross</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.k}>
+            <td>
+              <span className="badge">{r.product}</span>
+            </td>
+            <td>{formatMonth(r.month)}</td>
+            <td>
+              <Link to={`/products?tab=${r.tab}&open=${r.id}`}>{r.item}</Link>
+            </td>
+            <td className="num"><Amount value={r.amount} /></td>
+            <td className="num"><Amount value={r.gross} /></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -580,18 +686,29 @@ function ShareText({ share }: { share: Share }) {
   }
 }
 
+const PAN_FORMAT = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+
 /** Corrects the client's PAN (a typo in the master or in Finesse). Audited; refused if another client has the PAN. */
-function PanEdit({ clientId, onDone }: { clientId: number; onDone: () => void }) {
+function PanEdit({ clientId, currentPan, onDone }: { clientId: number; currentPan: string | null; onDone: () => void }) {
+  // Start from the PAN on file when it is shown in full, so a typo is fixed rather than retyped.
+  const startPan = currentPan && !currentPan.includes('*') ? currentPan : '';
   const [open, setOpen] = useState(false);
-  const [pan, setPan] = useState('');
+  const [pan, setPan] = useState(startPan);
   const [reason, setReason] = useState('');
   const [move, setMove] = useState(false);
   const { busy, error, run } = useSubmit();
   if (!open) {
     return (
       <>
-        <button type="button" className="link" onClick={() => setOpen(true)}>
-          Edit PAN
+        <button
+          type="button"
+          className="link"
+          onClick={() => {
+            setPan(startPan);
+            setOpen(true);
+          }}
+        >
+          {currentPan ? 'Edit PAN' : 'Add PAN'}
         </button>
         <button
           type="button"
@@ -623,14 +740,16 @@ function PanEdit({ clientId, onDone }: { clientId: number; onDone: () => void })
         }
       }}
     >
-      <input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" aria-label="New PAN" maxLength={10} required />
+      <input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase().replace(/\s/g, ''))} placeholder="ABCDE1234F" aria-label="New PAN" maxLength={10} required />
       <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" aria-label="Reason for the PAN change" />
-      <button type="submit" className="secondary" disabled={busy || pan.trim().length !== 10}>
+      <button type="submit" className="secondary" disabled={busy || !PAN_FORMAT.test(pan) || pan === startPan}>
         Save PAN
       </button>
       <button type="button" className="link" onClick={() => setOpen(false)}>
         Cancel
       </button>
+      {pan.length === 10 && !PAN_FORMAT.test(pan) && <span className="error">A PAN looks like ABCDE1234F</span>}
+      <span className="muted">The old PAN is remembered: a later Master MIS or Finesse file that still has it finds this client.</span>
       {error && <span className="error">{error}</span>}
       {error?.includes('is already on') && (
         <label className="check">
@@ -638,6 +757,84 @@ function PanEdit({ clientId, onDone }: { clientId: number; onDone: () => void })
           That record is a duplicate: move the PAN to this client (only if it has no RM)
         </label>
       )}
+    </form>
+  );
+}
+
+/**
+ * Two records of one person (e.g. a file's PAN had swapped digits): this record is merged into the one picked and removed.
+ * Its codes and unsaved upload rows move across; the PAN chosen is kept and the other is remembered (R-07).
+ */
+function MergeForm({ client, onDone }: { client: ClientRow; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState(client.name);
+  const [targetId, setTargetId] = useState<number | null>(null);
+  const [keepThisPan, setKeepThisPan] = useState(false);
+  const [reason, setReason] = useState('');
+  const found = useLoad<Page<ClientRow>>(open && q.trim().length >= 3 ? `/api/clients?q=${encodeURIComponent(q.trim())}&size=8` : null);
+  const { busy, error, run } = useSubmit();
+  const others = (found.data?.items ?? []).filter((x) => x.id !== client.id);
+  const target = others.find((x) => x.id === targetId) ?? null;
+
+  if (!open) {
+    return (
+      <div className="separated">
+        <button type="button" className="link" onClick={() => setOpen(true)}>
+          Same person as another client? Merge…
+        </button>
+      </div>
+    );
+  }
+  return (
+    <form
+      className="separated"
+      onSubmit={async (e: FormEvent) => {
+        e.preventDefault();
+        if (!target) return;
+        const kept = keepThisPan ? client.pan : target.pan;
+        if (!window.confirm(`Merge ${client.name} into ${target.name} (PAN ${kept ?? 'none'})? This record will be removed.`)) return;
+        if (await run(() => api(`/api/clients/${client.id}/merge`, { method: 'POST', body: { intoClientId: target.id, keepThisPan, reason } }))) onDone();
+      }}
+    >
+      <h3>Merge into another client</h3>
+      <p className="muted">
+        This record is removed. Its codes and unsaved upload rows move to the client you pick, which keeps its RM history. The PAN
+        not kept is remembered, so later files that still have it find the right client.
+      </p>
+      <label>
+        Find the other record (name, code or full PAN)
+        <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Find the client to merge into" />
+      </label>
+      {q.trim().length >= 3 && found.data && others.length === 0 && <p className="muted">No other client matches.</p>}
+      {others.map((x) => (
+        <label key={x.id} className="check">
+          <input type="radio" name="merge-target" checked={targetId === x.id} onChange={() => setTargetId(x.id)} />
+          {x.name} · <span className="mono">{x.pan ?? 'no PAN'}</span> · {x.rmName ?? 'no RM'} {x.iwellCode ? `· ${x.iwellCode}` : ''}
+        </label>
+      ))}
+      {target && (
+        <fieldset>
+          <legend>PAN to keep</legend>
+          <label className="check">
+            <input type="radio" name="merge-pan" checked={!keepThisPan} onChange={() => setKeepThisPan(false)} />
+            <span className="mono">{target.pan ?? 'none'}</span> (the client you picked)
+          </label>
+          <label className="check">
+            <input type="radio" name="merge-pan" checked={keepThisPan} onChange={() => setKeepThisPan(true)} disabled={!client.pan} />
+            <span className="mono">{client.pan ?? 'none'}</span> (this record)
+          </label>
+        </fieldset>
+      )}
+      <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" aria-label="Reason for the merge" />
+      {error && <p className="error">{error}</p>}
+      <span className="inline-form">
+        <button type="submit" className="secondary" disabled={busy || !target}>
+          Merge
+        </button>
+        <button type="button" className="link" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </span>
     </form>
   );
 }

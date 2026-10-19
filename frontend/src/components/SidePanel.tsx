@@ -1,24 +1,14 @@
-import { useEffect, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import { Modal } from './Modal';
 
-/** Right-hand panel for create/edit forms. Escape or the × button closes it. */
+/**
+ * Create/edit forms for masters (org, partners, platforms…). Since the 2026-10 redesign every add/edit opens as the same
+ * centred pop-up (narrower than the product forms); × or Escape closes it.
+ */
 export function SidePanel({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   return (
-    <div className="panel-backdrop" onClick={onClose}>
-      <aside className="panel" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
-        <header>
-          <h2>{title}</h2>
-          <button type="button" className="link" aria-label="Close" onClick={onClose}>
-            ×
-          </button>
-        </header>
-        {children}
-      </aside>
-    </div>
+    <Modal title={title} onClose={onClose} size="narrow">
+      {children}
+    </Modal>
   );
 }

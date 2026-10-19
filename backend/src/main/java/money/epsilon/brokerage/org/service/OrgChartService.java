@@ -76,7 +76,7 @@ public class OrgChartService {
             regionNodes.add(new ChartRegion(r.getId(), r.getName(),
                     rd == null ? null : new PersonRef(rd.getId(), rd.getEmpCode(), rd.getName()), regionBranches));
         }
-        regionNodes.sort(Comparator.comparing(r -> r.name().toLowerCase()));
+        regionNodes.sort(Comparator.comparing(r -> regionById.get(r.id()), RegionService.ORDER));
 
         List<ChartBranch> branchesWithoutRegion = branchById.keySet().stream()
                 .filter(id -> !regionOfBranch.containsKey(id))

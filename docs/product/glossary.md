@@ -10,7 +10,7 @@
 | **Master MIS** | The business master: per PAN, the RM, sub broker, referral partner and %. Owned by MIS/HO. |
 | **RM / RD** | Relationship Manager (owns the client) / Regional Director (heads a region). |
 | **Book** | An RM's set of clients in one branch. One person can have two books (two branches). |
-| **HOUSE book** | A non-person RM such as HEAD OFFICE or STAFF. |
+| **HOUSE book** | A non-person RM such as HEAD OFFICE or STAFF: holds clients with no person as RM. Sits in a branch and reports like an RM; cannot be an RD or a partner's RM. Added on Org → "Add house book". |
 | **SB — Sub broker** | Partner who takes a % of the client's net brokerage first. |
 | **RF — Referral partner** | Partner who takes a % of what is left after the sub broker. |
 | **POSP** | Insurance point-of-sale partner (insurance comes later). |

@@ -4,6 +4,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -153,6 +154,10 @@ public abstract class IntegrationTestBase {
 
     protected JsonNode patchJson(String path, Object body, MockHttpSession session, int expectedStatus) throws Exception {
         return body(mvc.perform(withJson(patch(path), body).session(session)).andExpect(status().is(expectedStatus)).andReturn());
+    }
+
+    protected JsonNode putJson(String path, Object body, MockHttpSession session, int expectedStatus) throws Exception {
+        return body(mvc.perform(withJson(put(path), body).session(session)).andExpect(status().is(expectedStatus)).andReturn());
     }
 
     /** Logs in a fresh user with the given role. */

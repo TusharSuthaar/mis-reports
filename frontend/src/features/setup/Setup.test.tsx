@@ -1,11 +1,11 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { App } from '../../App';
 import type { Employee, ImportResult, Job, Me, OrgChart, Partner, Role } from '../../api/types';
 import { AuthProvider } from '../../app/auth';
-import { orgRows } from './OrgPage';
+import { filterOrg } from './OrgPage';
 import { fakeApi } from '../../test/fakeApi';
 
 function me(role: Role): Me {
@@ -36,8 +36,8 @@ describe('setup navigation', () => {
     renderAt('/setup/partners');
 
     expect(await screen.findByRole('heading', { name: 'Partners' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Org' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Organisation' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Users & audit' })).not.toBeInTheDocument();
     expect(await screen.findByText('Zedd Xavier')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'New partner' })).not.toBeInTheDocument();
   });
@@ -72,7 +72,7 @@ describe('setup navigation', () => {
     fakeApi({ 'GET /api/auth/me': ok(me('RM')) });
     renderAt('/setup/org');
     expect(await screen.findByRole('heading', { name: 'Not allowed' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Org' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Organisation' })).not.toBeInTheDocument();
   });
 });
 
@@ -93,18 +93,15 @@ describe('org', () => {
     peopleWithoutBranch: [],
   };
 
-  it('flattens the org into Region | RD | Branch | RM rows, keeping empty branches and regions', () => {
-    const rows = orgRows(chart);
-    expect(rows.map((r) => [r.region, r.rd, r.branch, r.rm])).toEqual([
-      ['Bihar & EUP', 'Rina Das', 'PATNA', 'RM BETA'],
-      ['Bihar & EUP', 'Rina Das', 'PATNA', 'STAFF'],
-      ['Bihar & EUP', 'Rina Das', 'SASARAM', ''],
-      ['Bhopal LLP', '', '', ''],
-    ]);
-    expect(rows[1].house).toBe(true);
+  it('search keeps a whole region by region or RD, otherwise only matching branches', () => {
+    expect(filterOrg(chart, 'rina').regions[0].branches.map((b) => b.name)).toEqual(['PATNA', 'SASARAM']);
+    const byRm = filterOrg(chart, 'beta');
+    expect(byRm.regions.map((r) => r.name)).toEqual(['Bihar & EUP']);
+    expect(byRm.regions[0].branches.map((b) => b.name)).toEqual(['PATNA']);
+    expect(filterOrg(chart, 'bhopal').regions.map((r) => r.name)).toEqual(['Bhopal LLP']);
   });
 
-  it('shows one table and opens a simple "move from date" panel for an RM', async () => {
+  it('shows the org as a Region → Branch → RM tree and opens a simple "move from date" panel for an RM', async () => {
     const employees: Employee[] = [
       { id: 1, empCode: 'E1', name: 'RM BETA', type: 'RM', status: 'ACTIVE', joinedOn: null, exitedOn: null, branchId: 10, branchName: 'PATNA' },
     ];
@@ -120,7 +117,14 @@ describe('org', () => {
 
     expect(await screen.findByRole('button', { name: 'RM BETA' })).toBeInTheDocument();
     expect(screen.getByText('house')).toBeInTheDocument();
+    const regionItem = screen.getByRole('button', { name: 'Bihar & EUP' }).closest('.org-region') as HTMLElement;
+    expect(within(regionItem).getByText(/RD: Rina Das/)).toBeInTheDocument();
+    expect(within(regionItem).getByRole('button', { name: 'SASARAM' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add RM' })).toBeInTheDocument();
+    // Only the first region starts opened up; the others open on a click.
+    expect(screen.getByRole('button', { name: 'Expand Bhopal LLP' })).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(screen.getByRole('button', { name: 'Expand Bhopal LLP' }));
+    expect(await screen.findByText('No branch yet.')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'RM BETA' }));
     const panel = await screen.findByRole('dialog', { name: 'RM BETA' });
@@ -141,6 +145,60 @@ describe('org', () => {
     renderAt('/setup/org');
     expect(await screen.findByRole('button', { name: 'RM BETA' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add RM' })).not.toBeInTheDocument();
+  });
+
+  it('hands a leaving RM’s clients, partners and RD role to a new RM in one step', async () => {
+    let posted: unknown = null;
+    const beta: Employee = { id: 1, empCode: 'E1', name: 'RM BETA', type: 'RM', status: 'ACTIVE', joinedOn: null, exitedOn: null, branchId: 10, branchName: 'PATNA' };
+    const rdChart: OrgChart = { ...chart, regions: [{ ...chart.regions[0], rd: { id: 1, empCode: 'E1', name: 'RM BETA' } }] };
+    fakeApi({
+      'GET /api/auth/me': ok(me('HO')),
+      'GET /api/org': ok(rdChart),
+      'GET /api/regions': ok([]),
+      'GET /api/branches': ok([]),
+      'GET /api/employees': ok([beta]),
+      'GET /api/employees/1/branch': ok([]),
+      'GET /api/clients/count-by-rm': ok({ 1: 167 }),
+      'POST /api/employees/1/hand-over': (init) => {
+        posted = JSON.parse(String(init?.body));
+        return { status: 200, body: { leaver: { ...beta, status: 'EXITED' }, replacement: { ...beta, id: 9, name: 'NEW RM' }, rdRegionIds: [1] } };
+      },
+    });
+    renderAt('/setup/org');
+    await userEvent.click(await screen.findByRole('button', { name: 'RM BETA' }));
+    await userEvent.click(await screen.findByRole('button', { name: /Leaving the company/ }));
+    const panel = await screen.findByRole('dialog', { name: 'RM BETA is leaving' });
+    fireEvent.change(within(panel).getByLabelText('Last working day'), { target: { value: '2026-10-15' } });
+    expect(within(panel).getByText(/From 16 Oct 2026/)).toBeInTheDocument();
+    expect(within(panel).getByText('167 clients of RM BETA')).toBeInTheDocument();
+    expect(within(panel).getByLabelText(/RD of Bihar & EUP/)).toBeChecked();
+    await userEvent.type(within(panel).getByLabelText(/New RM/), 'NEW RM');
+    await userEvent.click(within(panel).getByRole('button', { name: 'Hand over' }));
+    await waitFor(() => expect(posted).toMatchObject({ lastDay: '2026-10-15', newRmName: 'NEW RM', takeOverRd: true }));
+    expect(await within(panel).findByRole('status')).toHaveTextContent('NEW RM has their clients and partners and is RD of Bihar & EUP');
+  });
+
+  it('adds a house book as type HOUSE in a branch', async () => {
+    let posted: unknown = null;
+    fakeApi({
+      'GET /api/auth/me': ok(me('HO')),
+      'GET /api/org': ok(chart),
+      'GET /api/regions': ok([]),
+      'GET /api/branches': ok([{ id: 10, name: 'PATNA', regionId: 1, regionName: 'Bihar & EUP' }]),
+      'GET /api/employees': ok([]),
+      'POST /api/employees': (init) => {
+        posted = JSON.parse(String(init?.body));
+        return { status: 201, body: { id: 9 } };
+      },
+    });
+    renderAt('/setup/org');
+    await userEvent.click(await screen.findByRole('button', { name: 'Add house book' }));
+    const panel = await screen.findByRole('dialog', { name: 'Add house book' });
+    expect(within(panel).getByText(/cannot be an RD/)).toBeInTheDocument();
+    await userEvent.type(within(panel).getByLabelText(/Name/), 'DIRECT');
+    await userEvent.selectOptions(within(panel).getByLabelText('Branch'), '10');
+    await userEvent.click(within(panel).getByRole('button', { name: 'Add house book' }));
+    await waitFor(() => expect(posted).toMatchObject({ name: 'DIRECT', type: 'HOUSE', branchId: 10 }));
   });
 });
 

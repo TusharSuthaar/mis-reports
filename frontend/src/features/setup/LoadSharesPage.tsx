@@ -4,6 +4,7 @@ import { useLoad } from '../../api/useLoad';
 import { api, errorText } from '../../api/client';
 import { PARTNER_TYPE_LABEL, type Partner, type PartnerType, type ShareLoadPreview, type ShareLoadResult } from '../../api/types';
 import { useJob, jobErrorText } from '../../api/useJob';
+import { JobProgressBar } from '../../components/JobProgressBar';
 
 /**
  * Master MIS upload (Master_MIS.xlsx): adds the clients it has and the app does not (by PAN; by name for a row without
@@ -226,7 +227,7 @@ export function LoadSharesPage() {
         </>
       )}
 
-      {running && <p className="muted">Loading…</p>}
+      {running && <JobProgressBar job={job} label="Loading the Master MIS…" />}
       {jobError && <p className="error">{jobError}</p>}
       {job?.status === 'FAILED' && <p className="error">Nothing was loaded: {jobErrorText(job)}</p>}
       {job?.status === 'DONE' && job.result && (

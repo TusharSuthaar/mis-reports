@@ -1,7 +1,7 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { App } from '../../App';
 import type { ClientRow, Employee, Job, LoadPreview, LoadResult, Me, Page, Role } from '../../api/types';
 import { AuthProvider } from '../../app/auth';
@@ -57,9 +57,10 @@ describe('client master screen', () => {
     });
     renderAt('/clients');
 
-    const show = await screen.findByLabelText('Show');
-    expect(await within(show).findByRole('option', { name: 'PAN on more than one record (63)' })).toBeInTheDocument();
-    await userEvent.selectOptions(show, 'SHARED_PAN');
+    const sharedChip = await screen.findByRole('button', { name: /PAN on several records/ });
+    expect(await within(sharedChip).findByText('63')).toBeInTheDocument();
+    await userEvent.click(sharedChip);
+    expect(sharedChip).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText(/It's the\s+guardian's PAN/)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Add client' }));
@@ -69,6 +70,9 @@ describe('client master screen', () => {
     await userEvent.selectOptions(within(form).getByLabelText('RM'), '1');
     await userEvent.click(within(form).getByRole('button', { name: 'Add client' }));
     expect(sent).toMatchObject({ name: 'NEW ONE', pan: 'PQRST6789K', rmId: 1 });
+    // The new client opens on its own page.
+    expect(await screen.findByRole('heading', { name: 'ANITA RAO' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: 'Changes' }));
     expect(await screen.findByText('Changes to this record (1)')).toBeInTheDocument();
   });
 });
@@ -87,11 +91,11 @@ describe('clients', () => {
     expect(await screen.findByText('320066313')).toBeInTheDocument();
     expect(screen.getByText('needs RM')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'ANITA RAO' }));
-    const panel = await screen.findByRole('dialog', { name: 'ANITA RAO' });
+    await userEvent.click(screen.getByRole('link', { name: 'ANITA RAO' }));
+    const panel = await screen.findByRole('region', { name: 'ANITA RAO' });
     expect(await within(panel).findByText('RM ALPHA — PATNA')).toBeInTheDocument();
     expect(within(panel).getByRole('heading', { name: 'Change RM' })).toBeInTheDocument();
-    expect(within(panel).getAllByLabelText('From')).toHaveLength(3); // change RM, sub-broker, referral partner
+    expect(within(panel).getAllByLabelText('From')).toHaveLength(1); // change RM (partners have their own tab)
     // the current RM is not offered again
     expect(within(panel).queryByRole('option', { name: 'RM ALPHA — PATNA' })).not.toBeInTheDocument();
   });
@@ -115,13 +119,45 @@ describe('clients', () => {
     searched = ((await screen.findByPlaceholderText('Name, client code or full PAN')) as HTMLInputElement).value;
     expect(searched).toBe('pqrst6789k');
 
-    await userEvent.click(await screen.findByRole('button', { name: 'ANITA RAO' }));
-    const panel = await screen.findByRole('dialog', { name: 'ANITA RAO' });
+    await userEvent.click(await screen.findByRole('link', { name: 'ANITA RAO' }));
+    const panel = await screen.findByRole('region', { name: 'ANITA RAO' });
     await userEvent.click(within(panel).getByRole('button', { name: 'Edit PAN' }));
-    await userEvent.type(within(panel).getByLabelText('New PAN'), 'zyxwv9876a');
+    const panBox = within(panel).getByLabelText('New PAN') as HTMLInputElement;
+    // A masked PAN is not copied in (only a full one is, so a typo can be fixed in place).
+    expect(panBox.value).toBe('');
+    expect(within(panel).getByRole('button', { name: 'Save PAN' })).toBeDisabled();
+    expect(within(panel).getByText(/old PAN is remembered/)).toBeInTheDocument();
+    await userEvent.clear(panBox);
+    await userEvent.type(panBox, 'zyxwv9876a');
     await userEvent.type(within(panel).getByLabelText('Reason for the PAN change'), 'typo');
     await userEvent.click(within(panel).getByRole('button', { name: 'Save PAN' }));
     expect(sent).toEqual({ pan: 'ZYXWV9876A', reason: 'typo', takeFromOther: false });
+  });
+
+  it('merges a record into another client, keeping the PAN chosen', async () => {
+    document.cookie = 'XSRF-TOKEN=tok';
+    let sent: unknown = null;
+    const other = { id: 200, name: 'ANITA RAO', pan: 'PQRST****L', iwellCode: null, rmId: 1, rmName: 'RM ALPHA', branchName: 'PATNA' };
+    fakeApi({
+      'GET /api/auth/me': ok(me('HO')),
+      'GET /api/employees': ok(rms),
+      'GET /api/clients': ok({ ...page, items: [page.items[0], other] }),
+      'GET /api/clients/100': ok({ client: page.items[0], iwellCode2: null, familyHeadCode: null, familyHeadName: null }),
+      'GET /api/clients/100/rm': ok([]),
+      'POST /api/clients/100/merge': (init) => {
+        sent = JSON.parse(String(init?.body));
+        return { status: 204, body: undefined };
+      },
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderAt('/clients');
+    await userEvent.click((await screen.findAllByRole('link', { name: 'ANITA RAO' }))[0]);
+    const panel = await screen.findByRole('region', { name: 'ANITA RAO' });
+    await userEvent.click(within(panel).getByRole('button', { name: /Merge…/ }));
+    await userEvent.click(await within(panel).findByRole('radio', { name: /PQRST\*\*\*\*L/ }));
+    await userEvent.click(within(panel).getByRole('radio', { name: /this record/ }));
+    await userEvent.click(within(panel).getByRole('button', { name: 'Merge' }));
+    await waitFor(() => expect(sent).toEqual({ intoClientId: 200, keepThisPan: true, reason: '' }));
   });
 
   it('sets one RM for all selected clients', async () => {

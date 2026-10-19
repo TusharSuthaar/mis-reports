@@ -18,6 +18,8 @@ import { useSubmit } from '../../api/useSubmit';
 import { useAuth } from '../../app/auth';
 import { canEditMasters } from '../../app/permissions';
 import { formatMoney } from '../../format';
+import { Amount } from '../../components/Amount';
+import { JobProgressBar } from '../../components/JobProgressBar';
 
 const MONTH_LABEL = new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric' });
 const DATE_TIME = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -48,7 +50,34 @@ export function MonthPage() {
 
   return (
     <section>
-      <h1>This month</h1>
+      <div className="page-head">
+        <div>
+          <h1>Month close</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            Each month: keep the masters current, upload the MF brokerage, review and save, process, then Finance locks it and the END file is final.
+          </p>
+        </div>
+      </div>
+      <ol className="close-steps">
+        <li>
+          <strong>1</strong> Masters up to date <span className="muted">client master · Master MIS</span>
+        </li>
+        <li>
+          <strong>2</strong> Upload MF brokerage
+        </li>
+        <li>
+          <strong>3</strong> Review &amp; save
+        </li>
+        <li>
+          <strong>4</strong> Process <span className="muted">split to partners</span>
+        </li>
+        <li>
+          <strong>5</strong> Lock <span className="muted">Finance</span>
+        </li>
+        <li>
+          <strong>6</strong> END file
+        </li>
+      </ol>
       <div className="source-cards">
         <ClientMasterCard canEdit={canEdit} />
         <MasterMisCard canEdit={canEdit} />
@@ -74,6 +103,7 @@ export function MonthPage() {
         />
       )}
       <h2 className="section-title">Months</h2>
+      <p className="muted" style={{ marginTop: -6 }}>Process, lock and download each month here. Products entered by hand (FD, bonds, AIF) are included when a month is processed.</p>
       {months.error && <p className="error">{months.error}</p>}
       {months.data && months.data.length === 0 && <p className="muted">No month uploaded yet.</p>}
       {months.data && months.data.length > 0 && (
@@ -212,6 +242,7 @@ function BrokerageCard({ onStaged }: { onStaged: (uploadId: number, notes: strin
           {running ? 'Reading…' : 'Upload brokerage'}
         </button>
       </div>
+      {running && <JobProgressBar job={job} label="Reading the file…" />}
       {error && <p className="error">{error}</p>}
       {jobError && <p className="error">{jobError}</p>}
       {job?.status === 'FAILED' && <p className="error">The file could not be read: {jobErrorText(job)}</p>}
@@ -301,7 +332,7 @@ function Review({ uploadId, notes, canEdit, onDone }: { uploadId: number; notes:
                   <td>{n.name}</td>
                   <td className="mono">{n.pan ?? '—'}</td>
                   <td>{n.reason}</td>
-                  <td className="num">{formatMoney(n.net)}</td>
+                  <td className="num"><Amount value={n.net} /></td>
                   <td>
                     {canEdit && (
                       <Link className="button-link" to={`/clients?q=${encodeURIComponent(n.name)}`}>
@@ -399,15 +430,15 @@ function MonthLine({ m, canEdit, onReview, onChanged }: { m: MonthRow; canEdit: 
       <tr>
         <td>{monthLabel(m.month)}</td>
         <td>
-          {STATUS_LABEL[m.status]}
+          <span className={m.status === 'LOCKED' ? 'badge ok' : m.status === 'PROCESSED' ? 'badge' : 'badge warn'}>{STATUS_LABEL[m.status]}</span>
           {m.status === 'OPEN' && hasFigures && !blocked && <div className="muted">needs processing</div>}
           {blocked && <div className="error">{m.notInMaster} not in Master MIS</div>}
           {m.status === 'LOCKED' && m.lockedBy && <div className="muted">by {m.lockedBy}</div>}
         </td>
         <td>{m.savedUpload?.fileName ?? <span className="muted">not saved yet</span>}</td>
-        <td className="num">{formatMoney(m.saved?.gross)}</td>
-        <td className="num">{formatMoney(m.saved?.gst)}</td>
-        <td className="num">{formatMoney(m.saved?.net)}</td>
+        <td className="num"><Amount value={m.saved?.gross} /></td>
+        <td className="num"><Amount value={m.saved?.gst} /></td>
+        <td className="num"><Amount value={m.saved?.net} /></td>
         <td className="num">{m.saved?.lines ?? ''}</td>
         <td>
           {m.status !== 'OPEN' && (
@@ -478,6 +509,7 @@ function MonthLine({ m, canEdit, onReview, onChanged }: { m: MonthRow; canEdit: 
               </button>
             </span>
           )}
+          {running && <JobProgressBar job={job} label="Processing…" />}
           {job?.status === 'FAILED' && <div className="error">{jobErrorText(job)}</div>}
           {error && <div className="error">{error}</div>}
         </td>
@@ -503,10 +535,10 @@ function Split({ periodId }: { periodId: number }) {
     <div className="split">
       <table className="compact" aria-label="Split totals">
         <tbody>
-          <tr><td>Net brokerage</td><td className="num">{formatMoney(d.net)}</td></tr>
-          <tr><td>Sub-brokers</td><td className="num">{formatMoney(d.subBrokers)}</td></tr>
-          <tr><td>Referral partners</td><td className="num">{formatMoney(d.referrals)}</td></tr>
-          <tr><td><strong>Epsilon keeps</strong></td><td className="num"><strong>{formatMoney(d.epsilon)}</strong></td></tr>
+          <tr><td>Net brokerage</td><td className="num"><Amount value={d.net} /></td></tr>
+          <tr><td>Sub-brokers</td><td className="num"><Amount value={d.subBrokers} /></td></tr>
+          <tr><td>Referral partners</td><td className="num"><Amount value={d.referrals} /></td></tr>
+          <tr><td><strong>Epsilon keeps</strong></td><td className="num"><strong><Amount value={d.epsilon} /></strong></td></tr>
           {d.adjustments > 0 && <tr><td>of which corrections to locked months</td><td className="num">{d.adjustments} clients</td></tr>}
         </tbody>
       </table>
@@ -522,7 +554,7 @@ function Split({ periodId }: { periodId: number }) {
                 <td>{p.partnerName}</td>
                 <td>{PARTNER_TYPE_LABEL[p.role]}</td>
                 <td className="num">{p.clients}</td>
-                <td className="num">{formatMoney(p.amount)}</td>
+                <td className="num"><Amount value={p.amount} /></td>
               </tr>
             ))}
           </tbody>
@@ -539,9 +571,9 @@ function Split({ periodId }: { periodId: number }) {
               <tr key={`${b.region}|${b.branch}`}>
                 <td>{b.region ?? '—'}</td>
                 <td>{b.branch ?? '—'}</td>
-                <td className="num">{formatMoney(b.net)}</td>
-                <td className="num">{formatMoney(b.partners)}</td>
-                <td className="num">{formatMoney(b.epsilon)}</td>
+                <td className="num"><Amount value={b.net} /></td>
+                <td className="num"><Amount value={b.partners} /></td>
+                <td className="num"><Amount value={b.epsilon} /></td>
               </tr>
             ))}
           </tbody>

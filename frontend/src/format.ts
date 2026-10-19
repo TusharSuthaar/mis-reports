@@ -26,3 +26,15 @@ const rupees = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximu
 export function formatMoney(n: number | null | undefined): string {
   return n == null ? '' : rupees.format(n);
 }
+
+/** How lists, totals and the Dashboard show amounts: full rupees, thousands (K) or lakhs (L). */
+export type AmountUnit = 'full' | 'K' | 'L';
+
+const short = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** 1234567 → "12.35 L" (L), "1,234.57 K" (K) or "12,34,567.00" (full). */
+export function formatAmount(n: number | null | undefined, unit: AmountUnit): string {
+  if (n == null) return '';
+  if (unit === 'full') return rupees.format(n);
+  return `${short.format(n / (unit === 'K' ? 1000 : 100000))} ${unit}`;
+}

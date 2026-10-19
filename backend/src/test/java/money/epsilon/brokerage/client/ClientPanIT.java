@@ -55,6 +55,26 @@ class ClientPanIT extends IntegrationTestBase {
     }
 
     @Test
+    void twoRecordsOfOnePersonAreMergedKeepingTheChosenPan() throws Exception {
+        // A file added the same person again with a PAN that has two digits swapped, and it got an RM in review.
+        long rm = getJson("/api/clients/" + one, admin, 200).get("client").get("rmId").asLong();
+        long duplicate = masterClient("Pan One " + tag, panNew, rm, "2026-08-01");
+        postJson("/api/clients/" + duplicate + "/merge", Map.of("intoClientId", duplicate), admin, 409);   // not into itself
+
+        postJson("/api/clients/" + duplicate + "/merge", Map.of("intoClientId", one, "keepThisPan", true, "reason", "same person"), admin, 204);
+
+        getJson("/api/clients/" + duplicate, admin, 404);
+        JsonNode kept = getJson("/api/clients/" + one, admin, 200).get("client");
+        assertThat(kept.get("pan").asText()).isEqualTo(panNew);
+        assertThat(kept.get("rmId").asLong()).isEqualTo(rm);
+        // The PAN not kept still points at the kept client, for files that carry it (R-06).
+        assertThat(clientService.matchKeys().stream().filter(k -> k.id() == one).count()).isEqualTo(2);
+        JsonNode audit = getJson("/api/audit?entity=CLIENT&entityId=" + duplicate + "&size=5", admin, 200).get("items").get(0);
+        assertThat(audit.get("action").asText()).isEqualTo("MERGE");
+        assertThat(audit.toString()).doesNotContain(panNew).doesNotContain(panOne);
+    }
+
+    @Test
     void aPanOnADuplicateWithoutRmIsMovedToTheRightClient() throws Exception {
         // A file created a second record with the correct PAN before the master was fixed: no RM on it.
         long duplicate = clientService.createUncoded("PAN ONE " + tag, panNew);

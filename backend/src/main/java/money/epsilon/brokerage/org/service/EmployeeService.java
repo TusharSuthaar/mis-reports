@@ -157,20 +157,40 @@ public class EmployeeService {
      */
     @Transactional
     public EmployeeView exit(long id, LocalDate lastDay, String reason) {
+        return exit(id, lastDay, reason, null);
+    }
+
+    /**
+     * {@link #exit(long, LocalDate, String)}, and {@code replacedBy} takes over their clients (and partners, if an RM)
+     * from the next day (R-61). The replacement must be employed on that day.
+     */
+    @Transactional
+    public EmployeeView exit(long id, LocalDate lastDay, String reason, Long replacedBy) {
         Employee e = find(id);
         if (e.getExitedOn() != null) throw new RuleViolationException(e.getName() + " already exited on " + e.getExitedOn().format(Timeline.DISPLAY));
         if (lastDay == null) throw new IllegalArgumentException("Exit date is required");
         if (e.getJoinedOn() != null && lastDay.isBefore(e.getJoinedOn())) throw new RuleViolationException("Exit date is before the joining date");
+        String replacementName = null;
+        if (replacedBy != null) {
+            if (replacedBy == id) throw new RuleViolationException("Pick someone else to take over");
+            Employee next = find(replacedBy);
+            if (!next.employedOn(lastDay.plusDays(1))) {
+                throw new RuleViolationException(next.getName() + " is not employed on " + lastDay.plusDays(1).format(Timeline.DISPLAY));
+            }
+            replacementName = next.getName();
+        }
 
         EmployeeView before = view(e, null);
         closeOnExit(rmBranches.findFirstByEmployeeIdOrderByValidFromDesc(id), lastDay, rmBranches, AUDIT_BRANCH, this::branchAudit, reason, "branch");
-        closeOnExit(rds.findFirstByEmployeeIdOrderByValidFromDesc(id), lastDay, rds, RegionService.AUDIT_RD,
-                a -> AssignmentAudit.of(a.getRegionId(), a.getEmployeeId(), a), reason, "RD");
+        for (RdAssignment rd : rds.findByEmployeeIdAndValidToIsNull(id)) {
+            closeOnExit(Optional.of(rd), lastDay, rds, RegionService.AUDIT_RD,
+                    a -> AssignmentAudit.of(a.getRegionId(), a.getEmployeeId(), a), reason, "RD");
+        }
         e.exit(lastDay);
         employees.saveAndFlush(e);
-        events.publishEvent(new EmployeeExited(id, e.getName(), lastDay, reason));
+        events.publishEvent(new EmployeeExited(id, e.getName(), lastDay, reason, replacedBy));
         EmployeeView after = view(e, null);
-        audit.record(AUDIT_EMPLOYEE, id, "EXIT", before, new ExitAudit(after, reason));
+        audit.record(AUDIT_EMPLOYEE, id, "EXIT", before, new ExitAudit(after, reason, replacementName));
         return after;
     }
 
@@ -239,6 +259,6 @@ public class EmployeeService {
                 e.getExitedOn(), branch == null ? null : branch.getId(), branch == null ? null : branch.getName());
     }
 
-    public record ExitAudit(EmployeeView employee, String reason) {
+    public record ExitAudit(EmployeeView employee, String reason, String replacedBy) {
     }
 }

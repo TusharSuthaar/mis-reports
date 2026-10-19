@@ -20,6 +20,13 @@ import money.epsilon.brokerage.attribution.service.SplitCalculator.NegativeNet;
 import money.epsilon.brokerage.attribution.service.SplitCalculator.Part;
 import money.epsilon.brokerage.attribution.service.SplitCalculator.Share;
 import money.epsilon.brokerage.client.service.ClientService;
+import money.epsilon.brokerage.aif.service.AifService;
+import money.epsilon.brokerage.aif.service.AifService.AifForLedger;
+import money.epsilon.brokerage.bond.service.BondService;
+import money.epsilon.brokerage.bond.service.BondService.BondForLedger;
+import money.epsilon.brokerage.fd.service.FdService;
+import money.epsilon.brokerage.fd.service.FdService.FdForLedger;
+import money.epsilon.brokerage.sharing.domain.Product;
 import money.epsilon.brokerage.ledger.service.LedgerService;
 import money.epsilon.brokerage.ledger.service.LedgerService.ActiveLine;
 import money.epsilon.brokerage.org.service.EmployeeService;
@@ -51,6 +58,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class AttributionService {
 
     static final String MF = "MF";
+    static final String FD = "FD";
+    static final String BOND = "BOND";
+    static final String AIF = "AIF";
 
     private final PeriodService periods;
     private final LedgerService ledger;
@@ -64,9 +74,12 @@ public class AttributionService {
     private final ObjectMapper mapper;
     private final List<PartnerType> order;
     private final NegativeNet negativeNet;
+    private final FdService fds;
+    private final BondService bonds;
+    private final AifService aifs;
 
     AttributionService(PeriodService periods, LedgerService ledger, ClientService clients, OrgChartService org, EmployeeService employees,
-                       ShareService shares,
+                       ShareService shares, FdService fds, BondService bonds, AifService aifs,
                        AuditService audit, JdbcClient jdbc, JdbcTemplate jdbcTemplate, ObjectMapper mapper,
                        @Value("${mis.sharing.order}") String order, @Value("${mis.sharing.negative-net:SAME_PERCENT}") NegativeNet negativeNet) {
         this.periods = periods;
@@ -75,6 +88,9 @@ public class AttributionService {
         this.org = org;
         this.employees = employees;
         this.shares = shares;
+        this.fds = fds;
+        this.bonds = bonds;
+        this.aifs = aifs;
         this.audit = audit;
         this.jdbc = jdbc;
         this.jdbcTemplate = jdbcTemplate;
@@ -91,8 +107,29 @@ public class AttributionService {
     public RunResult process(long periodId) {
         PeriodView period = periods.get(periodId);
         if (period.status() == Period.Status.LOCKED) throw new RuleViolationException(period.month() + " is locked");
-        List<ActiveLine> lines = ledger.activeLines(periodId, MF);
-        if (lines.isEmpty()) throw new RuleViolationException("Nothing to split: save " + period.month() + " first");
+        List<ActiveLine> mfLines = ledger.activeLines(periodId, MF);
+        if (mfLines.isEmpty()) throw new RuleViolationException("Nothing to split: save " + period.month() + " first");
+        // The month's FD entries become its FD lines, split with the partner chosen on each FD at its FD % (R-74).
+        List<FdForLedger> fdEntries = fds.forLedger(period.month());
+        ledger.replaceFdLines(periodId, fdEntries.stream()
+                .map(f -> new LedgerService.FdLineInput(f.fdEntryId(), f.clientId(), f.gross(), f.gst(), f.net())).toList());
+        Map<Long, Long> fdPartner = new HashMap<>();
+        fdEntries.forEach(f -> { if (f.partnerId() != null) fdPartner.put(f.fdEntryId(), f.partnerId()); });
+        List<BondForLedger> bondEntries = bonds.forLedger(period.month());
+        ledger.replaceBondLines(periodId, bondEntries.stream()
+                .map(b -> new LedgerService.BondLineInput(b.bondEntryId(), b.clientId(), b.gross(), b.gst(), b.net())).toList());
+        Map<Long, Long> bondPartner = new HashMap<>();
+        bondEntries.forEach(b -> { if (b.partnerId() != null) bondPartner.put(b.bondEntryId(), b.partnerId()); });
+        List<ActiveLine> lines = new ArrayList<>(mfLines);
+        lines.addAll(ledger.activeLines(periodId, FD));
+        lines.addAll(ledger.activeLines(periodId, BOND));
+        // AIF commitments (R-78): a deal's own sharing % for its partner wins over the partner's AIF %.
+        List<AifForLedger> aifEntries = aifs.forLedger(period.month());
+        ledger.replaceAifLines(periodId, aifEntries.stream()
+                .map(a -> new LedgerService.AifLineInput(a.aifEntryId(), a.clientId(), a.gross(), a.gst(), a.net())).toList());
+        Map<Long, AifForLedger> aifById = new HashMap<>();
+        aifEntries.forEach(a -> aifById.put(a.aifEntryId(), a));
+        lines.addAll(ledger.activeLines(periodId, AIF));
         List<Long> own = lines.stream().filter(l -> l.adjustsPeriodId() == null).map(ActiveLine::clientId).distinct().toList();
         long notInMaster = own.size() - clients.rmsOn(own, period.toDate()).size();
         if (notInMaster > 0) {
@@ -128,10 +165,28 @@ public class AttributionService {
             }
             Map<Long, Placement> placementOf = placements(org.asOf(day));
             Map<Long, String> names = employees.list().stream().collect(java.util.stream.Collectors.toMap(EmployeeView::id, EmployeeView::name));
+            java.util.Set<String> noFdPercent = new java.util.TreeSet<>();
             for (ActiveLine l : e.getValue()) {
-                List<Share> lineShares = sharesOf.getOrDefault(l.clientId(), List.of()).stream()
-                        .map(s -> new Share(s.partnerRole(), s.partnerId(), s.partnerName(), s.percent().movePointLeft(2)))
-                        .toList();
+                List<Share> lineShares;
+                if (l.aifEntryId() != null) {
+                    AifForLedger a = aifById.get(l.aifEntryId());
+                    ShareService.ProductShare ps = a == null || a.partnerId() == null ? null : shares.productShare(a.partnerId(), Product.AIF, day);
+                    java.math.BigDecimal fraction = ps == null ? null
+                            : a.sharingPercent() != null ? a.sharingPercent().movePointLeft(2) : ps.fraction();
+                    if (ps != null && fraction == null) noFdPercent.add(ps.partnerName() + " (AIF)");
+                    lineShares = fraction == null ? List.of() : List.of(new Share(ps.role(), ps.partnerId(), ps.partnerName(), fraction));
+                } else if (l.fdEntryId() != null || l.bondEntryId() != null) {
+                    boolean fd = l.fdEntryId() != null;
+                    Long partnerId = fd ? fdPartner.get(l.fdEntryId()) : bondPartner.get(l.bondEntryId());
+                    ShareService.ProductShare ps = partnerId == null ? null : shares.productShare(partnerId, fd ? Product.FD : Product.BOND, day);
+                    if (ps != null && ps.fraction() == null) noFdPercent.add(ps.partnerName() + (fd ? " (FD)" : " (Bonds)"));
+                    lineShares = ps == null || ps.fraction() == null ? List.of()
+                            : List.of(new Share(ps.role(), ps.partnerId(), ps.partnerName(), ps.fraction()));
+                } else {
+                    lineShares = sharesOf.getOrDefault(l.clientId(), List.of()).stream()
+                            .map(s -> new Share(s.partnerRole(), s.partnerId(), s.partnerName(), s.percent().movePointLeft(2)))
+                            .toList();
+                }
                 lineShares.forEach(s -> rulesUsed.add(List.of(l.clientId(), s.role().name(), s.partnerId(), s.fraction().toPlainString(), day.toString())));
                 Long rmId = rmOf.get(l.clientId());
                 if (rmId == null) {
@@ -148,6 +203,10 @@ public class AttributionService {
                     else partners = partners.add(part.amount());
                 }
                 net = net.add(l.net());
+            }
+            if (!noFdPercent.isEmpty()) {
+                throw new RuleViolationException(noFdPercent.size() + " partner(s) on FD / bond entries of " + period.month() + " have no FD % / Bonds % / AIF % on "
+                        + day + ": " + String.join(", ", noFdPercent) + ". Set it on the Partners screen, then process.");
             }
         }
 

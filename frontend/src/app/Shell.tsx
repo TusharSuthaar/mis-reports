@@ -1,37 +1,43 @@
 import { Fragment } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import type { Role } from '../api/types';
-import { MASTER_READ, MASTER_WRITE } from './permissions';
+import { AmountSwitch } from '../components/Amount';
+import { Icon } from '../components/Icon';
+import { MASTER_READ } from './permissions';
 import { useAuth } from './auth';
 
 interface NavItem {
   to: string;
   label: string;
+  icon: string;
   roles?: Role[];
   group?: string;
+  /** Other addresses that belong to this item (old links, sub-pages), so it shows as the current one. */
+  also?: string[];
 }
 
-/** Only screens that exist are listed; later phases add theirs here. */
+/** The menu: four workspaces, each with its own panels. */
 export const NAV: NavItem[] = [
-  { to: '/', label: 'Home' },
-  { to: '/month', label: 'This month', roles: MASTER_READ },
-  { to: '/clients', label: 'Clients', roles: MASTER_READ },
-  { to: '/activity', label: 'Activity', roles: MASTER_READ },
-  { to: '/setup/org', label: 'Org', roles: MASTER_READ, group: 'Setup' },
-  { to: '/setup/partners', label: 'Partners', roles: MASTER_READ, group: 'Setup' },
-  { to: '/setup/load-clients', label: 'Load clients', roles: MASTER_WRITE, group: 'Setup' },
-  { to: '/setup/load-shares', label: 'Upload Master MIS', roles: MASTER_WRITE, group: 'Setup' },
-  { to: '/setup/import', label: 'Import', roles: MASTER_READ, group: 'Setup' },
-  { to: '/users', label: 'Users', roles: ['ADMIN'], group: 'Admin' },
-  { to: '/audit', label: 'Audit log', roles: ['ADMIN'], group: 'Admin' },
+  { to: '/', label: 'Dashboard', icon: 'dashboard' },
+  { to: '/month', label: 'Month close', icon: 'month', roles: MASTER_READ, group: 'Monthly MIS' },
+  { to: '/products', label: 'Product entries', icon: 'products', roles: MASTER_READ, group: 'Business', also: ['/fd', '/bonds', '/aif'] },
+  { to: '/clients', label: 'Clients', icon: 'clients', roles: MASTER_READ, group: 'Business' },
+  { to: '/setup/org', label: 'Organisation', icon: 'org', roles: MASTER_READ, group: 'Masters' },
+  { to: '/setup/partners', label: 'Partners', icon: 'partners', roles: MASTER_READ, group: 'Masters' },
+  { to: '/setup/platforms', label: 'Platforms & taxes', icon: 'platforms', roles: MASTER_READ, group: 'Masters', also: ['/setup/product-taxes'] },
+  { to: '/setup/uploads', label: 'Data uploads', icon: 'uploads', roles: MASTER_READ, group: 'Masters', also: ['/setup/load-shares', '/setup/load-clients', '/setup/import'] },
+  { to: '/admin', label: 'Users & audit', icon: 'admin', roles: ['ADMIN'], group: 'Admin', also: ['/users', '/audit', '/activity'] },
+  { to: '/admin', label: 'Activity', icon: 'admin', roles: ['HO', 'FINANCE'], group: 'Admin', also: ['/activity'] },
 ];
 
 export function Shell() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   if (!user) return null;
 
   const items = NAV.filter((i) => !i.roles || i.roles.includes(user.role));
+  const isCurrent = (i: NavItem) => (i.to === '/' ? pathname === '/' : pathname.startsWith(i.to) || (i.also ?? []).some((a) => pathname.startsWith(a)));
 
   async function onLogout() {
     await logout();
@@ -41,27 +47,38 @@ export function Shell() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand">Epsilon MIS</div>
+        <div className="brand">
+          <span className="brand-mark">E</span>
+          <span>
+            Epsilon <strong>MIS</strong>
+          </span>
+        </div>
         <nav>
           {items.map((i, idx) => (
             <Fragment key={i.to}>
               {i.group && i.group !== items[idx - 1]?.group && <div className="nav-group">{i.group}</div>}
-              <NavLink to={i.to} end={i.to === '/'}>
-                {i.label}
+              <NavLink to={i.to} end={i.to === '/'} className={() => (isCurrent(i) ? 'active' : undefined)}>
+                <Icon name={i.icon} />
+                <span>{i.label}</span>
               </NavLink>
             </Fragment>
           ))}
         </nav>
+        <AmountSwitch />
+        <div className="sidebar-foot">
+          <div className="user-chip">
+            <span className="avatar">{user.displayName.slice(0, 1).toUpperCase()}</span>
+            <span>
+              {user.displayName}
+              <small>{user.role}</small>
+            </span>
+          </div>
+          <button type="button" className="link" onClick={onLogout} aria-label="Sign out" title="Sign out">
+            <Icon name="logout" />
+          </button>
+        </div>
       </aside>
       <div className="main">
-        <header className="topbar">
-          <span>
-            {user.displayName} <span className="badge">{user.role}</span>
-          </span>
-          <button type="button" className="link" onClick={onLogout}>
-            Sign out
-          </button>
-        </header>
         <main className="content">
           <Outlet />
         </main>

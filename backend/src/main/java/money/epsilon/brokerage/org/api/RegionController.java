@@ -46,8 +46,10 @@ class RegionController {
 
     @PatchMapping("/{id}")
     @PreAuthorize(Roles.MASTER_WRITE)
-    RegionView rename(@PathVariable long id, @Valid @RequestBody NameRequest req) {
-        return service.rename(id, req.name());
+    RegionView update(@PathVariable long id, @Valid @RequestBody RegionUpdate req) {
+        RegionView view = req.name() == null ? service.get(id) : service.rename(id, req.name());
+        if (req.position() != null || req.endBranchRows() != null) view = service.arrange(id, req.position(), req.endBranchRows());
+        return view;
     }
 
     @GetMapping("/{id}/rd")
@@ -68,6 +70,10 @@ class RegionController {
     @PreAuthorize(Roles.MASTER_WRITE)
     void endRd(@PathVariable long id, @Valid @RequestBody EndRequest req) {
         service.endRd(id, req.lastDay(), req.reason());
+    }
+
+    /** Any of: a new name, a new place in the list (1 = first), whether the END shows its branches as rows. */
+    record RegionUpdate(@Size(min = 1, max = 100) String name, @jakarta.validation.constraints.Min(1) Integer position, Boolean endBranchRows) {
     }
 
     record NameRequest(@NotBlank @Size(max = 100) String name) {

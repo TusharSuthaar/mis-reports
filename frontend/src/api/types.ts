@@ -57,6 +57,10 @@ export interface Region {
   id: number;
   name: string;
   currentRd: PersonRef | null;
+  /** Place in lists and in the END region section (1 = first). */
+  position: number;
+  /** END region section shows this region's branches as rows above it. */
+  endBranchRows: boolean;
 }
 
 export interface Branch {
@@ -197,6 +201,18 @@ export interface Job<R = unknown> {
   error: string | null;
   /** Same reference as in the server logs and on the Activity screen. */
   reference: string | null;
+  startedAt?: string | null;
+  /** How far a running job is; null until it reports. */
+  progress?: JobProgress | null;
+}
+
+/** Step {@code step} of {@code steps}; {@code done} of {@code total} items in it (total 0 = unknown). */
+export interface JobProgress {
+  step: number;
+  steps: number;
+  label: string | null;
+  done: number;
+  total: number;
 }
 
 export type ActivityKind = 'JOB' | 'EVENT' | 'ERROR';
@@ -465,4 +481,280 @@ export interface RunResult {
   net: number;
   partners: number;
   epsilon: number;
+}
+
+export type ProductCode = 'MF' | 'PREIPO' | 'FD' | 'BOND' | 'LOAN' | 'EQUITY' | 'PMS' | 'AIF' | 'ADVISORY' | 'GIFT' | 'INS';
+
+/** GST and TDS of a product over a period (Products & taxes). Percent values: 18 = 18%. */
+export interface TaxRate {
+  id: number;
+  product: ProductCode;
+  gstPercent: number;
+  tdsPercent: number;
+  tdsByDefault: boolean;
+  validFrom: string;
+  validTo: string | null;
+  reason: string | null;
+  changedBy: string;
+  changedAt: string;
+}
+
+export interface ProductTaxLine {
+  product: ProductCode;
+  name: string;
+  now: TaxRate | null;
+}
+
+export type InterestFrequency = 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY' | 'CUMULATIVE';
+export type FdCertificate = 'PENDING' | 'RECEIVED' | 'NOT_APPLICABLE';
+export type FdCompounding = 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
+export const COMPOUNDING_LABEL: Record<FdCompounding, string> = { QUARTERLY: 'Quarterly', HALF_YEARLY: 'Half-yearly', YEARLY: 'Yearly' };
+export type FdPaymentStatus = 'PENDING' | 'RECEIVED' | 'RECEIVED_GST_PENDING';
+
+export const INTEREST_FREQUENCY_LABEL: Record<InterestFrequency, string> = {
+  MONTHLY: 'Monthly',
+  QUARTERLY: 'Quarterly',
+  HALF_YEARLY: 'Half-yearly',
+  YEARLY: 'Yearly',
+  CUMULATIVE: 'Cumulative (at maturity)',
+};
+export const CERTIFICATE_LABEL: Record<FdCertificate, string> = { PENDING: 'Pending', RECEIVED: 'Received', NOT_APPLICABLE: 'Not applicable' };
+export const PAYMENT_LABEL: Record<FdPaymentStatus, string> = { PENDING: 'Pending', RECEIVED: 'Received', RECEIVED_GST_PENDING: 'Received – GST pending' };
+
+/** One FD booked, as entered on the FD screen, with its commission worked out (R-70). */
+export interface FdEntry {
+  id: number;
+  month: string;
+  rmId: number;
+  rmName: string;
+  branchName: string | null;
+  region: string | null;
+  rd: string | null;
+  partnerId: number | null;
+  partnerName: string | null;
+  partnerType: string | null;
+  clientId: number;
+  clientName: string;
+  pan: string | null;
+  /** The client's code, or OFFLINE. */
+  clientType: string;
+  mobile: string | null;
+  email: string | null;
+  address: string | null;
+  fdName: string;
+  fdNo: string | null;
+  interestFrequency: InterestFrequency;
+  /** The platform the FD is booked through (the register's PARTNER, e.g. J M Finance). */
+  platform: string | null;
+  depositDate: string;
+  periodMonths: number;
+  maturityDate: string;
+  ratePercent: number;
+  amount: number;
+  compounding: FdCompounding | null;
+  maturityValue: number | null;
+  certificate: FdCertificate;
+  marginPercent: number;
+  gross: number;
+  tdsApplied: boolean;
+  tdsPercent: number;
+  tds: number;
+  gstPercent: number;
+  gst: number;
+  net: number;
+  invoice: number;
+  /** The register's figures kept as they are (R-79). */
+  figuresAsGiven: boolean;
+  invoiceRaised: boolean;
+  /** A tick on the form only (not in the Excel register). */
+  onPortal: boolean;
+  paymentStatus: FdPaymentStatus;
+  remarks: string | null;
+  status: 'ACTIVE' | 'CANCELLED';
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+export interface FdSuggestions {
+  fdNames: string[];
+  platforms: string[];
+  margins: { fdName: string; platform: string | null; periodMonths: number; marginPercent: number }[];
+}
+
+/** A platform's brokerage terms over a period (Setup → Platforms, R-75). Percent values: 5 = 5%. */
+export interface PlatformTerms {
+  id: number;
+  platformId: number;
+  gstInclusive: boolean;
+  tdsPercent: number;
+  ourShare: number;
+  validFrom: string;
+  validTo: string | null;
+  reason: string | null;
+  changedBy: string;
+  changedAt: string;
+}
+
+export interface Platform {
+  id: number;
+  name: string;
+  now: PlatformTerms | null;
+}
+
+export type BondPayoutFrequency = 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY' | 'CUMULATIVE' | 'AT_MATURITY';
+export const BOND_PAYOUT_LABEL: Record<BondPayoutFrequency, string> = {
+  MONTHLY: 'Monthly',
+  QUARTERLY: 'Quarterly',
+  HALF_YEARLY: 'Half-yearly',
+  YEARLY: 'Yearly',
+  CUMULATIVE: 'Cumulative',
+  AT_MATURITY: 'At maturity',
+};
+
+/** One bond deal, as entered on the Bonds screen, with its brokerage worked out (R-76). */
+export interface BondEntry {
+  id: number;
+  month: string;
+  rmId: number;
+  rmName: string;
+  branchName: string | null;
+  region: string | null;
+  rd: string | null;
+  partnerId: number | null;
+  partnerName: string | null;
+  partnerType: string | null;
+  clientId: number;
+  clientName: string;
+  pan: string | null;
+  clientType: string;
+  mobile: string | null;
+  email: string | null;
+  address: string | null;
+  platformId: number;
+  platformName: string;
+  bondName: string;
+  isin: string | null;
+  couponPercent: number | null;
+  ytmPercent: number | null;
+  payoutFrequency: BondPayoutFrequency | null;
+  paymentSchedule: string | null;
+  investmentDate: string;
+  allotmentDate: string | null;
+  maturityDate: string | null;
+  quantity: number;
+  ratePerUnit: number | null;
+  faceValue: number | null;
+  investmentAmount: number;
+  accruedInterest: number;
+  consideration: number;
+  markupPercent: number;
+  ourShare: number;
+  gstInclusive: boolean;
+  brokerage: number;
+  gross: number;
+  tdsApplied: boolean;
+  tdsPercent: number;
+  tds: number;
+  gstPercent: number;
+  gst: number;
+  net: number;
+  invoice: number;
+  /** The register's figures kept as they are (R-79). */
+  figuresAsGiven: boolean;
+  invoiceRaised: boolean;
+  invoiceDate: string | null;
+  paymentReceivedOn: string | null;
+  paymentStatus: FdPaymentStatus;
+  onPortal: boolean;
+  remarks: string | null;
+  status: 'ACTIVE' | 'CANCELLED';
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+export interface BondSuggestions {
+  bondNames: string[];
+  isins: { bondName: string; isin: string }[];
+  markups: { platformId: number; bondName: string; isin: string | null; markupPercent: number }[];
+}
+
+/** One drawdown of an AIF commitment. */
+export interface AifInstalment {
+  seq: number;
+  amount: number;
+  paidOn: string | null;
+}
+
+/** One AIF commitment, as entered on the AIF screen, with its revenue worked out (R-78). */
+export interface AifEntry {
+  id: number;
+  month: string;
+  rmId: number;
+  rmName: string;
+  branchName: string | null;
+  region: string | null;
+  rd: string | null;
+  partnerId: number | null;
+  partnerName: string | null;
+  partnerType: string | null;
+  /** The deal's own sharing % for its partner; null = the partner's AIF %. */
+  sharingPercent: number | null;
+  clientId: number;
+  clientName: string;
+  pan: string | null;
+  clientType: string;
+  mobile: string | null;
+  email: string | null;
+  address: string | null;
+  platformId: number;
+  platformName: string;
+  fundName: string;
+  commitment: number;
+  instalments: AifInstalment[];
+  called: number;
+  agreementDate: string | null;
+  tenure: string | null;
+  maturityDate: string | null;
+  soaReceived: boolean;
+  applicationForm: boolean;
+  investmentMail: boolean;
+  quantity: number | null;
+  price: number | null;
+  certificate: FdCertificate;
+  payoutTerms: string | null;
+  markupPercent: number;
+  ourShare: number;
+  gstInclusive: boolean;
+  brokerage: number;
+  gross: number;
+  tdsApplied: boolean;
+  tdsPercent: number;
+  tds: number;
+  gstPercent: number;
+  gst: number;
+  net: number;
+  invoice: number;
+  /** The register's figures kept as they are (R-79). */
+  figuresAsGiven: boolean;
+  invoiceRaised: boolean;
+  invoiceDate: string | null;
+  paymentReceivedOn: string | null;
+  paymentStatus: FdPaymentStatus;
+  partnerPaid: boolean;
+  onInvestwell: boolean;
+  remarks: string | null;
+  status: 'ACTIVE' | 'CANCELLED';
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+export interface AifSuggestions {
+  fundNames: string[];
+  markups: { platformId: number; fundName: string; markupPercent: number }[];
 }

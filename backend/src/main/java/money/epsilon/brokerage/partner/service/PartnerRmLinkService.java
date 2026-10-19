@@ -108,8 +108,21 @@ public class PartnerRmLinkService {
         if (!links.findByRmIdAndValidFromAfter(event.employeeId(), event.lastDay()).isEmpty()) {
             throw new RuleViolationException(event.employeeName() + " has a partner link starting after the exit date");
         }
+        List<Long> partnersToHandOver = new java.util.ArrayList<>();
         for (PartnerRmLink open : links.findByRmIdAndValidToIsNull(event.employeeId())) {
             DatedHistory.end(open, event.lastDay(), links, audit, AUDIT_LINK, this::auditView, event.reason());
+            partnersToHandOver.add(open.getPartnerId());
+        }
+        // R-61: an RM replacement works with the same partners from the next day (a house book has no partners).
+        if (event.replacedBy() == null || employees.get(event.replacedBy()).type() != money.epsilon.brokerage.org.domain.EmployeeType.RM) return;
+        LocalDate from = event.lastDay().plusDays(1);
+        String reason = event.reason() == null ? "Took over from " + event.employeeName() : event.reason();
+        for (Long partnerId : partnersToHandOver) {
+            boolean alreadyLinked = links.findFirstByPartnerIdAndRmIdOrderByValidFromDesc(partnerId, event.replacedBy())
+                    .filter(l -> l.getValidTo() == null).isPresent();
+            if (!alreadyLinked && findPartner(partnerId).getStatus() != PartnerStatus.INACTIVE) {
+                link(partnerId, event.replacedBy(), from, null, reason);
+            }
         }
     }
 
