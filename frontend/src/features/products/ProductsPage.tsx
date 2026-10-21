@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { PAYMENT_LABEL, type AifEntry, type BondEntry, type FdEntry, type FdPaymentStatus } from '../../api/types';
+import { PAYMENT_LABEL, type AifEntry, type BondEntry, type FdEntry, type FdPaymentStatus, type GiftEntry, type LoanEntry, type NpsEntry, type PmsInvestment } from '../../api/types';
 import { useLoad } from '../../api/useLoad';
 import { useAuth } from '../../app/auth';
 import { canEditMasters } from '../../app/permissions';
@@ -11,14 +11,24 @@ import { Amount } from '../../components/Amount';
 import { AifPage } from '../aif/AifPage';
 import { BondsPage } from '../bonds/BondsPage';
 import { FdPage, formatMonth } from '../fd/FdPage';
+import { GiftPage } from '../gift/GiftPage';
+import { LoansPage } from '../loans/LoansPage';
+import { MfPage } from '../mf/MfPage';
+import { NpsPage } from '../nps/NpsPage';
+import { PmsPage } from '../pms/PmsPage';
 
 const TABS = [
   { key: 'ALL', label: 'All products' },
+  { key: 'MF', label: 'MF' },
   { key: 'FD', label: 'FD' },
   { key: 'BOND', label: 'Bonds' },
   { key: 'AIF', label: 'AIF' },
+  { key: 'LOAN', label: 'Loans' },
+  { key: 'GIFT', label: 'GIFT CITY' },
+  { key: 'PMS', label: 'PMS' },
+  { key: 'NPS', label: 'NPS' },
 ];
-const PRODUCT_NAME: Record<string, string> = { FD: 'FD', BOND: 'Bond', AIF: 'AIF' };
+const PRODUCT_NAME: Record<string, string> = { FD: 'FD', BOND: 'Bond', AIF: 'AIF', LOAN: 'Loan', GIFT: 'GIFT City', PMS: 'PMS', NPS: 'NPS' };
 
 /** Product entries: every product booked by hand on one page — all together, or one product with its own columns. */
 export function ProductsPage() {
@@ -27,7 +37,7 @@ export function ProductsPage() {
   // Switching tab keeps the common filters but drops the product-only ones and any open pop-up.
   const switchTab = (key: string) => {
     const next = new URLSearchParams(params);
-    ['platform', 'platformId', 'new', 'open'].forEach((k) => next.delete(k));
+    ['platform', 'platformId', 'lender', 'fund', 'amc', 'pop', 'new', 'open'].forEach((k) => next.delete(k));
     next.set('tab', key);
     setParams(next, { replace: true });
   };
@@ -37,12 +47,12 @@ export function ProductsPage() {
         <div>
           <h1>Product entries</h1>
           <p className="muted" style={{ margin: 0 }}>
-            FD, bonds and AIF booked by hand. Filters apply across months.
+            MF brokerage from the monthly uploads, and FD, bonds, AIF, loans, GIFT City, PMS and NPS booked by hand. Filters apply across months.
           </p>
         </div>
         <NewEntryMenu onPick={(p) => {
           const next = new URLSearchParams(params);
-          ['platform', 'platformId', 'open'].forEach((k) => next.delete(k));
+          ['platform', 'platformId', 'lender', 'fund', 'amc', 'pop', 'open'].forEach((k) => next.delete(k));
           next.set('tab', p);
           next.set('new', '1');
           setParams(next, { replace: true });
@@ -55,9 +65,14 @@ export function ProductsPage() {
         next.set('open', String(id));
         setParams(next, { replace: true });
       }} />}
+      {tab === 'MF' && <MfPage />}
       {tab === 'FD' && <FdPage embedded />}
       {tab === 'BOND' && <BondsPage embedded />}
       {tab === 'AIF' && <AifPage embedded />}
+      {tab === 'LOAN' && <LoansPage embedded />}
+      {tab === 'GIFT' && <GiftPage embedded />}
+      {tab === 'PMS' && <PmsPage embedded />}
+      {tab === 'NPS' && <NpsPage embedded />}
     </section>
   );
 }
@@ -81,7 +96,7 @@ function NewEntryMenu({ onPick }: { onPick: (product: string) => void }) {
       </button>
       {open && (
         <div className="menu" role="menu">
-          {(['FD', 'BOND', 'AIF'] as const).map((p) => (
+          {(['FD', 'BOND', 'AIF', 'LOAN', 'GIFT', 'PMS', 'NPS'] as const).map((p) => (
             <button key={p} type="button" role="menuitem" onClick={() => { setOpen(false); onPick(p); }}>
               New {PRODUCT_NAME[p]}
             </button>
@@ -93,7 +108,7 @@ function NewEntryMenu({ onPick }: { onPick: (product: string) => void }) {
 }
 
 interface Row {
-  product: 'FD' | 'BOND' | 'AIF';
+  product: 'FD' | 'BOND' | 'AIF' | 'LOAN' | 'GIFT' | 'PMS' | 'NPS';
   id: number;
   month: string;
   client: string;
@@ -102,7 +117,8 @@ interface Row {
   amount: number;
   gross: number;
   invoice: number;
-  payment: FdPaymentStatus;
+  /** null: no revenue on the entry yet (PMS). */
+  payment: FdPaymentStatus | null;
   cancelled: boolean;
 }
 
@@ -112,21 +128,29 @@ function AllProducts({ onOpen }: { onOpen: (product: string, id: number) => void
   const fd = useLoad<FdEntry[]>(`/api/fd${query}`);
   const bonds = useLoad<BondEntry[]>(`/api/bonds${query}`);
   const aif = useLoad<AifEntry[]>(`/api/aif${query}`);
+  const loans = useLoad<LoanEntry[]>(`/api/loans${query}`);
+  const gifts = useLoad<GiftEntry[]>(`/api/gift${query}`);
+  const pms = useLoad<PmsInvestment[]>(`/api/pms${query}`);
+  const nps = useLoad<NpsEntry[]>(`/api/nps${query}`);
   const rows: Row[] = [
     ...(fd.data ?? []).map((e): Row => ({ product: 'FD', id: e.id, month: e.month, client: e.clientName, item: `${e.fdName}${e.fdNo ? ` #${e.fdNo}` : ''}`, rm: e.rmName, amount: e.amount, gross: e.gross, invoice: e.invoice, payment: e.paymentStatus, cancelled: e.status === 'CANCELLED' })),
     ...(bonds.data ?? []).map((e): Row => ({ product: 'BOND', id: e.id, month: e.month, client: e.clientName, item: e.bondName, rm: e.rmName, amount: e.consideration, gross: e.gross, invoice: e.invoice, payment: e.paymentStatus, cancelled: e.status === 'CANCELLED' })),
     ...(aif.data ?? []).map((e): Row => ({ product: 'AIF', id: e.id, month: e.month, client: e.clientName, item: e.fundName, rm: e.rmName, amount: e.commitment, gross: e.gross, invoice: e.invoice, payment: e.paymentStatus, cancelled: e.status === 'CANCELLED' })),
+    ...(loans.data ?? []).map((e): Row => ({ product: 'LOAN', id: e.id, month: e.month, client: e.clientName, item: `${e.lender} ${e.loanType}${e.payoutKind === 'TRAIL' ? ' (trail)' : ''}`, rm: e.rmName, amount: e.sanctionedAmount, gross: e.gross, invoice: e.invoice, payment: e.paymentStatus, cancelled: e.status === 'CANCELLED' })),
+    ...(gifts.data ?? []).map((e): Row => ({ product: 'GIFT', id: e.id, month: e.month, client: e.clientName, item: e.fund, rm: e.rmName, amount: e.amountInr ?? 0, gross: e.gross, invoice: e.invoice, payment: e.paymentStatus, cancelled: e.status === 'CANCELLED' })),
+    ...(pms.data ?? []).map((e): Row => ({ product: 'PMS', id: e.id, month: e.month, client: e.clientName, item: `${e.amc} · ${e.strategy}${e.holdingStatus === 'REDEEMED' ? ' (redeemed)' : ''}`, rm: e.rmName, amount: e.amount, gross: 0, invoice: 0, payment: null, cancelled: e.status === 'CANCELLED' })),
+    ...(nps.data ?? []).map((e): Row => ({ product: 'NPS', id: e.id, month: e.month, client: e.clientName, item: e.pop, rm: e.rmName, amount: e.amount, gross: e.revenue, invoice: e.invoice, payment: e.revenue > 0 ? (e.receivedOn ? 'RECEIVED' : 'PENDING') : null, cancelled: e.status === 'CANCELLED' })),
   ].sort((a, b) => b.month.localeCompare(a.month) || a.client.localeCompare(b.client));
   const active = rows.filter((r) => !r.cancelled);
   const byProduct = (p: string) => active.filter((r) => r.product === p).reduce((s, r) => s + r.gross, 0);
-  const loading = !fd.data || !bonds.data || !aif.data;
+  const loading = !fd.data || !bonds.data || !aif.data || !loans.data || !gifts.data || !pms.data || !nps.data;
 
   return (
     <>
-      <ListFilters searchHint="Client, PAN, code, FD / bond / fund name, ISIN" />
+      <ListFilters searchHint="Client, PAN, code, FD / bond / fund name, ISIN, lender, GIFT City fund, PMS AMC or strategy, NPS POP" />
       {!loading && (
         <div className="cards">
-          {(['FD', 'BOND', 'AIF'] as const).map((p) => (
+          {(['FD', 'BOND', 'AIF', 'LOAN', 'GIFT'] as const).map((p) => (
             <div key={p} className="stat-card">
               <span className="label">{PRODUCT_NAME[p]} gross</span>
               <span className="value"><Amount value={byProduct(p)} /></span>
@@ -135,7 +159,7 @@ function AllProducts({ onOpen }: { onOpen: (product: string, id: number) => void
           ))}
         </div>
       )}
-      {(fd.error || bonds.error || aif.error) && <p className="error">{fd.error ?? bonds.error ?? aif.error}</p>}
+      {(fd.error || bonds.error || aif.error || loans.error || gifts.error || pms.error || nps.error) && <p className="error">{fd.error ?? bonds.error ?? aif.error ?? loans.error ?? gifts.error ?? pms.error ?? nps.error}</p>}
       {!loading && rows.length === 0 && <div className="empty">No entries match. Use “New entry” to add one.</div>}
       {rows.length > 0 && (
         <table>
@@ -144,7 +168,7 @@ function AllProducts({ onOpen }: { onOpen: (product: string, id: number) => void
               <th>Product</th>
               <th>Month</th>
               <th>Client</th>
-              <th>FD / bond / fund</th>
+              <th>FD / bond / fund / loan</th>
               <th>RM</th>
               <th className="num">Amount</th>
               <th className="num">Gross</th>
@@ -171,7 +195,7 @@ function AllProducts({ onOpen }: { onOpen: (product: string, id: number) => void
                 <td className="num"><Amount value={r.gross} /></td>
                 <td className="num"><Amount value={r.invoice} /></td>
                 <td>
-                  <span className={r.payment === 'RECEIVED' ? 'badge ok' : 'badge warn'}>{PAYMENT_LABEL[r.payment]}</span>
+                  {r.payment == null ? <span className="muted">entry only</span> : <span className={r.payment === 'RECEIVED' ? 'badge ok' : 'badge warn'}>{PAYMENT_LABEL[r.payment]}</span>}
                 </td>
               </tr>
             ))}

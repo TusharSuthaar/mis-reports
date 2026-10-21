@@ -43,18 +43,18 @@ public final class EndWorkbook {
                          String referral, BigDecimal referralPct, String posp, String client, String pan,
                          BigDecimal mfTrail, BigDecimal gst, BigDecimal mfNet,
                          BigDecimal subBrokerAmount, BigDecimal referralAmount, BigDecimal pospAmount, String remarks,
-                         BigDecimal aum, BigDecimal fd, BigDecimal bonds, BigDecimal aif) {
+                         BigDecimal aum, BigDecimal fd, BigDecimal bonds, BigDecimal aif, BigDecimal loans, BigDecimal gift) {
         public EndRow(String region, String rd, String branch, String rm, String subBroker, BigDecimal subBrokerPct,
                       String referral, BigDecimal referralPct, String posp, String client, String pan,
                       BigDecimal mfTrail, BigDecimal gst, BigDecimal mfNet,
                       BigDecimal subBrokerAmount, BigDecimal referralAmount, BigDecimal pospAmount, String remarks) {
             this(region, rd, branch, rm, subBroker, subBrokerPct, referral, referralPct, posp, client, pan, mfTrail, gst, mfNet,
-                    subBrokerAmount, referralAmount, pospAmount, remarks, null, null, null, null);
+                    subBrokerAmount, referralAmount, pospAmount, remarks, null, null, null, null, null, null);
         }
 
         /** MF net + the other products: the row's revenue excl. GST. */
         BigDecimal totalRev() {
-            return nz(mfNet).add(nz(fd)).add(nz(bonds)).add(nz(aif));
+            return nz(mfNet).add(nz(fd)).add(nz(bonds)).add(nz(aif)).add(nz(loans)).add(nz(gift));
         }
     }
 
@@ -78,16 +78,16 @@ public final class EndWorkbook {
 
     static final String[] DATA_HEADERS = {"Region", "RD", "Branch", "Relationship Manager", "Sub-Broker", "Referral Partners",
             "Sharing %", "Posp", "Client", "PAN", "AUM/Inv Amt", "MF Trail", "GST", "MF NET BROKERAGE", "Pre-IPO", "FD", "Bonds",
-            "Loans", "Insurance", "Equity", "PMS", "AIF", "Total Rev", "Ref Sharing", "POSP Sharing", "Total Sharing",
+            "Loans", "Insurance", "Equity", "PMS", "AIF", "GIFT CITY", "Total Rev", "Ref Sharing", "POSP Sharing", "Total Sharing",
             "Net Revenue", "Broker Type", "REMARKS"};
     static final String[] HELPER_HEADERS = {"Sub-Broker Sharing", "Referral Sharing"};
     static final String SUB_BROKER_TYPE = "Sub broker", REFERRAL_TYPE = "Referral Partner", POSP_TYPE = "POSP";
 
     // DATA column positions (0-based)
-    static final int FD_COL = 15, BONDS_COL = 16;
+    static final int FD_COL = 15, BONDS_COL = 16, LOANS_COL = 17, GIFT_COL = 22, BROKER_TYPE = 28, REMARKS = 29;
     static final int REGION = 0, BRANCH = 2, RM = 3, SUB_BROKER = 4, REFERRAL = 5, POSP = 7, AUM = 10, MF_TRAIL = 11,
-            MF_NET = 13, PRE_IPO = 14, AIF = 21, TOTAL_REV = 22, REF_SHARING = 23, POSP_SHARING = 24, TOTAL_SHARING = 25,
-            NET_REVENUE = 26, SB_SHARING = 29, REF_ONLY_SHARING = 30;
+            MF_NET = 13, PRE_IPO = 14, AIF = 21, TOTAL_REV = 23, REF_SHARING = 24, POSP_SHARING = 25, TOTAL_SHARING = 26,
+            NET_REVENUE = 27, SB_SHARING = 30, REF_ONLY_SHARING = 31;
 
     /** The END file's accounting format: no decimals, a dash for zero. */
     private static final String MONEY = "_ * #,##0_ ;_ * \\-#,##0_ ;_ * \"-\"??_ ;_ @_ ";
@@ -101,7 +101,7 @@ public final class EndWorkbook {
     private int dataFirst, dataLast, dataTotal; // 1-based Excel rows
 
     private EndWorkbook(Input in) {
-        this.in = in;
+        this.in = new Input(in.month(), in.draft(), withoutZeroPartners(in.rows()), in.previousMonth(), in.previous(), in.regions());
         Font arial = font(false, false);
         Font arialBold = font(true, false);
         header = style(font(true, true), null, IndexedColors.DARK_BLUE, true);
@@ -175,10 +175,12 @@ public final class EndWorkbook {
             num(row, MF_TRAIL, e.mfTrail());
             num(row, MF_TRAIL + 1, e.gst());
             num(row, MF_NET, e.mfNet());
-            for (int c = PRE_IPO; c <= AIF; c++) row.createCell(c).setCellStyle(money); // other products: FD below, the rest not live yet
+            for (int c = PRE_IPO; c <= GIFT_COL; c++) row.createCell(c).setCellStyle(money); // other products: FD below, the rest not live yet
             num(row, FD_COL, e.fd());
             num(row, BONDS_COL, e.bonds());
+            num(row, LOANS_COL, e.loans());
             num(row, AIF, e.aif());
+            num(row, GIFT_COL, e.gift());
             BigDecimal refSharing = nz(e.subBrokerAmount()).add(nz(e.referralAmount()));
             BigDecimal totalSharing = refSharing.add(nz(e.pospAmount()));
             num(row, TOTAL_REV, e.totalRev());
@@ -186,8 +188,8 @@ public final class EndWorkbook {
             num(row, POSP_SHARING, nz(e.pospAmount()));
             num(row, TOTAL_SHARING, totalSharing);
             num(row, NET_REVENUE, e.totalRev().subtract(totalSharing));
-            cell(row, 27, brokerType(e), text);
-            cell(row, 28, e.remarks(), text);
+            cell(row, BROKER_TYPE, brokerType(e), text);
+            cell(row, REMARKS, e.remarks(), text);
             num(row, SB_SHARING, nz(e.subBrokerAmount()));
             num(row, REF_ONLY_SHARING, nz(e.referralAmount()));
         }
@@ -218,6 +220,28 @@ public final class EndWorkbook {
         } else if (pcts.size() > 1) {
             cell(row, 6, String.join(" + ", pcts.stream().map(EndWorkbook::pct).toList()), text);
         }
+    }
+
+    /**
+     * A sub-broker, referral partner or POSP whose sharing adds up to 0 for the month is left out of the END (R-83): their
+     * name and % are blanked on the DATA rows and they are not listed on the Sub Broker Summary. The portal keeps them.
+     */
+    static List<EndRow> withoutZeroPartners(List<EndRow> rows) {
+        Map<String, BigDecimal> sb = new java.util.HashMap<>(), ref = new java.util.HashMap<>(), posp = new java.util.HashMap<>();
+        for (EndRow e : rows) {
+            if (e.subBroker() != null) sb.merge(e.subBroker(), nz(e.subBrokerAmount()), BigDecimal::add);
+            if (e.referral() != null) ref.merge(e.referral(), nz(e.referralAmount()), BigDecimal::add);
+            if (e.posp() != null) posp.merge(e.posp(), nz(e.pospAmount()), BigDecimal::add);
+        }
+        java.util.function.BiPredicate<Map<String, BigDecimal>, String> zero = (m, name) -> name != null && m.get(name).signum() == 0;
+        return rows.stream().map(e -> {
+            boolean dropSb = zero.test(sb, e.subBroker()), dropRef = zero.test(ref, e.referral()), dropPosp = zero.test(posp, e.posp());
+            if (!dropSb && !dropRef && !dropPosp) return e;
+            return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), dropSb ? null : e.subBroker(), dropSb ? null : e.subBrokerPct(),
+                    dropRef ? null : e.referral(), dropRef ? null : e.referralPct(), dropPosp ? null : e.posp(), e.client(), e.pan(),
+                    e.mfTrail(), e.gst(), e.mfNet(), e.subBrokerAmount(), e.referralAmount(), e.pospAmount(), e.remarks(), e.aum(), e.fd(),
+                    e.bonds(), e.aif(), e.loans(), e.gift());
+        }).toList();
     }
 
     static String brokerType(EndRow e) {
@@ -287,7 +311,8 @@ public final class EndWorkbook {
         String t = data + "!";
         String[][] products = {{"Mutual Fund", col(MF_NET)}, {"Pre-IPO", col(PRE_IPO)}, {"FD", col(PRE_IPO + 1)},
                 {"Bonds", col(PRE_IPO + 2)}, {"Loans", col(PRE_IPO + 3)}, {"Insurance (" + cur + " business)", col(PRE_IPO + 4)},
-                {"Equity", col(PRE_IPO + 5)}, {"PMS", col(PRE_IPO + 6)}, {"AIF", col(AIF)}};
+                {"Equity", col(PRE_IPO + 5)}, {"PMS", col(PRE_IPO + 6)}, {"AIF", col(AIF)},
+                {"GIFT CITY", col(GIFT_COL)}};
         int c0 = 1;
         for (String[] p : products) {
             Row pr = row(s, c0++);

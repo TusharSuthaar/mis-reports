@@ -19,6 +19,7 @@ public enum Product {
     AIF("AIF", "AIF"),
     ADVISORY("ADVISORY", "Advisory"),
     GIFT("GIFT", "GIFT"),
+    NPS("NPS", "NPS"),
     INS("INS", "Insurance");
 
     private final String code;

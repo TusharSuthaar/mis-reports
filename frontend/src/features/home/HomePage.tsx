@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { AifEntry, BondEntry, FdEntry } from '../../api/types';
+import type { AifEntry, BondEntry, FdEntry, GiftEntry, LoanEntry } from '../../api/types';
 import { useLoad } from '../../api/useLoad';
 import { useAuth } from '../../app/auth';
 import { MASTER_READ } from '../../app/permissions';
@@ -74,6 +74,8 @@ function MonthGlance({ month, row }: { month: string; row?: MonthRow }) {
   const fd = useLoad<FdEntry[]>(`/api/fd${range}`);
   const bonds = useLoad<BondEntry[]>(`/api/bonds${range}`);
   const aif = useLoad<AifEntry[]>(`/api/aif${range}`);
+  const loans = useLoad<LoanEntry[]>(`/api/loans${range}`);
+  const gifts = useLoad<GiftEntry[]>(`/api/gift${range}`);
   const sum = (l?: { gross: number }[] | null) => (l ?? []).reduce((s, e) => s + e.gross, 0);
   const mf = row?.saved?.net ?? 0;
   const cards = [
@@ -81,6 +83,8 @@ function MonthGlance({ month, row }: { month: string; row?: MonthRow }) {
     { key: 'FD', title: 'FD', value: sum(fd.data), hint: `${fd.data?.length ?? 0} FDs`, to: `/products?tab=FD&from=${month}&to=${month}` },
     { key: 'BOND', title: 'Bonds', value: sum(bonds.data), hint: `${bonds.data?.length ?? 0} deals`, to: `/products?tab=BOND&from=${month}&to=${month}` },
     { key: 'AIF', title: 'AIF', value: sum(aif.data), hint: `${aif.data?.length ?? 0} commitments`, to: `/products?tab=AIF&from=${month}&to=${month}` },
+    { key: 'LOAN', title: 'Loans', value: sum(loans.data), hint: `${loans.data?.length ?? 0} payouts`, to: `/products?tab=LOAN&from=${month}&to=${month}` },
+    { key: 'GIFT', title: 'GIFT City', value: sum(gifts.data), hint: `${gifts.data?.length ?? 0} investments`, to: `/products?tab=GIFT&from=${month}&to=${month}` },
   ];
   const total = cards.reduce((s, c) => s + c.value, 0);
   const status = row?.status;
@@ -135,6 +139,7 @@ function ToDo({ months }: { months: MonthRow[] }) {
   const fd = useLoad<{ pendingPayments: number }>('/api/fd/alerts');
   const bonds = useLoad<{ pendingPayments: number }>('/api/bonds/alerts');
   const aif = useLoad<{ pendingPayments: number }>('/api/aif/alerts');
+  const loans = useLoad<{ pendingPayments: number }>('/api/loans/alerts');
   const att = useLoad<{ sharedPan: number; noRm: number; noPan: number }>('/api/clients/attention');
   const items: { n: number; text: string; to: string }[] = [
     ...months.filter((m) => m.notInMaster > 0).map((m) => ({ n: m.notInMaster, text: `clients in ${label(m.month)} not in Master MIS`, to: '/month' })),
@@ -142,6 +147,7 @@ function ToDo({ months }: { months: MonthRow[] }) {
     { n: fd.data?.pendingPayments ?? 0, text: 'FD commissions not received', to: '/products?tab=FD&payment=PENDING' },
     { n: bonds.data?.pendingPayments ?? 0, text: 'bond invoices not fully paid', to: '/products?tab=BOND&payment=PENDING' },
     { n: aif.data?.pendingPayments ?? 0, text: 'AIF invoices not fully paid', to: '/products?tab=AIF&payment=PENDING' },
+    { n: loans.data?.pendingPayments ?? 0, text: 'loan payouts not received', to: '/products?tab=LOAN&payment=PENDING' },
     { n: att.data?.noRm ?? 0, text: 'clients without an RM', to: '/clients?show=NO_RM' },
     { n: att.data?.sharedPan ?? 0, text: 'clients sharing a PAN', to: '/clients?show=SHARED_PAN' },
     { n: att.data?.noPan ?? 0, text: 'clients without a PAN', to: '/clients?show=NO_PAN' },

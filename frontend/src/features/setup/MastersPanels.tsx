@@ -1,3 +1,4 @@
+import { ExchangeRatesPage } from './ExchangeRatesPage';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../app/auth';
 import { MASTER_WRITE } from '../../app/permissions';
@@ -23,12 +24,15 @@ export function PlatformsAndTaxesPage() {
   const tabs = [
     { key: 'platforms', label: 'Platforms' },
     { key: 'taxes', label: 'Products & taxes' },
+    { key: 'fx', label: 'Exchange rates' },
   ];
   const [tab, setTab] = useTab(tabs);
   return (
     <section>
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
-      {tab === 'platforms' ? <PlatformsPage /> : <ProductTaxesPage />}
+      {tab === 'platforms' && <PlatformsPage />}
+      {tab === 'taxes' && <ProductTaxesPage />}
+      {tab === 'fx' && <ExchangeRatesPage />}
     </section>
   );
 }

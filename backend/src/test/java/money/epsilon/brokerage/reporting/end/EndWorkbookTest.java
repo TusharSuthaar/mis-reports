@@ -56,7 +56,8 @@ class EndWorkbookTest {
             for (int c = 0; c < EndWorkbook.DATA_HEADERS.length; c++) headers.add(h.getCell(c).getStringCellValue());
             assertThat(headers).containsExactly(EndWorkbook.DATA_HEADERS);
             assertThat(headers.get(0)).isEqualTo("Region");
-            assertThat(headers.get(28)).isEqualTo("REMARKS");
+            assertThat(headers.get(29)).isEqualTo("REMARKS");
+            assertThat(headers.get(22)).isEqualTo("GIFT CITY");
             assertThat(wb.getSheet("Data_Sep'26").isColumnHidden(EndWorkbook.SB_SHARING)).isTrue();
             assertThat(wb.getSheet("Summary").getRow(0).getCell(0).getStringCellValue()).isEqualTo("Row Labels");
             Cell trail = wb.getSheet("Data_Sep'26").getRow(1).getCell(EndWorkbook.MF_TRAIL);
@@ -74,13 +75,32 @@ class EndWorkbookTest {
             assertThat(one.getCell(6).getStringCellValue()).isEqualTo("50% + 20%");
             assertThat(one.getCell(EndWorkbook.REF_SHARING).getNumericCellValue()).isEqualTo(60.0);
             assertThat(one.getCell(EndWorkbook.NET_REVENUE).getNumericCellValue()).isEqualTo(40.0);
-            assertThat(one.getCell(27).getStringCellValue()).isEqualTo("Sub broker + Referral Partner");
+            assertThat(one.getCell(28).getStringCellValue()).isEqualTo("Sub broker + Referral Partner");
             Row two = data.getRow(2);
             assertThat(two.getCell(6).getNumericCellValue()).isEqualTo(0.4);
-            assertThat(two.getCell(27).getStringCellValue()).isEqualTo("Referral Partner");
-            assertThat(data.getRow(3).getCell(27).getStringCellValue()).isEmpty();
-            assertThat(data.getRow(4).getCell(28).getStringCellValue()).isEqualTo("Adjustment entry for Aug'26");
+            assertThat(two.getCell(28).getStringCellValue()).isEqualTo("Referral Partner");
+            assertThat(data.getRow(3).getCell(28).getStringCellValue()).isEmpty();
+            assertThat(data.getRow(4).getCell(29).getStringCellValue()).isEqualTo("Adjustment entry for Aug'26");
             assertThat(data.getRow(5).getCell(0).getStringCellValue()).isEqualTo("TOTAL");
+        }
+    }
+
+    @Test
+    void partnersWithNothingThisMonthAreLeftOutOfTheEnd() throws Exception {
+        List<EndRow> rows = List.of(
+                row("PATNA", "RM ALPHA", "KEFI", "0.5", null, null, "ONE", "118", "18", "100", "50", null, null),
+                row("PATNA", "RM ALPHA", "ZERO SB", "0", "ZERO REF", "0", "TWO", "59", "9", "50", "0", "0", null));
+        try (XSSFWorkbook wb = open(EndWorkbook.build(new EndWorkbook.Input(SEP, false, rows, null, List.of())))) {
+            var data = wb.getSheet("Data_Sep'26");
+            var two = java.util.stream.StreamSupport.stream(data.spliterator(), false)
+                    .filter(r -> r.getCell(8) != null && "TWO".equals(r.getCell(8).getStringCellValue())).findFirst().orElseThrow();
+            assertThat(two.getCell(4) == null || two.getCell(4).getStringCellValue().isEmpty()).as("sub-broker blanked").isTrue();
+            assertThat(two.getCell(5) == null || two.getCell(5).getStringCellValue().isEmpty()).as("referral blanked").isTrue();
+            assertThat(two.getCell(28) == null || two.getCell(28).getStringCellValue().isEmpty()).as("no broker type").isTrue();
+            var summary = wb.getSheet("Sub Broker Summary");
+            List<String> listed = new ArrayList<>();
+            summary.forEach(r -> r.forEach(c -> { if (c.getCellType() == org.apache.poi.ss.usermodel.CellType.STRING) listed.add(c.getStringCellValue()); }));
+            assertThat(listed).contains("KEFI").doesNotContain("ZERO SB", "ZERO REF");
         }
     }
 

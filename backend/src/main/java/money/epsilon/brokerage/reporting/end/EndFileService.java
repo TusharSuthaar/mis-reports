@@ -35,6 +35,8 @@ public class EndFileService {
     static final String FD = "FD";
     static final String BOND = "BOND";
     static final String AIF = "AIF";
+    static final String LOAN = "LOAN";
+    static final String GIFT = "GIFT";
     static final String NO_BRANCH = "(no branch)";
 
     private final PeriodService periods;
@@ -46,12 +48,17 @@ public class EndFileService {
     private final money.epsilon.brokerage.fd.service.FdService fds;
     private final money.epsilon.brokerage.bond.service.BondService bonds;
     private final money.epsilon.brokerage.aif.service.AifService aifs;
+    private final money.epsilon.brokerage.loan.service.LoanService loans;
+    private final money.epsilon.brokerage.gift.service.GiftService gifts;
 
     EndFileService(PeriodService periods, JdbcClient jdbc, PanCipher panCipher, AuditService audit,
                    money.epsilon.brokerage.client.service.ClientService clients, RegionService regions,
                    money.epsilon.brokerage.fd.service.FdService fds, money.epsilon.brokerage.bond.service.BondService bonds,
-                   money.epsilon.brokerage.aif.service.AifService aifs) {
+                   money.epsilon.brokerage.aif.service.AifService aifs, money.epsilon.brokerage.loan.service.LoanService loans,
+                   money.epsilon.brokerage.gift.service.GiftService gifts) {
         this.aifs = aifs;
+        this.loans = loans;
+        this.gifts = gifts;
         this.fds = fds;
         this.bonds = bonds;
         this.clients = clients;
@@ -75,8 +82,8 @@ public class EndFileService {
         Map<Long, YearMonth> monthOfPeriod = periods.list(MF).stream().collect(Collectors.toMap(PeriodView::id, PeriodView::month));
 
         List<EndRow> rows = jdbc.sql("""
-                        SELECT * FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?)""")
-                .params(periodId, MF, FD, BOND, AIF)
+                        SELECT * FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?)""")
+                .params(periodId, MF, FD, BOND, AIF, LOAN, GIFT)
                 .query((rs, n) -> {
                     boolean fd = FD.equals(rs.getString("product_type"));
                     boolean bond = BOND.equals(rs.getString("product_type"));
@@ -94,34 +101,47 @@ public class EndFileService {
                         // An AIF row (R-78): its gross revenue in the AIF column, the commitment as AUM, MF columns empty.
                         return new EndRow(row.region(), row.rd(), row.branch(), row.rm(), row.subBroker(), row.subBrokerPct(), row.referral(),
                                 row.referralPct(), row.posp(), row.client(), row.pan(), null, null, null, row.subBrokerAmount(),
-                                row.referralAmount(), row.pospAmount(), "AIF#" + rs.getLong("aif_entry_id"), null, null, null, rs.getBigDecimal("net"));
+                                row.referralAmount(), row.pospAmount(), "AIF#" + rs.getLong("aif_entry_id"), null, null, null, rs.getBigDecimal("net"), null, null);
+                    }
+                    if (GIFT.equals(rs.getString("product_type"))) {
+                        // A GIFT City row (R-82): its brokerage excl. GST in the GIFT CITY column, the rupee amount as AUM.
+                        return new EndRow(row.region(), row.rd(), row.branch(), row.rm(), row.subBroker(), row.subBrokerPct(), row.referral(),
+                                row.referralPct(), row.posp(), row.client(), row.pan(), null, null, null, row.subBrokerAmount(),
+                                row.referralAmount(), row.pospAmount(), "GIFT#" + rs.getLong("gift_entry_id"), null, null, null, null, null,
+                                rs.getBigDecimal("net"));
+                    }
+                    if (LOAN.equals(rs.getString("product_type"))) {
+                        // A loan row (R-80): its payout excl. GST in the Loans column, the sanctioned amount as AUM, MF columns empty.
+                        return new EndRow(row.region(), row.rd(), row.branch(), row.rm(), row.subBroker(), row.subBrokerPct(), row.referral(),
+                                row.referralPct(), row.posp(), row.client(), row.pan(), null, null, null, row.subBrokerAmount(),
+                                row.referralAmount(), row.pospAmount(), "LOAN#" + rs.getLong("loan_entry_id"), null, null, null, null, rs.getBigDecimal("net"), null);
                     }
                     if (bond) {
                         // A bond row (R-74): its gross revenue in the Bonds column, the consideration as AUM, MF columns empty.
                         return new EndRow(row.region(), row.rd(), row.branch(), row.rm(), row.subBroker(), row.subBrokerPct(), row.referral(),
                                 row.referralPct(), row.posp(), row.client(), row.pan(), null, null, null, row.subBrokerAmount(),
-                                row.referralAmount(), row.pospAmount(), "BOND#" + rs.getLong("bond_entry_id"), null, null, rs.getBigDecimal("net"), null);
+                                row.referralAmount(), row.pospAmount(), "BOND#" + rs.getLong("bond_entry_id"), null, null, rs.getBigDecimal("net"), null, null, null);
                     }
                     if (!fd) return row;
                     // An FD row (R-74): its commission in the FD column, the amount invested as AUM, MF columns empty.
                     return new EndRow(row.region(), row.rd(), row.branch(), row.rm(), row.subBroker(), row.subBrokerPct(), row.referral(),
                             row.referralPct(), row.posp(), row.client(), row.pan(), null, null, null, row.subBrokerAmount(),
-                            row.referralAmount(), row.pospAmount(), "FD#" + rs.getLong("fd_entry_id"), null, rs.getBigDecimal("net"), null, null);
+                            row.referralAmount(), row.pospAmount(), "FD#" + rs.getLong("fd_entry_id"), null, rs.getBigDecimal("net"), null, null, null, null);
                 })
                 .list().stream()
                 .sorted(Comparator.comparing((EndRow e) -> Objects.toString(e.region(), "")).thenComparing(EndRow::branch)
                         .thenComparing(e -> Objects.toString(e.rm(), "")).thenComparing(e -> Objects.toString(e.client(), "")))
                 .toList();
         if (rows.isEmpty()) throw new RuleViolationException(p.month() + " has no split to export");
-        rows = withAifLabels(withBondLabels(withFdLabels(rows)));
+        rows = withGiftLabels(withLoanLabels(withAifLabels(withBondLabels(withFdLabels(rows)))));
 
         PeriodView previous = periods.list(MF).stream()
                 .filter(x -> x.status() == Period.Status.LOCKED && x.month().isBefore(p.month()))
                 .max(Comparator.comparing(PeriodView::month)).orElse(null);
         List<BranchTotal> prev = previous == null ? List.of() : jdbc.sql("""
                         SELECT region, coalesce(branch, ?) AS branch, sum(net) AS gross, sum(epsilon_amount) AS net
-                        FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?) GROUP BY region, coalesce(branch, ?)""")
-                .params(NO_BRANCH, previous.id(), MF, FD, BOND, AIF, NO_BRANCH)
+                        FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?) GROUP BY region, coalesce(branch, ?)""")
+                .params(NO_BRANCH, previous.id(), MF, FD, BOND, AIF, LOAN, GIFT, NO_BRANCH)
                 .query((rs, n) -> new BranchTotal(rs.getString("region"), rs.getString("branch"), rs.getBigDecimal("gross"), rs.getBigDecimal("net")))
                 .list();
 
@@ -144,7 +164,7 @@ public class EndFileService {
             String remark = l == null ? "FD" : "FD: " + l.fdName() + (l.fdNo() == null ? "" : " #" + l.fdNo());
             return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
                     e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(), remark,
-                    l == null ? null : l.amount(), e.fd(), null, null);
+                    l == null ? null : l.amount(), e.fd(), null, null, null, null);
         }).toList();
     }
 
@@ -159,7 +179,7 @@ public class EndFileService {
             String remark = l == null ? "Bond" : "Bond: " + l.bondName() + (l.isin() == null ? "" : " " + l.isin());
             return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
                     e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(), remark,
-                    l == null ? null : l.consideration(), null, e.bonds(), null);
+                    l == null ? null : l.consideration(), null, e.bonds(), null, null, null);
         }).toList();
     }
 
@@ -173,7 +193,36 @@ public class EndFileService {
             var l = labels.get(Long.parseLong(e.remarks().substring(4)));
             return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
                     e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(),
-                    l == null ? "AIF" : "AIF: " + l.fundName(), l == null ? null : l.commitment(), null, null, e.aif());
+                    l == null ? "AIF" : "AIF: " + l.fundName(), l == null ? null : l.commitment(), null, null, e.aif(), null, null);
+        }).toList();
+    }
+
+    /** Loan rows carry "LOAN#id" until here: they get lender and loan type as REMARKS, and the sanctioned amount as AUM. */
+    private List<EndRow> withLoanLabels(List<EndRow> rows) {
+        List<Long> ids = rows.stream().map(EndRow::remarks).filter(r -> r != null && r.startsWith("LOAN#")).map(r -> Long.parseLong(r.substring(5))).toList();
+        if (ids.isEmpty()) return rows;
+        Map<Long, money.epsilon.brokerage.loan.service.LoanService.LoanLabel> labels = loans.labels(ids);
+        return rows.stream().map(e -> {
+            if (e.remarks() == null || !e.remarks().startsWith("LOAN#")) return e;
+            var l = labels.get(Long.parseLong(e.remarks().substring(5)));
+            String remark = l == null ? "Loan" : "Loan: " + l.lender() + " " + l.loanType() + (l.trail() ? " (trail)" : "");
+            return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
+                    e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(), remark,
+                    l == null ? null : l.sanctionedAmount(), null, null, null, e.loans(), null);
+        }).toList();
+    }
+
+    /** GIFT City rows carry "GIFT#id" until here: they get the fund as REMARKS, and the rupee amount as AUM. */
+    private List<EndRow> withGiftLabels(List<EndRow> rows) {
+        List<Long> ids = rows.stream().map(EndRow::remarks).filter(r -> r != null && r.startsWith("GIFT#")).map(r -> Long.parseLong(r.substring(5))).toList();
+        if (ids.isEmpty()) return rows;
+        Map<Long, money.epsilon.brokerage.gift.service.GiftService.GiftLabel> labels = gifts.labels(ids);
+        return rows.stream().map(e -> {
+            if (e.remarks() == null || !e.remarks().startsWith("GIFT#")) return e;
+            var l = labels.get(Long.parseLong(e.remarks().substring(5)));
+            return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
+                    e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(),
+                    l == null ? "GIFT City" : "GIFT City: " + l.fund(), l == null ? null : l.amountInr(), null, null, null, null, e.gift());
         }).toList();
     }
 

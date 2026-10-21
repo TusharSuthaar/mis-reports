@@ -4,7 +4,7 @@ import { PAYMENT_LABEL, type Employee, type Partner } from '../api/types';
 import { useLoad } from '../api/useLoad';
 
 /** The filter keys a product list understands (R-77); they live in the page address, so a refresh or a shared link keeps them. */
-export const FILTER_KEYS = ['from', 'to', 'q', 'rmId', 'partnerId', 'platform', 'platformId', 'payment', 'includeCancelled'] as const;
+export const FILTER_KEYS = ['from', 'to', 'q', 'rmId', 'partnerId', 'platform', 'platformId', 'lender', 'fund', 'amc', 'pop', 'payment', 'includeCancelled'] as const;
 
 /** The current filters as a query string for the list / Excel endpoints ("" when none). */
 export function useFilterQuery(): string {
@@ -20,16 +20,24 @@ export function useFilterQuery(): string {
 
 /**
  * All months by default; narrow by month range, text, RM, referral / sub-broker, platform, payment status, cancelled.
- * {@code platformKey}: "platform" (FD: a name) or "platformId" (Bonds: a platform of Setup → Platforms).
+ * {@code platformKey}: "platform" (FD: a name), "platformId" (Bonds: a platform of Setup → Platforms) or "lender" (Loans).
  */
 export function ListFilters({
   searchHint,
   platformKey,
   platforms,
+  platformLabel = 'Platform',
+  payments = PAYMENT_LABEL,
+  entryFilters = true,
 }: {
   searchHint: string;
-  platformKey?: 'platform' | 'platformId';
+  platformKey?: 'platform' | 'platformId' | 'lender' | 'fund' | 'amc' | 'pop';
   platforms?: { value: string; label: string }[];
+  platformLabel?: string;
+  /** The payment statuses this product has (Loans: no "GST pending"). */
+  payments?: Partial<Record<string, string>>;
+  /** false: no Payment / Show cancelled (the MF tab has no entries to pay or cancel). */
+  entryFilters?: boolean;
 }) {
   const [params, setParams] = useSearchParams();
   const employees = useLoad<Employee[]>('/api/employees');
@@ -93,7 +101,7 @@ export function ListFilters({
       </label>
       {platformKey && (
       <label>
-        Platform
+        {platformLabel}
         <select value={params.get(platformKey) ?? ''} onChange={(e) => set(platformKey, e.target.value)}>
           <option value="">All</option>
           {(platforms ?? []).map((p) => (
@@ -104,21 +112,25 @@ export function ListFilters({
         </select>
       </label>
       )}
+      {entryFilters && (
       <label>
         Payment
         <select value={params.get('payment') ?? ''} onChange={(e) => set('payment', e.target.value)}>
           <option value="">All</option>
-          {Object.entries(PAYMENT_LABEL).map(([k, v]) => (
+          {Object.entries(payments).map(([k, v]) => (
             <option key={k} value={k}>
               {v}
             </option>
           ))}
         </select>
       </label>
+      )}
+      {entryFilters && (
       <label className="check">
         <input type="checkbox" checked={params.get('includeCancelled') === 'true'} onChange={(e) => set('includeCancelled', e.target.checked ? 'true' : '')} />
         Show cancelled
       </label>
+      )}
       {active && (
         <button
           type="button"

@@ -59,6 +59,10 @@ mis:
     negative-net: ${MIS_SHARING_NEGATIVE_NET:SAME_PERCENT}
   # PAN encryption (AES-256-GCM) and lookup-hash keys: base64 of 32 random bytes each. No defaults on purpose.
   # Generate with: openssl rand -base64 32
+  # Exchange rates (R-84) are fetched from Frankfurter: free European Central Bank rates, no key. Only a day and a
+  # currency pair are sent.
+  fx:
+    url: ${MIS_FX_URL:https://api.frankfurter.dev/v1}
   pan:
     key: ${MIS_PAN_KEY:}
     hash-key: ${MIS_PAN_HASH_KEY:}

@@ -1,3 +1,5 @@
+import { MfBrokerage } from './MfBrokerage';
+import { OpsMaster } from './OpsMaster';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../../api/client';
@@ -10,7 +12,7 @@ import { DatedChangeForm } from '../../components/DatedChangeForm';
 import { HistoryTable } from '../../components/HistoryTable';
 import { SidePanel } from '../../components/SidePanel';
 import { Tabs, useTab } from '../../components/Tabs';
-import type { AifEntry, BondEntry, FdEntry } from '../../api/types';
+import type { AifEntry, BondEntry, FdEntry, GiftEntry, LoanEntry, NpsEntry, PmsInvestment } from '../../api/types';
 import { Amount } from '../../components/Amount';
 import { formatMonth } from '../fd/FdPage';
 import { formatDate, formatDateTime, todayIso } from '../../format';
@@ -341,6 +343,7 @@ function BulkRmBar({ ids, rms, onDone }: { ids: number[]; rms: Employee[]; onDon
 
 const PROFILE_TABS = [
   { key: 'profile', label: 'Profile' },
+  { key: 'mf', label: 'MF brokerage' },
   { key: 'rm', label: 'RM history' },
   { key: 'partners', label: 'Partners & sharing' },
   { key: 'holdings', label: 'Holdings' },
@@ -426,6 +429,8 @@ export function ClientProfilePage() {
               )}
             </div>
           )}
+          {tab === 'profile' && <OpsMaster clientId={id} />}
+          {tab === 'mf' && <MfBrokerage clientId={id} />}
           {tab === 'rm' && (
             <div className="panel-card">
               <h2>RM over time</h2>
@@ -459,20 +464,28 @@ function Holdings({ clientId, name }: { clientId: number; name: string }) {
   const fd = useLoad<FdEntry[]>(`/api/fd${q}`);
   const bonds = useLoad<BondEntry[]>(`/api/bonds${q}`);
   const aif = useLoad<AifEntry[]>(`/api/aif${q}`);
+  const loans = useLoad<LoanEntry[]>(`/api/loans${q}`);
+  const gifts = useLoad<GiftEntry[]>(`/api/gift${q}`);
+  const pms = useLoad<PmsInvestment[]>(`/api/pms${q}`);
+  const nps = useLoad<NpsEntry[]>(`/api/nps${q}`);
   const rows = [
     ...(fd.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `FD-${e.id}`, product: 'FD', tab: 'FD', id: e.id, month: e.month, item: e.fdName, amount: e.amount, gross: e.gross })),
     ...(bonds.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `B-${e.id}`, product: 'Bond', tab: 'BOND', id: e.id, month: e.month, item: e.bondName, amount: e.consideration, gross: e.gross })),
     ...(aif.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `A-${e.id}`, product: 'AIF', tab: 'AIF', id: e.id, month: e.month, item: e.fundName, amount: e.commitment, gross: e.gross })),
+    ...(loans.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `L-${e.id}`, product: 'Loan', tab: 'LOAN', id: e.id, month: e.month, item: `${e.lender} ${e.loanType}${e.payoutKind === 'TRAIL' ? ' (trail)' : ''}`, amount: e.sanctionedAmount, gross: e.gross })),
+    ...(gifts.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `G-${e.id}`, product: 'GIFT City', tab: 'GIFT', id: e.id, month: e.month, item: e.fund, amount: e.amountInr ?? 0, gross: e.gross })),
+    ...(pms.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `P-${e.id}`, product: 'PMS', tab: 'PMS', id: e.id, month: e.month, item: `${e.amc} · ${e.strategy}`, amount: e.amount, gross: 0 })),
+    ...(nps.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `N-${e.id}`, product: 'NPS', tab: 'NPS', id: e.id, month: e.month, item: e.pop, amount: e.amount, gross: e.revenue })),
   ].sort((a, b) => b.month.localeCompare(a.month));
-  if (!fd.data || !bonds.data || !aif.data) return <p className="muted">Loading…</p>;
-  if (rows.length === 0) return <div className="empty">No FD, bond or AIF entries for this client.</div>;
+  if (!fd.data || !bonds.data || !aif.data || !loans.data || !gifts.data || !pms.data || !nps.data) return <p className="muted">Loading…</p>;
+  if (rows.length === 0) return <div className="empty">No FD, bond, AIF, loan, GIFT City, PMS or NPS entries for this client.</div>;
   return (
     <table>
       <thead>
         <tr>
           <th>Product</th>
           <th>Month</th>
-          <th>FD / bond / fund</th>
+          <th>FD / bond / fund / loan</th>
           <th className="num">Amount</th>
           <th className="num">Gross</th>
         </tr>

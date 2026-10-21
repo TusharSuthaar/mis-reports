@@ -361,3 +361,22 @@ td { font-size: 13.5px; }
 .handover-summary p { margin: 0; }
 .handover .actions { display: flex; gap: 8px; }
 .success { background: #e8f6ee; color: #17663a; border: 1px solid #b7e2c7; border-radius: 6px; padding: 10px 14px; }
+
+/* Client page: Ops client master (R-08) */
+.ops-master { margin-top: 16px; }
+.ops-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.ops-head h2 { display: flex; align-items: center; gap: 8px; }
+.ops-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px 24px; margin-top: 12px; }
+.ops-groups section { border-top: 1px solid var(--border); padding-top: 8px; }
+.ops-groups h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.fact-row { display: contents; }
+.ops-address { font-style: normal; line-height: 1.5; }
+
+/* Loans: the Closed section */
+.loan-closed { margin-top: 24px; }
+.loan-closed h2 { display: flex; align-items: center; gap: 8px; font-size: 16px; margin-bottom: 4px; }
+
+/* Two-way switch (PMS: Investments / AMC payouts) */
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
+.segmented button { background: var(--surface); color: var(--text); border: 0; border-radius: 0; padding: 6px 14px; }
+.segmented button.on { background: var(--primary); color: #fff; }

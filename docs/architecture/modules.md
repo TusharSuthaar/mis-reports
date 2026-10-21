@@ -24,6 +24,11 @@ reads or writes those tables with SQL — it calls the owner's public service.
 | `intermediary` | `intermediary`, `intermediary_terms` | Platforms investments are booked through (GoldenPi, SMC…) and their dated brokerage terms; "Platforms" on screen | `IntermediaryService` |
 | `bond` | `bond_entry` | Bond deals entered on the Bonds screen, with their brokerage (gross, TDS, GST, net, invoice) | `BondService` |
 | `aif` | `aif_entry`, `aif_instalment` | AIF commitments entered on the AIF screen, their drawdowns, brokerage and per-deal sharing % | `AifService` |
+| `fx` | `exchange_rate` | Exchange rates by day: fetched from Frankfurter (ECB) once per day, or set by hand | `ExchangeRateService` |
+| `nps` | `nps_entry` | NPS investments with their revenue (POP charges × sharing %, or typed; CGST + SGST), entry only for now | `NpsService` |
+| `pms` | `pms_investment`, `pms_payout` | PMS client investments and AMC payouts per invoice period (entry only for now) | `PmsService` |
+| `gift` | `gift_entry` | GIFT City investments entered on the GIFT CITY screen (USD / ₹ amount, fund, transaction status) with a typed brokerage (TDS, GST, net, invoice) | `GiftService` |
+| `loan` | `loan_entry` | Loan payouts entered on the Loans screen (disbursal and LAS trail payouts), with their revenue (gross, TDS, GST, net, invoice) | `LoanService` |
 | `fd` | `fd_entry` | FD bookings entered on the FD screen, with their commission (gross, TDS, GST, net, invoice) | `FdService` |
 | `masterimport` | — | One-off org/partner masters workbook import (uses other modules' services) | `MasterImportProcessor` |
 
@@ -37,6 +42,10 @@ period / ledger  ←  ingestion, attribution, reporting
 attribution  ←  ingestion (void a month's split), reporting (read-only view)
 sharing (Product)  ←  tax
 client, org, partner, tax  ←  fd  ←  attribution (FD lines), reporting (FD labels)
+client, org, partner, tax  ←  loan  ←  attribution (loan lines), reporting (loan labels)
+client, org, partner, tax  ←  pms
+client, org, partner, tax  ←  nps
+client, org, partner, tax  ←  gift  ←  attribution (GIFT City lines), reporting (GIFT City labels)
 client, org, partner, tax, intermediary  ←  bond  ←  attribution (bond lines), reporting (bond labels)
 client, org, partner, tax, intermediary  ←  aif  ←  attribution (AIF lines), reporting (AIF labels)
 ```

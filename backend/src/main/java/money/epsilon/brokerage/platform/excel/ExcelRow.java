@@ -31,6 +31,28 @@ public final class ExcelRow {
         return rowNumber;
     }
 
+    /** One filled cell with its header as written. */
+    public record Cell(String header, String text) {
+    }
+
+    /**
+     * Every filled cell of the row, in column order, as text (numbers without trailing zeros, dates as yyyy-MM-dd). A
+     * header that appears more than once is numbered: "Address Line", "Address Line 2", ….
+     */
+    public List<Cell> cells() {
+        List<Cell> result = new java.util.ArrayList<>();
+        Map<String, Integer> seen = new java.util.HashMap<>();
+        for (Map.Entry<Integer, String> col : columns.labels.entrySet()) {
+            int n = seen.merge(col.getValue().toLowerCase(Locale.ENGLISH), 1, Integer::sum);
+            Object v = values.get(col.getKey());
+            if (v == null) continue;
+            String text = v instanceof BigDecimal d ? d.stripTrailingZeros().toPlainString() : v.toString().trim();
+            if (text.isEmpty()) continue;
+            result.add(new Cell(n == 1 ? col.getValue() : col.getValue() + " " + n, text));
+        }
+        return result;
+    }
+
     /** The cell as read: BigDecimal, LocalDate, String, or null (blank / no such column). */
     public Object value(String header) {
         Integer c = columns.indexOf(header);

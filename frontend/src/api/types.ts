@@ -103,7 +103,7 @@ export const PARTNER_STATUS_LABEL: Record<PartnerStatus, string> = {
 };
 
 /** Products a partner can share in (codes as the API sends them), in Master MIS column order. */
-export type Product = 'MF' | 'PREIPO' | 'FD' | 'BOND' | 'LOAN' | 'EQUITY' | 'PMS' | 'AIF' | 'ADVISORY' | 'GIFT' | 'INS';
+export type Product = 'MF' | 'PREIPO' | 'FD' | 'BOND' | 'LOAN' | 'EQUITY' | 'PMS' | 'AIF' | 'ADVISORY' | 'GIFT' | 'NPS' | 'INS';
 
 export const PRODUCTS: { code: Product; label: string }[] = [
   { code: 'MF', label: 'MF' },
@@ -116,6 +116,7 @@ export const PRODUCTS: { code: Product; label: string }[] = [
   { code: 'AIF', label: 'AIF' },
   { code: 'ADVISORY', label: 'Advisory' },
   { code: 'GIFT', label: 'GIFT' },
+  { code: 'NPS', label: 'NPS' },
   { code: 'INS', label: 'Insurance' },
 ];
 
@@ -483,7 +484,7 @@ export interface RunResult {
   epsilon: number;
 }
 
-export type ProductCode = 'MF' | 'PREIPO' | 'FD' | 'BOND' | 'LOAN' | 'EQUITY' | 'PMS' | 'AIF' | 'ADVISORY' | 'GIFT' | 'INS';
+export type ProductCode = 'MF' | 'PREIPO' | 'FD' | 'BOND' | 'LOAN' | 'EQUITY' | 'PMS' | 'AIF' | 'ADVISORY' | 'GIFT' | 'NPS' | 'INS';
 
 /** GST and TDS of a product over a period (Products & taxes). Percent values: 18 = 18%. */
 export interface TaxRate {
@@ -757,4 +758,254 @@ export interface AifEntry {
 export interface AifSuggestions {
   fundNames: string[];
   markups: { platformId: number; fundName: string; markupPercent: number }[];
+}
+
+export type LoanPayoutKind = 'DISBURSAL' | 'TRAIL';
+export type LoanPayoutOn = 'SANCTIONED' | 'UTILISED';
+export type LoanPaymentStatus = 'PENDING' | 'RECEIVED';
+export const LOAN_PAYMENT_LABEL: Record<LoanPaymentStatus, string> = { PENDING: 'Pending', RECEIVED: 'Received (credited)' };
+
+/** One loan payout, as entered on the Loans screen (a row of the LOANS register, R-80). */
+export interface LoanEntry {
+  id: number;
+  month: string;
+  rmId: number;
+  rmName: string;
+  branchName: string | null;
+  region: string | null;
+  rd: string | null;
+  partnerId: number | null;
+  partnerName: string | null;
+  partnerType: string | null;
+  clientId: number;
+  clientName: string;
+  pan: string | null;
+  clientType: string;
+  mobile: string | null;
+  email: string | null;
+  address: string | null;
+  /** The register's PARTNER: the lender (TATA, Rupee Boss…). */
+  lender: string;
+  loanType: string;
+  /** The register's "Invt Date". */
+  disbursalDate: string;
+  sanctionedAmount: number;
+  utilisedAmount: number | null;
+  ratePercent: number | null;
+  payoutKind: LoanPayoutKind;
+  payoutOn: LoanPayoutOn;
+  /** The register's "Revenue sharing" %. */
+  payoutPercent: number | null;
+  fixedAmount: number | null;
+  gross: number;
+  tdsApplied: boolean;
+  tdsPercent: number;
+  tds: number;
+  gstPercent: number;
+  gst: number;
+  net: number;
+  invoice: number;
+  figuresAsGiven: boolean;
+  invoiceRaised: boolean;
+  paymentStatus: LoanPaymentStatus;
+  /** The register's Payment Status text, kept as written (e.g. "Invoice will be raised in Oct"). */
+  paymentNote: string | null;
+  receivedOn: string | null;
+  loanClosed: boolean;
+  remarks: string | null;
+  status: 'ACTIVE' | 'CANCELLED';
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+export interface LoanSuggestions {
+  lenders: string[];
+  loanTypes: string[];
+  payouts: { lender: string; loanType: string; payoutKind: LoanPayoutKind; payoutOn: LoanPayoutOn; payoutPercent: number }[];
+}
+
+export type GiftTrxnStatus = 'PENDING' | 'DONE';
+export type GiftPaymentStatus = 'PENDING' | 'RECEIVED';
+export const GIFT_PAYMENT_LABEL: Record<GiftPaymentStatus, string> = { PENDING: 'Pending', RECEIVED: 'Received' };
+
+/** One GIFT City investment, as entered on the GIFT CITY screen (a row of the GIFT CITY register, R-82). */
+export interface GiftEntry {
+  id: number;
+  month: string;
+  rmId: number;
+  rmName: string;
+  branchName: string | null;
+  region: string | null;
+  rd: string | null;
+  partnerId: number | null;
+  partnerName: string | null;
+  partnerType: string | null;
+  clientId: number;
+  clientName: string;
+  pan: string | null;
+  clientType: string;
+  mobile: string | null;
+  email: string | null;
+  address: string | null;
+  /** The register's PARTNER: the GIFT City fund. */
+  fund: string;
+  amountUsd: number | null;
+  fxRate: number | null;
+  /** The day the rate is for, and where it came from ("ECB rate of …", "entered by hand"). */
+  fxRateDate: string | null;
+  fxSource: string | null;
+  amountInr: number | null;
+  /** The register's ENTRY STATUS: entered on the portal. */
+  onPortal: boolean;
+  trxnStatus: GiftTrxnStatus;
+  /** Typed for now (excl. GST); null = not known yet. */
+  brokerage: number | null;
+  gross: number;
+  tdsApplied: boolean;
+  tdsPercent: number;
+  tds: number;
+  gstPercent: number;
+  gst: number;
+  net: number;
+  invoice: number;
+  invoiceRaised: boolean;
+  paymentStatus: GiftPaymentStatus;
+  receivedOn: string | null;
+  remarks: string | null;
+  status: 'ACTIVE' | 'CANCELLED';
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+/** A USD → ₹ rate for a day (R-84); rate null = not in the list and could not be fetched. */
+export interface ExchangeRate {
+  currency: string;
+  day: string;
+  rate: number | null;
+  rateDate: string | null;
+  source: 'ECB' | 'MANUAL' | null;
+  note: string;
+  reason: string | null;
+  changedBy: string | null;
+  changedAt: string | null;
+}
+
+export type PmsPayoutFrequency = 'MONTHLY' | 'QUARTERLY' | 'NONE';
+export type PmsCertificate = 'PENDING' | 'RECEIVED' | 'NOT_APPLICABLE';
+export type PmsHolding = 'ACTIVE' | 'REDEEMED';
+
+/** One client's PMS investment (a row of the PMS register, R-85). Entry only: no revenue yet. */
+export interface PmsInvestment {
+  id: number;
+  month: string;
+  rmId: number;
+  rmName: string;
+  branchName: string | null;
+  region: string | null;
+  rd: string | null;
+  partnerId: number | null;
+  partnerName: string | null;
+  partnerType: string | null;
+  clientId: number;
+  clientName: string;
+  pan: string | null;
+  clientType: string;
+  mobile: string | null;
+  email: string | null;
+  address: string | null;
+  /** The register's PARTNER: the AMC. */
+  amc: string;
+  /** The register's PMS column: the strategy. */
+  strategy: string;
+  amount: number;
+  investmentDate: string;
+  onPortal: boolean;
+  /** The register's MARK UP %: yearly trail. */
+  trailPercent: number | null;
+  payoutFrequency: PmsPayoutFrequency;
+  qty: number | null;
+  price: number | null;
+  consideration: number | null;
+  certificate: PmsCertificate;
+  investmentMail: boolean;
+  holdingStatus: PmsHolding;
+  redeemedOn: string | null;
+  remarks: string | null;
+  status: 'ACTIVE' | 'CANCELLED';
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+/** One AMC payout for an invoice period (R-85). */
+export interface PmsPayout {
+  id: number;
+  amc: string;
+  periodFrom: string;
+  periodTo: string;
+  amount: number;
+  tdsApplied: boolean;
+  tdsPercent: number;
+  tds: number;
+  gstPercent: number;
+  gst: number;
+  net: number;
+  invoice: number;
+  invoiceRaised: boolean;
+  receivedOn: string | null;
+  remarks: string | null;
+  status: 'ACTIVE' | 'CANCELLED';
+  updatedBy: string;
+  updatedAt: string;
+}
+
+export type NpsCertificate = 'PENDING' | 'RECEIVED' | 'NOT_APPLICABLE';
+
+/** One NPS investment (a row of the NPS register, R-86), with its revenue when there is one. */
+export interface NpsEntry {
+  id: number;
+  month: string;
+  rmId: number;
+  rmName: string;
+  branchName: string | null;
+  region: string | null;
+  rd: string | null;
+  partnerId: number | null;
+  partnerName: string | null;
+  partnerType: string | null;
+  clientId: number;
+  clientName: string;
+  pan: string | null;
+  clientType: string;
+  mobile: string | null;
+  email: string | null;
+  address: string | null;
+  /** The register's PARTNER: the POP (Stock Holding, CAMS, ICICI NPS…). */
+  pop: string;
+  investmentDate: string;
+  amount: number;
+  welcomeMail: boolean;
+  investmentMail: boolean;
+  certificate: NpsCertificate;
+  onPortal: boolean;
+  revenueRemarks: string | null;
+  popCharges: number | null;
+  sharePercent: number | null;
+  /** Invoice amount without GST (0 = no revenue). */
+  revenue: number;
+  gstPercent: number;
+  gst: number;
+  invoice: number;
+  receivedOn: string | null;
+  remarks: string | null;
+  status: 'ACTIVE' | 'CANCELLED';
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
 }

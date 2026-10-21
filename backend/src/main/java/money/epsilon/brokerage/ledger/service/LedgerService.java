@@ -50,7 +50,45 @@ public class LedgerService {
      * {@code fdEntryId} on a line that comes from an FD entry (R-74).
      */
     public record ActiveLine(long id, long clientId, BigDecimal gross, BigDecimal gst, BigDecimal net, Long adjustsPeriodId, Long fdEntryId,
-                             Long bondEntryId, Long aifEntryId) {
+                             Long bondEntryId, Long aifEntryId, Long loanEntryId, Long giftEntryId) {
+    }
+
+    /** One GIFT City entry of the month with brokerage: gross = invoice (incl. GST), gst, net = brokerage excl. GST. */
+    public record GiftLineInput(long giftEntryId, long clientId, BigDecimal gross, BigDecimal gst, BigDecimal net) {
+    }
+
+    /** The month's GIFT City lines become exactly {@code lines} (R-82), like FD lines. @return how many were written */
+    @Transactional
+    public int replaceGiftLines(long periodId, List<GiftLineInput> lines) {
+        jdbc.sql("UPDATE brokerage_line SET voided = TRUE, voided_at = now() WHERE period_id = ? AND product_type = 'GIFT' AND NOT voided AND adjusts_period_id IS NULL")
+                .param(periodId).update();
+        for (GiftLineInput l : lines) {
+            jdbc.sql("""
+                            INSERT INTO brokerage_line (period_id, client_id, product_type, gross, gst, net, gift_entry_id)
+                            VALUES (?, ?, 'GIFT', ?, ?, ?, ?)""")
+                    .params(periodId, l.clientId(), l.gross(), l.gst(), l.net(), l.giftEntryId())
+                    .update();
+        }
+        return lines.size();
+    }
+
+    /** One loan payout of the month: gross = invoice (incl. GST), gst, net = the payout excl. GST. */
+    public record LoanLineInput(long loanEntryId, long clientId, BigDecimal gross, BigDecimal gst, BigDecimal net) {
+    }
+
+    /** The month's loan lines become exactly {@code lines} (R-74, R-80), like FD lines. @return how many were written */
+    @Transactional
+    public int replaceLoanLines(long periodId, List<LoanLineInput> lines) {
+        jdbc.sql("UPDATE brokerage_line SET voided = TRUE, voided_at = now() WHERE period_id = ? AND product_type = 'LOAN' AND NOT voided AND adjusts_period_id IS NULL")
+                .param(periodId).update();
+        for (LoanLineInput l : lines) {
+            jdbc.sql("""
+                            INSERT INTO brokerage_line (period_id, client_id, product_type, gross, gst, net, loan_entry_id)
+                            VALUES (?, ?, 'LOAN', ?, ?, ?, ?)""")
+                    .params(periodId, l.clientId(), l.gross(), l.gst(), l.net(), l.loanEntryId())
+                    .update();
+        }
+        return lines.size();
     }
 
     /** One AIF commitment of the month: gross = invoice (incl. GST), gst, net = gross revenue excl. GST. */
@@ -113,15 +151,32 @@ public class LedgerService {
         return lines.size();
     }
 
+    /** One active line of a client, for the client's page. */
+    public record ClientLine(long id, long periodId, String productType, BigDecimal gross, BigDecimal gst, BigDecimal net, Long adjustsPeriodId) {
+    }
+
+    /** The client's active lines of a product, every month (R-09). */
+    @Transactional(readOnly = true)
+    public List<ClientLine> clientLines(long clientId, String productType) {
+        return jdbc.sql("""
+                        SELECT id, period_id, product_type, gross, gst, net, adjusts_period_id FROM brokerage_line
+                        WHERE client_id = ? AND product_type = ? AND NOT voided ORDER BY period_id, id""")
+                .params(clientId, productType)
+                .query((rs, n) -> new ClientLine(rs.getLong("id"), rs.getLong("period_id"), rs.getString("product_type"), rs.getBigDecimal("gross"),
+                        rs.getBigDecimal("gst"), rs.getBigDecimal("net"), (Long) rs.getObject("adjusts_period_id")))
+                .list();
+    }
+
     @Transactional(readOnly = true)
     public List<ActiveLine> activeLines(long periodId, String productType) {
         return jdbc.sql("""
-                        SELECT id, client_id, gross, gst, net, adjusts_period_id, fd_entry_id, bond_entry_id, aif_entry_id FROM brokerage_line
+                        SELECT id, client_id, gross, gst, net, adjusts_period_id, fd_entry_id, bond_entry_id, aif_entry_id, loan_entry_id, gift_entry_id FROM brokerage_line
                         WHERE period_id = ? AND product_type = ? AND NOT voided ORDER BY id""")
                 .params(periodId, productType)
                 .query((rs, n) -> new ActiveLine(rs.getLong("id"), rs.getLong("client_id"), rs.getBigDecimal("gross"), rs.getBigDecimal("gst"),
                         rs.getBigDecimal("net"), (Long) rs.getObject("adjusts_period_id"), (Long) rs.getObject("fd_entry_id"),
-                        (Long) rs.getObject("bond_entry_id"), (Long) rs.getObject("aif_entry_id")))
+                        (Long) rs.getObject("bond_entry_id"), (Long) rs.getObject("aif_entry_id"), (Long) rs.getObject("loan_entry_id"),
+                        (Long) rs.getObject("gift_entry_id")))
                 .list();
     }
 

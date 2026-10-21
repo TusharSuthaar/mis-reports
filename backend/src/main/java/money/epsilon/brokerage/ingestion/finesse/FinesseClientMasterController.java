@@ -17,9 +17,19 @@ import org.springframework.web.multipart.MultipartFile;
 class FinesseClientMasterController {
 
     private final FinesseClientMasterService service;
+    private final money.epsilon.brokerage.client.service.ClientService clients;
 
-    FinesseClientMasterController(FinesseClientMasterService service) {
+    FinesseClientMasterController(FinesseClientMasterService service, money.epsilon.brokerage.client.service.ClientService clients) {
         this.service = service;
+        this.clients = clients;
+    }
+
+    /** Everything the Ops client master has for this client, per client code (R-08). */
+    @GetMapping("/api/clients/{id}/ops-master")
+    @PreAuthorize(Roles.MASTER_READ)
+    java.util.List<FinesseClientMasterService.OpsRecord> opsMaster(@org.springframework.web.bind.annotation.PathVariable long id) {
+        var who = clients.identity(id);
+        return service.records(who.panHash(), who.formerPanHashes(), who.codes().getOrDefault("FINESSE", java.util.List.of()), Roles.canSeeFullPan());
     }
 
     @GetMapping("/api/finesse/client-master")

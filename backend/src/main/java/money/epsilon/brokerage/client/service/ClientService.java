@@ -136,6 +136,22 @@ public class ClientService {
                 .toList();
     }
 
+    /** What other lists can find this client by: its PAN, its former PANs (as hashes) and its codes per source. */
+    public record Identity(long id, String panHash, List<String> formerPanHashes, Map<String, List<String>> codes) {
+    }
+
+    @Transactional(readOnly = true)
+    public Identity identity(long id) {
+        Client c = find(id);
+        List<String> former = jdbc.sql("SELECT pan_hash FROM client_former_pan WHERE client_id = ?").param(id).query(String.class).list();
+        Map<String, List<String>> codes = new HashMap<>();
+        for (ClientExternalId x : externalIds.findByClientIdIn(List.of(id))) {
+            codes.computeIfAbsent(x.getSource(), k -> new java.util.ArrayList<>()).add(x.getCode());
+            if (x.getCode2() != null) codes.get(x.getSource()).add(x.getCode2());
+        }
+        return new Identity(id, c.getPanHash(), former, codes);
+    }
+
     /** source code → client id, for the codes that exist. */
     @Transactional(readOnly = true)
     public Map<String, Long> idsByExternalCode(String source, Collection<String> codes) {

@@ -106,7 +106,7 @@ public final class ExcelFile implements AutoCloseable {
             if (row == null) continue;
             Map<Integer, Object> values = new HashMap<>();
             boolean any = false;
-            for (int c : columns.byKey.values()) {
+            for (int c : columns.labels.keySet()) {
                 Object v = value(row.getCell(c));
                 if (v != null) {
                     values.put(c, v);
@@ -126,6 +126,7 @@ public final class ExcelFile implements AutoCloseable {
             if (v == null) continue;
             String h = v instanceof BigDecimal d ? d.toPlainString() : v.toString();
             if (h.isBlank()) continue;
+            c.labels.put(cell.getColumnIndex(), h.trim());
             c.byKey.putIfAbsent(Text.key(h), cell.getColumnIndex());
             if (!Text.compact(h).isEmpty()) c.byCompact.putIfAbsent(Text.compact(h), cell.getColumnIndex());
         }
@@ -146,6 +147,8 @@ public final class ExcelFile implements AutoCloseable {
 
     /** Header → column index. */
     public static final class Columns {
+        /** Column index → the header as written, every column in order (a repeated header keeps each of its columns). */
+        final java.util.TreeMap<Integer, String> labels = new java.util.TreeMap<>();
         final Map<String, Integer> byKey = new HashMap<>();
         final Map<String, Integer> byCompact = new HashMap<>();
 

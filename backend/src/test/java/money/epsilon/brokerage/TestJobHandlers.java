@@ -18,6 +18,21 @@ public class TestJobHandlers {
     /** Holds {@link #SLOW_IMPORT} running until a test counts it down. */
     public static volatile java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(0);
 
+    /** Exchange rates in tests (R-84): 83.5 for any day; 1 Jan 2000 cannot be fetched; a Sunday answers with the Friday. */
+    @Bean
+    @org.springframework.context.annotation.Primary
+    money.epsilon.brokerage.fx.service.RateSource testRates() {
+        return (currency, day) -> {
+            if (day.equals(java.time.LocalDate.of(2000, 1, 1))) return java.util.Optional.empty();
+            // Today's rate is never out yet in tests: the source answers with yesterday's.
+            if (day.equals(java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata")))) {
+                return java.util.Optional.of(new money.epsilon.brokerage.fx.service.RateSource.Fetched(new java.math.BigDecimal("83.4000"), day.minusDays(1)));
+            }
+            java.time.LocalDate on = day.getDayOfWeek() == java.time.DayOfWeek.SUNDAY ? day.minusDays(2) : day;
+            return java.util.Optional.of(new money.epsilon.brokerage.fx.service.RateSource.Fetched(new java.math.BigDecimal("83.5000"), on));
+        };
+    }
+
     @Bean
     JobHandler echoJob() {
         return new JobHandler() {
