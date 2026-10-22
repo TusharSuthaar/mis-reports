@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useTableView } from '../../components/useTableView';
 import { api } from '../../api/client';
 import {
   CERTIFICATE_LABEL,
@@ -51,6 +52,7 @@ export function AifPage({ embedded = false }: { embedded?: boolean } = {}) {
     list.reload();
   };
 
+  const view = useTableView(list.data, { month: (e) => e.month, client: (e) => e.clientName, fund: (e) => e.fundName, platform: (e) => e.platformName, rm: (e) => e.rmName, ref_sharing: (e) => e.partnerName, commitment: (e) => e.commitment, called: (e) => e.called, gross: (e) => e.gross, invoice: (e) => e.invoice, payment: (e) => e.paymentStatus });
   return (
     <section>
       <div className="page-head" style={embedded ? { justifyContent: 'flex-end', marginBottom: 12 } : undefined}>
@@ -74,25 +76,27 @@ export function AifPage({ embedded = false }: { embedded?: boolean } = {}) {
       {list.error && <p className="error">{list.error}</p>}
       {list.data && list.data.length === 0 && <p className="muted">No AIF commitments match.</p>}
       {list.data && list.data.length > 0 && (
-        <table>
+        <>
+<div className="table-scroll">
+<table>
           <thead>
             <tr>
               <th className="num">SR.NO</th>
-              <th>Month</th>
-              <th>Client</th>
-              <th>Fund</th>
-              <th>Platform</th>
-              <th>RM</th>
-              <th>Ref / sharing</th>
-              <th className="num">Commitment</th>
-              <th className="num">Called</th>
-              <th className="num">Gross</th>
-              <th className="num">Invoice</th>
-              <th>Payment</th>
+              {view.th('month', 'Month')}
+              {view.th('client', 'Client')}
+              {view.th('fund', 'Fund')}
+              {view.th('platform', 'Platform')}
+              {view.th('rm', 'RM')}
+              {view.th('ref_sharing', 'Ref / sharing')}
+              {view.th('commitment', 'Commitment', 'num')}
+              {view.th('called', 'Called', 'num')}
+              {view.th('gross', 'Gross', 'num')}
+              {view.th('invoice', 'Invoice', 'num')}
+              {view.th('payment', 'Payment')}
             </tr>
           </thead>
           <tbody>
-            {list.data.map((e, i) => (
+            {view.rows.map((e, i) => (
               <tr key={e.id} className={e.status === 'CANCELLED' ? 'muted' : undefined}>
                 <td className="num">{i + 1}</td>
                 <td>{formatMonth(e.month)}</td>
@@ -123,6 +127,9 @@ export function AifPage({ embedded = false }: { embedded?: boolean } = {}) {
             </tr>
           </tbody>
         </table>
+</div>
+{view.more}
+</>
       )}
       {panel === 'new' && (
         <Modal title="Add AIF" onClose={() => setPanel(null)}>

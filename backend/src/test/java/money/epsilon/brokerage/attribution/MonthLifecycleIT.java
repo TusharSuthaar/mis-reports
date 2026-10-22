@@ -200,6 +200,7 @@ class MonthLifecycleIT extends IntegrationTestBase {
         JsonNode failed = runJob(postJson("/api/months/" + periodId + "/process", Map.of(), admin, 202).get("jobId").asLong());
         assertThat(failed.get("status").asText()).isEqualTo("FAILED");
         assertThat(failed.get("error").asText()).contains("no MF %").contains("SB " + tag);
+        assertThat(getJson("/api/months/" + periodId + "/readiness", admin, 200).get("missingPercent").toString()).contains("SB " + tag + " (MF)");
 
         postJson("/api/partners/" + sbId + "/products", Map.of("product", "MF", "percent", 50, "from", month + "-01"), admin, 204);
         postJson("/api/partners/" + refId + "/products", Map.of("product", "MF", "percent", 0, "from", month + "-01"), admin, 204);
@@ -304,12 +305,21 @@ class MonthLifecycleIT extends IntegrationTestBase {
         fd.put("marginPercent", 1);   // commission 1,000 excl. GST
         postJson("/api/fd", fd, admin, 201);
 
+        // The pre-check (R-91) names the gap before anyone presses Process, and changes nothing.
+        JsonNode check = getJson("/api/months/" + periodId + "/readiness", admin, 200);
+        assertThat(check.get("ready").asBoolean()).isFalse();
+        assertThat(check.get("entries").get("FD").asInt()).isEqualTo(1);
+        assertThat(check.get("missingPercent").toString()).contains("REF " + tag + " (FD)");
+        assertThat(jdbc.sql("SELECT count(*) FROM brokerage_line WHERE period_id = ? AND product_type = 'FD'").param(periodId)
+                .query(Long.class).single()).isZero();
+
         // The referral partner chosen on the FD has no FD % yet: Process stops and names it.
         JsonNode failed = runJob(postJson("/api/months/" + periodId + "/process", Map.of(), admin, 202).get("jobId").asLong());
         assertThat(failed.get("status").asText()).isEqualTo("FAILED");
         assertThat(failed.get("error").asText()).contains("no FD %").contains("REF " + tag);
 
         postJson("/api/partners/" + refId + "/products", Map.of("product", "FD", "percent", 50, "from", month + "-01"), admin, 204);
+        assertThat(getJson("/api/months/" + periodId + "/readiness", admin, 200).get("ready").asBoolean()).isTrue();
         JsonNode run = process(periodId);
         assertThat(run.get("net").decimalValue()).isEqualByComparingTo("1150");      // MF 150 + FD 1,000
         assertThat(run.get("partners").decimalValue()).isEqualByComparingTo("500");   // 50% of the FD commission
@@ -329,6 +339,35 @@ class MonthLifecycleIT extends IntegrationTestBase {
             assertThat(row.getCell(23).getNumericCellValue()).isEqualTo(1000.0);     // Total Rev
             assertThat(row.getCell(27).getNumericCellValue()).isEqualTo(500.0);      // Net Revenue
             assertThat(row.getCell(5).getStringCellValue()).isEqualTo("REF " + tag);
+        }
+    }
+
+    @Test
+    void theMonthsEquityBrokerageIsSplitWithTheClientsOwnPercentAndShownInTheEquityColumn() throws Exception {
+        long periodId = saveMonth(file(100));   // MF: client 1 net 100, client 2 net 50
+        postJson("/api/clients/" + client1Id + "/partner", Map.of("partnerId", sbId, "percent", 50, "from", month + "-01"), admin, 204);
+        byte[] report = new money.epsilon.brokerage.equity.EquityFiles()
+                .trade("P" + tag, pan1(), "ONE " + tag, month.atDay(5), "N", 250, 200)
+                .trade("P" + tag, pan1(), "ONE " + tag, month.atDay(20), "B", 125, 100).bytes();
+        mvc.perform(withCsrf(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/equity/upload")
+                        .file(new org.springframework.mock.web.MockMultipartFile("file", "Equity Source.xlsx", null, report))).session(admin))
+                .andExpect(status().isOk());
+
+        JsonNode run = process(periodId);
+        assertThat(run.get("net").decimalValue()).isEqualByComparingTo("450");      // MF 150 + equity 300
+        assertThat(run.get("partners").decimalValue()).isEqualByComparingTo("200");  // 50% of client 1's MF 100 and equity 300
+
+        MockHttpServletResponse end = mvc.perform(get("/api/months/" + periodId + "/end-file").session(admin)).andExpect(status().isOk()).andReturn().getResponse();
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(end.getContentAsByteArray()))) {
+            var data = wb.getSheetAt(2);
+            var row = StreamSupport.stream(data.spliterator(), false)
+                    .filter(r -> r.getCell(19) != null && r.getCell(19).getCellType() == org.apache.poi.ss.usermodel.CellType.NUMERIC
+                            && r.getCell(19).getNumericCellValue() == 300.0).findFirst().orElseThrow();
+            assertThat(row.getCell(8).getStringCellValue()).isEqualTo("ONE " + tag);
+            assertThat(row.getCell(13) == null || row.getCell(13).getCellType() != org.apache.poi.ss.usermodel.CellType.NUMERIC
+                    || row.getCell(13).getNumericCellValue() == 0).as("no MF on the equity row").isTrue();
+            assertThat(row.getCell(23).getNumericCellValue()).isEqualTo(300.0);   // Total Rev
+            assertThat(row.getCell(27).getNumericCellValue()).isEqualTo(150.0);   // Net Revenue after 50% sharing
         }
     }
 

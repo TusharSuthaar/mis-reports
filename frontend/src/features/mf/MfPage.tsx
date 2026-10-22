@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useTableView } from '../../components/useTableView';
 import { useLoad } from '../../api/useLoad';
 import { Amount } from '../../components/Amount';
 import { ListFilters, useFilterQuery } from '../../components/ListFilters';
@@ -45,6 +46,7 @@ export function MfPage() {
   const query = useFilterQuery();
   const list = useLoad<MfList>(`/api/mf${query}`);
   const t = list.data?.totals;
+  const view = useTableView(list.data?.rows, { month: (r) => r.month, client: (r) => r.clientName, rm_branch: (r) => r.rm, mf_trail: (r) => r.gross, gst: (r) => r.gst, mf_net: (r) => r.net, partners_share: (r) => r.partnersTotal, epsilon_keeps: (r) => r.epsilon, status: (r) => r.status });
   return (
     <section>
       <ListFilters searchHint="Client name, full PAN or client code" entryFilters={false} />
@@ -93,23 +95,25 @@ export function MfPage() {
         </p>
       )}
       {list.data && list.data.rows.length > 0 && (
-        <table>
+        <>
+<div className="table-scroll">
+<table>
           <thead>
             <tr>
-              <th>Month</th>
-              <th>Client</th>
-              <th>RM / branch</th>
-              <th className="num">MF trail (₹)</th>
-              <th className="num">GST</th>
-              <th className="num">MF net</th>
+              {view.th('month', 'Month')}
+              {view.th('client', 'Client')}
+              {view.th('rm_branch', 'RM / branch')}
+              {view.th('mf_trail', 'MF trail (₹)', 'num')}
+              {view.th('gst', 'GST', 'num')}
+              {view.th('mf_net', 'MF net', 'num')}
               <th>Partners</th>
-              <th className="num">Partners&rsquo; share</th>
-              <th className="num">Epsilon keeps</th>
-              <th>Status</th>
+              {view.th('partners_share', 'Partners’ share', 'num')}
+              {view.th('epsilon_keeps', 'Epsilon keeps', 'num')}
+              {view.th('status', 'Status')}
             </tr>
           </thead>
           <tbody>
-            {list.data.rows.map((r) => (
+            {view.rows.map((r) => (
               <tr key={r.lineId}>
                 <td>
                   {formatMonth(r.month)}
@@ -151,6 +155,9 @@ export function MfPage() {
             ))}
           </tbody>
         </table>
+</div>
+{view.more}
+</>
       )}
     </section>
   );

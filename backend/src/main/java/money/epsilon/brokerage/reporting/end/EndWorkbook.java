@@ -43,18 +43,19 @@ public final class EndWorkbook {
                          String referral, BigDecimal referralPct, String posp, String client, String pan,
                          BigDecimal mfTrail, BigDecimal gst, BigDecimal mfNet,
                          BigDecimal subBrokerAmount, BigDecimal referralAmount, BigDecimal pospAmount, String remarks,
-                         BigDecimal aum, BigDecimal fd, BigDecimal bonds, BigDecimal aif, BigDecimal loans, BigDecimal gift) {
+                         BigDecimal aum, BigDecimal fd, BigDecimal bonds, BigDecimal aif, BigDecimal loans, BigDecimal gift,
+                         BigDecimal equity) {
         public EndRow(String region, String rd, String branch, String rm, String subBroker, BigDecimal subBrokerPct,
                       String referral, BigDecimal referralPct, String posp, String client, String pan,
                       BigDecimal mfTrail, BigDecimal gst, BigDecimal mfNet,
                       BigDecimal subBrokerAmount, BigDecimal referralAmount, BigDecimal pospAmount, String remarks) {
             this(region, rd, branch, rm, subBroker, subBrokerPct, referral, referralPct, posp, client, pan, mfTrail, gst, mfNet,
-                    subBrokerAmount, referralAmount, pospAmount, remarks, null, null, null, null, null, null);
+                    subBrokerAmount, referralAmount, pospAmount, remarks, null, null, null, null, null, null, null);
         }
 
         /** MF net + the other products: the row's revenue excl. GST. */
         BigDecimal totalRev() {
-            return nz(mfNet).add(nz(fd)).add(nz(bonds)).add(nz(aif)).add(nz(loans)).add(nz(gift));
+            return nz(mfNet).add(nz(fd)).add(nz(bonds)).add(nz(aif)).add(nz(loans)).add(nz(gift)).add(nz(equity));
         }
     }
 
@@ -84,7 +85,7 @@ public final class EndWorkbook {
     static final String SUB_BROKER_TYPE = "Sub broker", REFERRAL_TYPE = "Referral Partner", POSP_TYPE = "POSP";
 
     // DATA column positions (0-based)
-    static final int FD_COL = 15, BONDS_COL = 16, LOANS_COL = 17, GIFT_COL = 22, BROKER_TYPE = 28, REMARKS = 29;
+    static final int FD_COL = 15, BONDS_COL = 16, LOANS_COL = 17, GIFT_COL = 22, EQUITY_COL = 19, BROKER_TYPE = 28, REMARKS = 29;
     static final int REGION = 0, BRANCH = 2, RM = 3, SUB_BROKER = 4, REFERRAL = 5, POSP = 7, AUM = 10, MF_TRAIL = 11,
             MF_NET = 13, PRE_IPO = 14, AIF = 21, TOTAL_REV = 23, REF_SHARING = 24, POSP_SHARING = 25, TOTAL_SHARING = 26,
             NET_REVENUE = 27, SB_SHARING = 30, REF_ONLY_SHARING = 31;
@@ -181,6 +182,7 @@ public final class EndWorkbook {
             num(row, LOANS_COL, e.loans());
             num(row, AIF, e.aif());
             num(row, GIFT_COL, e.gift());
+            num(row, EQUITY_COL, e.equity());
             BigDecimal refSharing = nz(e.subBrokerAmount()).add(nz(e.referralAmount()));
             BigDecimal totalSharing = refSharing.add(nz(e.pospAmount()));
             num(row, TOTAL_REV, e.totalRev());
@@ -240,7 +242,7 @@ public final class EndWorkbook {
             return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), dropSb ? null : e.subBroker(), dropSb ? null : e.subBrokerPct(),
                     dropRef ? null : e.referral(), dropRef ? null : e.referralPct(), dropPosp ? null : e.posp(), e.client(), e.pan(),
                     e.mfTrail(), e.gst(), e.mfNet(), e.subBrokerAmount(), e.referralAmount(), e.pospAmount(), e.remarks(), e.aum(), e.fd(),
-                    e.bonds(), e.aif(), e.loans(), e.gift());
+                    e.bonds(), e.aif(), e.loans(), e.gift(), e.equity());
         }).toList();
     }
 

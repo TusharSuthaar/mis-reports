@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useTableView } from '../../components/useTableView';
 import { api } from '../../api/client';
 import type { ClientRow, Employee, NpsCertificate, NpsEntry, OrgChart, Page, Partner, Share, TaxRate } from '../../api/types';
 import { useLoad } from '../../api/useLoad';
@@ -42,6 +43,7 @@ export function NpsPage({ embedded = false }: { embedded?: boolean } = {}) {
     list.reload();
     pops.reload();
   };
+  const view = useTableView(list.data, { month: (e) => e.month, region: (e) => e.region, client: (e) => e.clientName, rm: (e) => e.rmName, partner_pop: (e) => e.pop, inv_date: (e) => e.investmentDate, investment_amt: (e) => e.amount, invoice_w_o_gst: (e) => e.revenue, invoice_with_gst: (e) => e.invoice, amt_received: (e) => e.receivedOn });
   return (
     <section>
       <div className="page-head" style={embedded ? { justifyContent: 'flex-end', marginBottom: 12 } : undefined}>
@@ -68,25 +70,27 @@ export function NpsPage({ embedded = false }: { embedded?: boolean } = {}) {
       {list.error && <p className="error">{list.error}</p>}
       {list.data && list.data.length === 0 && <p className="muted">No NPS investments match.</p>}
       {list.data && list.data.length > 0 && (
-        <table>
+        <>
+<div className="table-scroll">
+<table>
           <thead>
             <tr>
               <th className="num">SR.NO</th>
-              <th>Month</th>
-              <th>Region</th>
-              <th>Client</th>
-              <th>RM</th>
-              <th>Partner (POP)</th>
-              <th>INV date</th>
-              <th className="num">Investment amt</th>
+              {view.th('month', 'Month')}
+              {view.th('region', 'Region')}
+              {view.th('client', 'Client')}
+              {view.th('rm', 'RM')}
+              {view.th('partner_pop', 'Partner (POP)')}
+              {view.th('inv_date', 'INV date')}
+              {view.th('investment_amt', 'Investment amt', 'num')}
               <th>Revenue remarks</th>
-              <th className="num">Invoice w/o GST</th>
-              <th className="num">Invoice with GST</th>
-              <th>Amt received</th>
+              {view.th('invoice_w_o_gst', 'Invoice w/o GST', 'num')}
+              {view.th('invoice_with_gst', 'Invoice with GST', 'num')}
+              {view.th('amt_received', 'Amt received')}
             </tr>
           </thead>
           <tbody>
-            {list.data.map((e, i) => (
+            {view.rows.map((e, i) => (
               <tr key={e.id} className={e.status === 'CANCELLED' ? 'muted' : undefined}>
                 <td className="num">{i + 1}</td>
                 <td>{formatMonth(e.month)}</td>
@@ -125,6 +129,9 @@ export function NpsPage({ embedded = false }: { embedded?: boolean } = {}) {
             </tr>
           </tbody>
         </table>
+</div>
+{view.more}
+</>
       )}
       {panel === 'new' && (
         <Modal title="Add NPS investment" onClose={() => setPanel(null)}>

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,9 +17,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class LedgerService {
 
     private final JdbcClient jdbc;
+    private final JdbcTemplate jdbcTemplate;
 
-    LedgerService(JdbcClient jdbc) {
+    LedgerService(JdbcClient jdbc, JdbcTemplate jdbcTemplate) {
         this.jdbc = jdbc;
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    /** Inserts all rows in one round trip (a month has thousands of lines). */
+    private <T> void batch(String sql, List<T> items, java.util.function.Function<T, Object[]> args) {
+        if (!items.isEmpty()) jdbcTemplate.batchUpdate(sql, items.stream().map(args).toList());
     }
 
     public record LineInput(long clientId, long stagedRowId, BigDecimal gross, BigDecimal gst, BigDecimal net) {
@@ -36,13 +44,9 @@ public class LedgerService {
 
     @Transactional
     public void write(long periodId, String productType, long uploadId, List<LineInput> lines) {
-        for (LineInput l : lines) {
-            jdbc.sql("""
+        batch("""
                             INSERT INTO brokerage_line (period_id, client_id, product_type, gross, gst, net, upload_id, staged_row_id)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""")
-                    .params(periodId, l.clientId(), productType, l.gross(), l.gst(), l.net(), uploadId, l.stagedRowId())
-                    .update();
-        }
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", lines, l -> new Object[]{periodId, l.clientId(), productType, l.gross(), l.gst(), l.net(), uploadId, l.stagedRowId()});
     }
 
     /**
@@ -51,6 +55,21 @@ public class LedgerService {
      */
     public record ActiveLine(long id, long clientId, BigDecimal gross, BigDecimal gst, BigDecimal net, Long adjustsPeriodId, Long fdEntryId,
                              Long bondEntryId, Long aifEntryId, Long loanEntryId, Long giftEntryId) {
+    }
+
+    /** One client's equity brokerage of the month (R-89): the franchise share, no GST (gross = net). */
+    public record EquityLineInput(long equityUploadId, long clientId, BigDecimal net) {
+    }
+
+    /** The month's equity lines become exactly {@code lines}, like FD lines. @return how many were written */
+    @Transactional
+    public int replaceEquityLines(long periodId, List<EquityLineInput> lines) {
+        jdbc.sql("UPDATE brokerage_line SET voided = TRUE, voided_at = now() WHERE period_id = ? AND product_type = 'EQUITY' AND NOT voided AND adjusts_period_id IS NULL")
+                .param(periodId).update();
+        batch("""
+                            INSERT INTO brokerage_line (period_id, client_id, product_type, gross, gst, net, equity_upload_id)
+                            VALUES (?, ?, 'EQUITY', ?, 0, ?, ?)""", lines, l -> new Object[]{periodId, l.clientId(), l.net(), l.net(), l.equityUploadId()});
+        return lines.size();
     }
 
     /** One GIFT City entry of the month with brokerage: gross = invoice (incl. GST), gst, net = brokerage excl. GST. */
@@ -62,13 +81,9 @@ public class LedgerService {
     public int replaceGiftLines(long periodId, List<GiftLineInput> lines) {
         jdbc.sql("UPDATE brokerage_line SET voided = TRUE, voided_at = now() WHERE period_id = ? AND product_type = 'GIFT' AND NOT voided AND adjusts_period_id IS NULL")
                 .param(periodId).update();
-        for (GiftLineInput l : lines) {
-            jdbc.sql("""
+        batch("""
                             INSERT INTO brokerage_line (period_id, client_id, product_type, gross, gst, net, gift_entry_id)
-                            VALUES (?, ?, 'GIFT', ?, ?, ?, ?)""")
-                    .params(periodId, l.clientId(), l.gross(), l.gst(), l.net(), l.giftEntryId())
-                    .update();
-        }
+                            VALUES (?, ?, 'GIFT', ?, ?, ?, ?)""", lines, l -> new Object[]{periodId, l.clientId(), l.gross(), l.gst(), l.net(), l.giftEntryId()});
         return lines.size();
     }
 
@@ -81,13 +96,9 @@ public class LedgerService {
     public int replaceLoanLines(long periodId, List<LoanLineInput> lines) {
         jdbc.sql("UPDATE brokerage_line SET voided = TRUE, voided_at = now() WHERE period_id = ? AND product_type = 'LOAN' AND NOT voided AND adjusts_period_id IS NULL")
                 .param(periodId).update();
-        for (LoanLineInput l : lines) {
-            jdbc.sql("""
+        batch("""
                             INSERT INTO brokerage_line (period_id, client_id, product_type, gross, gst, net, loan_entry_id)
-                            VALUES (?, ?, 'LOAN', ?, ?, ?, ?)""")
-                    .params(periodId, l.clientId(), l.gross(), l.gst(), l.net(), l.loanEntryId())
-                    .update();
-        }
+                            VALUES (?, ?, 'LOAN', ?, ?, ?, ?)""", lines, l -> new Object[]{periodId, l.clientId(), l.gross(), l.gst(), l.net(), l.loanEntryId()});
         return lines.size();
     }
 
@@ -100,13 +111,9 @@ public class LedgerService {
     public int replaceAifLines(long periodId, List<AifLineInput> lines) {
         jdbc.sql("UPDATE brokerage_line SET voided = TRUE, voided_at = now() WHERE period_id = ? AND product_type = 'AIF' AND NOT voided AND adjusts_period_id IS NULL")
                 .param(periodId).update();
-        for (AifLineInput l : lines) {
-            jdbc.sql("""
+        batch("""
                             INSERT INTO brokerage_line (period_id, client_id, product_type, gross, gst, net, aif_entry_id)
-                            VALUES (?, ?, 'AIF', ?, ?, ?, ?)""")
-                    .params(periodId, l.clientId(), l.gross(), l.gst(), l.net(), l.aifEntryId())
-                    .update();
-        }
+                            VALUES (?, ?, 'AIF', ?, ?, ?, ?)""", lines, l -> new Object[]{periodId, l.clientId(), l.gross(), l.gst(), l.net(), l.aifEntryId()});
         return lines.size();
     }
 
@@ -119,13 +126,9 @@ public class LedgerService {
     public int replaceBondLines(long periodId, List<BondLineInput> lines) {
         jdbc.sql("UPDATE brokerage_line SET voided = TRUE, voided_at = now() WHERE period_id = ? AND product_type = 'BOND' AND NOT voided AND adjusts_period_id IS NULL")
                 .param(periodId).update();
-        for (BondLineInput l : lines) {
-            jdbc.sql("""
+        batch("""
                             INSERT INTO brokerage_line (period_id, client_id, product_type, gross, gst, net, bond_entry_id)
-                            VALUES (?, ?, 'BOND', ?, ?, ?, ?)""")
-                    .params(periodId, l.clientId(), l.gross(), l.gst(), l.net(), l.bondEntryId())
-                    .update();
-        }
+                            VALUES (?, ?, 'BOND', ?, ?, ?, ?)""", lines, l -> new Object[]{periodId, l.clientId(), l.gross(), l.gst(), l.net(), l.bondEntryId()});
         return lines.size();
     }
 
@@ -141,13 +144,9 @@ public class LedgerService {
     public int replaceFdLines(long periodId, List<FdLineInput> lines) {
         jdbc.sql("UPDATE brokerage_line SET voided = TRUE, voided_at = now() WHERE period_id = ? AND product_type = 'FD' AND NOT voided AND adjusts_period_id IS NULL")
                 .param(periodId).update();
-        for (FdLineInput l : lines) {
-            jdbc.sql("""
+        batch("""
                             INSERT INTO brokerage_line (period_id, client_id, product_type, gross, gst, net, fd_entry_id)
-                            VALUES (?, ?, 'FD', ?, ?, ?, ?)""")
-                    .params(periodId, l.clientId(), l.gross(), l.gst(), l.net(), l.fdEntryId())
-                    .update();
-        }
+                            VALUES (?, ?, 'FD', ?, ?, ?, ?)""", lines, l -> new Object[]{periodId, l.clientId(), l.gross(), l.gst(), l.net(), l.fdEntryId()});
         return lines.size();
     }
 
@@ -213,13 +212,9 @@ public class LedgerService {
     /** Posts corrections to the locked month {@code adjustsPeriodId} as lines of month {@code periodId}. */
     @Transactional
     public void writeAdjustments(long periodId, String productType, long uploadId, long adjustsPeriodId, List<Adjustment> adjustments) {
-        for (Adjustment a : adjustments) {
-            jdbc.sql("""
+        batch("""
                             INSERT INTO brokerage_line (period_id, client_id, product_type, gross, gst, net, upload_id, staged_row_id, adjusts_period_id)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""")
-                    .params(periodId, a.clientId(), productType, a.gross(), a.gst(), a.net(), uploadId, a.stagedRowId(), adjustsPeriodId)
-                    .update();
-        }
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", adjustments, a -> new Object[]{periodId, a.clientId(), productType, a.gross(), a.gst(), a.net(), uploadId, a.stagedRowId(), adjustsPeriodId});
     }
 
     /** Sums of the active lines of a period and product. */

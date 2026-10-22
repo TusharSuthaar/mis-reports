@@ -193,12 +193,12 @@ public class PmsService {
         Map<Long, PartnerView> partnerById = new HashMap<>();
         list.stream().map(PmsInvestment::getPartnerId).filter(Objects::nonNull).distinct().forEach(id -> partnerById.put(id, partners.get(id)));
         Map<LocalDate, Map<Long, Place>> placesByMonth = new HashMap<>();
-        Map<Long, String> codes = new HashMap<>();
+        Map<Long, String> codes = clients.codes(clientIds);
         return list.stream().map(e -> {
             Place place = placesByMonth.computeIfAbsent(e.getMonth(), m -> places(org.asOf(m))).get(e.getRmId());
             String pan = pans.get(e.getClientId());
             PartnerView p = e.getPartnerId() == null ? null : partnerById.get(e.getPartnerId());
-            String code = codes.computeIfAbsent(e.getClientId(), id -> clients.get(id).client().iwellCode());
+            String code = codes.get(e.getClientId());
             return new InvestmentView(e.getId(), YearMonth.from(e.getMonth()), e.getRmId(), place == null ? employees.get(e.getRmId()).name() : place.rm(),
                     place == null ? null : place.branch(), place == null ? null : place.region(), place == null ? null : place.rd(),
                     e.getPartnerId(), p == null ? null : p.name(), p == null ? null : p.type().name(),

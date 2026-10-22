@@ -20,6 +20,7 @@ public enum Product {
     ADVISORY("ADVISORY", "Advisory"),
     GIFT("GIFT", "GIFT"),
     NPS("NPS", "NPS"),
+    P2P("P2P", "P2P"),
     INS("INS", "Insurance");
 
     private final String code;

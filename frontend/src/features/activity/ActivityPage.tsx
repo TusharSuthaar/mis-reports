@@ -64,13 +64,18 @@ export function ActivityPage() {
   const [refreshed, setRefreshed] = useState(0);
 
   useEffect(() => {
+    // Only the answer for the current filters/page is shown (a slow earlier one arriving last is dropped).
+    let current = true;
     setError(null);
     api<Page<Activity>>(`/api/activity?${activityQuery(filters, page)}`)
-      .then(setData)
-      .catch((e) => setError(errorText(e)));
+      .then((d) => current && setData(d))
+      .catch((e) => current && setError(errorText(e)));
     api<ActivitySummary>('/api/activity/summary')
-      .then(setSummary)
-      .catch(() => setSummary(null));
+      .then((d) => current && setSummary(d))
+      .catch(() => current && setSummary(null));
+    return () => {
+      current = false;
+    };
   }, [filters, page, refreshed]);
 
   function onSearch(e: FormEvent) {

@@ -34,10 +34,23 @@ public class OrgChartService {
     private final BranchRegionAssignmentRepository placements;
     private final RdAssignmentRepository rds;
     private final RmBranchAssignmentRepository rmBranches;
+    private final money.epsilon.brokerage.platform.audit.AuditService audit;
+
+    /** Charts already built, per day, with the change marker they were built at (see {@link #asOf}); the 400 most recent days. */
+    private final Map<LocalDate, Cached> cache = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<>(64, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<LocalDate, Cached> eldest) {
+            return size() > 400;
+        }
+    });
+
+    private record Cached(long version, OrgChart chart) {
+    }
 
     OrgChartService(RegionRepository regions, BranchRepository branches, EmployeeRepository employees,
                     BranchRegionAssignmentRepository placements, RdAssignmentRepository rds,
-                    RmBranchAssignmentRepository rmBranches) {
+                    RmBranchAssignmentRepository rmBranches, money.epsilon.brokerage.platform.audit.AuditService audit) {
+        this.audit = audit;
         this.regions = regions;
         this.branches = branches;
         this.employees = employees;
@@ -46,8 +59,21 @@ public class OrgChartService {
         this.rmBranches = rmBranches;
     }
 
+    /**
+     * The org on {@code day}. Lists ask for it once per month they show, so a built chart is kept and reused while nothing has
+     * changed: every saved change writes an audit entry, so the newest audit id is the change marker.
+     */
     @Transactional(readOnly = true)
     public OrgChart asOf(LocalDate day) {
+        long version = audit.lastId();
+        Cached hit = cache.get(day);
+        if (hit != null && hit.version() == version) return hit.chart();
+        OrgChart chart = build(day);
+        cache.put(day, new Cached(version, chart));
+        return chart;
+    }
+
+    private OrgChart build(LocalDate day) {
         Map<Long, Region> regionById = regions.findAll().stream().collect(Collectors.toMap(Region::getId, Function.identity()));
         Map<Long, Branch> branchById = branches.findAll().stream().collect(Collectors.toMap(Branch::getId, Function.identity()));
         Map<Long, Employee> employeeById = employees.findAll().stream().collect(Collectors.toMap(Employee::getId, Function.identity()));
@@ -89,7 +115,7 @@ public class OrgChartService {
                 .sorted(byName)
                 .map(e -> new ChartPerson(e.getId(), e.getEmpCode(), e.getName(), e.getType()))
                 .toList();
-        return new OrgChart(day, regionNodes, branchesWithoutRegion, peopleWithoutBranch);
+        return new OrgChart(day, List.copyOf(regionNodes), List.copyOf(branchesWithoutRegion), List.copyOf(peopleWithoutBranch));   // shared from the cache: read-only
     }
 
     public record OrgChart(LocalDate date, List<ChartRegion> regions, List<ChartBranch> branchesWithoutRegion,

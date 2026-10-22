@@ -22,7 +22,7 @@ class ClientBrokerageController {
     @GetMapping("/api/clients/{id}/brokerage")
     @PreAuthorize(Roles.MASTER_READ)
     List<MonthRow> brokerage(@PathVariable long id, @RequestParam(defaultValue = "MF") String product) {
-        if (!List.of("MF", "FD", "BOND", "AIF", "LOAN", "GIFT").contains(product)) throw new IllegalArgumentException("Unknown product " + product);
+        if (!List.of("MF", "FD", "BOND", "AIF", "LOAN", "GIFT", "EQUITY").contains(product)) throw new IllegalArgumentException("Unknown product " + product);
         return service.months(id, product);
     }
 }

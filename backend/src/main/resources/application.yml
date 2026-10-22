@@ -5,6 +5,10 @@ spring:
     url: ${MIS_DB_URL:jdbc:postgresql://localhost:5432/mis}
     username: ${MIS_DB_USER:mis}
     password: ${MIS_DB_PASSWORD:mis}
+    hikari:
+      data-source-properties:
+        # Batched inserts (a month's ledger lines and splits) go as multi-row INSERTs: one round trip per batch, not per row.
+        reWriteBatchedInserts: true
   jpa:
     open-in-view: false
     hibernate:

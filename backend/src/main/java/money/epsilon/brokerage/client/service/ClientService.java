@@ -152,6 +152,39 @@ public class ClientService {
         return new Identity(id, c.getPanHash(), former, codes);
     }
 
+    /**
+     * client id → its client code (the Investwell code, as {@link #get} shows it), for many clients in one query: lists use
+     * this instead of {@link #get} per row.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, String> codes(Collection<Long> clientIds) {
+        Map<Long, String> result = new HashMap<>();
+        for (List<Long> chunk : chunks(List.copyOf(clientIds), 1000)) {
+            jdbc.sql("SELECT client_id, min(code) FROM client_external_id WHERE source = :source AND client_id IN (:ids) GROUP BY client_id")
+                    .param("source", INVESTWELL).param("ids", chunk)
+                    .query((rs, n) -> Map.entry(rs.getLong(1), rs.getString(2))).list().forEach(e -> result.put(e.getKey(), e.getValue()));
+        }
+        return result;
+    }
+
+    /** client id → how the client looks today (name, PAN as the user may see it, code, RM, branch), for many clients at once. */
+    @Transactional(readOnly = true)
+    public Map<Long, ClientView> views(Collection<Long> clientIds) {
+        if (clientIds.isEmpty()) return Map.of();
+        Map<Long, EmployeeView> rms = employees.list().stream().collect(Collectors.toMap(EmployeeView::id, Function.identity()));
+        Map<Long, String> codes = codes(clientIds);
+        Map<Long, Long> rmOf = currentRms(clientIds);
+        boolean fullPan = Roles.canSeeFullPan();
+        Map<Long, ClientView> result = new HashMap<>();
+        for (List<Long> chunk : chunks(List.copyOf(clientIds), 1000)) {
+            jdbc.sql("SELECT id, name, pan_encrypted FROM client WHERE id IN (:ids)").param("ids", chunk)
+                    .query((rs, n) -> view(rs.getLong("id"), rs.getString("name"), rs.getString("pan_encrypted"), codes.get(rs.getLong("id")),
+                            rmOf.get(rs.getLong("id")), rms, fullPan))
+                    .list().forEach(v -> result.put(v.id(), v));
+        }
+        return result;
+    }
+
     /** source code → client id, for the codes that exist. */
     @Transactional(readOnly = true)
     public Map<String, Long> idsByExternalCode(String source, Collection<String> codes) {

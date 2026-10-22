@@ -47,6 +47,12 @@ class MonthController {
         return attribution.summary(id);
     }
 
+    @GetMapping("/api/months/{id}/readiness")
+    @PreAuthorize(Roles.MASTER_READ)
+    AttributionService.Readiness readiness(@PathVariable long id) {
+        return attribution.readiness(id);
+    }
+
     @PostMapping("/api/months/{id}/lock")
     @PreAuthorize("hasRole('FINANCE')")
     PeriodView lock(@PathVariable long id) {

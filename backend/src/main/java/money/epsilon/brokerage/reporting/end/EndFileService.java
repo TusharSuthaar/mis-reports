@@ -37,6 +37,7 @@ public class EndFileService {
     static final String AIF = "AIF";
     static final String LOAN = "LOAN";
     static final String GIFT = "GIFT";
+    static final String EQUITY = "EQUITY";
     static final String NO_BRANCH = "(no branch)";
 
     private final PeriodService periods;
@@ -82,8 +83,8 @@ public class EndFileService {
         Map<Long, YearMonth> monthOfPeriod = periods.list(MF).stream().collect(Collectors.toMap(PeriodView::id, PeriodView::month));
 
         List<EndRow> rows = jdbc.sql("""
-                        SELECT * FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?)""")
-                .params(periodId, MF, FD, BOND, AIF, LOAN, GIFT)
+                        SELECT * FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?)""")
+                .params(periodId, MF, FD, BOND, AIF, LOAN, GIFT, EQUITY)
                 .query((rs, n) -> {
                     boolean fd = FD.equals(rs.getString("product_type"));
                     boolean bond = BOND.equals(rs.getString("product_type"));
@@ -101,32 +102,38 @@ public class EndFileService {
                         // An AIF row (R-78): its gross revenue in the AIF column, the commitment as AUM, MF columns empty.
                         return new EndRow(row.region(), row.rd(), row.branch(), row.rm(), row.subBroker(), row.subBrokerPct(), row.referral(),
                                 row.referralPct(), row.posp(), row.client(), row.pan(), null, null, null, row.subBrokerAmount(),
-                                row.referralAmount(), row.pospAmount(), "AIF#" + rs.getLong("aif_entry_id"), null, null, null, rs.getBigDecimal("net"), null, null);
+                                row.referralAmount(), row.pospAmount(), "AIF#" + rs.getLong("aif_entry_id"), null, null, null, rs.getBigDecimal("net"), null, null, null);
+                    }
+                    if (EQUITY.equals(rs.getString("product_type"))) {
+                        // An equity row (R-89): the client's franchise share in the Equity column, MF columns empty, no remark (as in the END).
+                        return new EndRow(row.region(), row.rd(), row.branch(), row.rm(), row.subBroker(), row.subBrokerPct(), row.referral(),
+                                row.referralPct(), row.posp(), row.client(), row.pan(), null, null, null, row.subBrokerAmount(),
+                                row.referralAmount(), row.pospAmount(), row.remarks(), null, null, null, null, null, null, rs.getBigDecimal("net"));
                     }
                     if (GIFT.equals(rs.getString("product_type"))) {
                         // A GIFT City row (R-82): its brokerage excl. GST in the GIFT CITY column, the rupee amount as AUM.
                         return new EndRow(row.region(), row.rd(), row.branch(), row.rm(), row.subBroker(), row.subBrokerPct(), row.referral(),
                                 row.referralPct(), row.posp(), row.client(), row.pan(), null, null, null, row.subBrokerAmount(),
                                 row.referralAmount(), row.pospAmount(), "GIFT#" + rs.getLong("gift_entry_id"), null, null, null, null, null,
-                                rs.getBigDecimal("net"));
+                                rs.getBigDecimal("net"), null);
                     }
                     if (LOAN.equals(rs.getString("product_type"))) {
                         // A loan row (R-80): its payout excl. GST in the Loans column, the sanctioned amount as AUM, MF columns empty.
                         return new EndRow(row.region(), row.rd(), row.branch(), row.rm(), row.subBroker(), row.subBrokerPct(), row.referral(),
                                 row.referralPct(), row.posp(), row.client(), row.pan(), null, null, null, row.subBrokerAmount(),
-                                row.referralAmount(), row.pospAmount(), "LOAN#" + rs.getLong("loan_entry_id"), null, null, null, null, rs.getBigDecimal("net"), null);
+                                row.referralAmount(), row.pospAmount(), "LOAN#" + rs.getLong("loan_entry_id"), null, null, null, null, rs.getBigDecimal("net"), null, null);
                     }
                     if (bond) {
                         // A bond row (R-74): its gross revenue in the Bonds column, the consideration as AUM, MF columns empty.
                         return new EndRow(row.region(), row.rd(), row.branch(), row.rm(), row.subBroker(), row.subBrokerPct(), row.referral(),
                                 row.referralPct(), row.posp(), row.client(), row.pan(), null, null, null, row.subBrokerAmount(),
-                                row.referralAmount(), row.pospAmount(), "BOND#" + rs.getLong("bond_entry_id"), null, null, rs.getBigDecimal("net"), null, null, null);
+                                row.referralAmount(), row.pospAmount(), "BOND#" + rs.getLong("bond_entry_id"), null, null, rs.getBigDecimal("net"), null, null, null, null);
                     }
                     if (!fd) return row;
                     // An FD row (R-74): its commission in the FD column, the amount invested as AUM, MF columns empty.
                     return new EndRow(row.region(), row.rd(), row.branch(), row.rm(), row.subBroker(), row.subBrokerPct(), row.referral(),
                             row.referralPct(), row.posp(), row.client(), row.pan(), null, null, null, row.subBrokerAmount(),
-                            row.referralAmount(), row.pospAmount(), "FD#" + rs.getLong("fd_entry_id"), null, rs.getBigDecimal("net"), null, null, null, null);
+                            row.referralAmount(), row.pospAmount(), "FD#" + rs.getLong("fd_entry_id"), null, rs.getBigDecimal("net"), null, null, null, null, null);
                 })
                 .list().stream()
                 .sorted(Comparator.comparing((EndRow e) -> Objects.toString(e.region(), "")).thenComparing(EndRow::branch)
@@ -140,8 +147,8 @@ public class EndFileService {
                 .max(Comparator.comparing(PeriodView::month)).orElse(null);
         List<BranchTotal> prev = previous == null ? List.of() : jdbc.sql("""
                         SELECT region, coalesce(branch, ?) AS branch, sum(net) AS gross, sum(epsilon_amount) AS net
-                        FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?) GROUP BY region, coalesce(branch, ?)""")
-                .params(NO_BRANCH, previous.id(), MF, FD, BOND, AIF, LOAN, GIFT, NO_BRANCH)
+                        FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?) GROUP BY region, coalesce(branch, ?)""")
+                .params(NO_BRANCH, previous.id(), MF, FD, BOND, AIF, LOAN, GIFT, EQUITY, NO_BRANCH)
                 .query((rs, n) -> new BranchTotal(rs.getString("region"), rs.getString("branch"), rs.getBigDecimal("gross"), rs.getBigDecimal("net")))
                 .list();
 
@@ -164,7 +171,7 @@ public class EndFileService {
             String remark = l == null ? "FD" : "FD: " + l.fdName() + (l.fdNo() == null ? "" : " #" + l.fdNo());
             return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
                     e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(), remark,
-                    l == null ? null : l.amount(), e.fd(), null, null, null, null);
+                    l == null ? null : l.amount(), e.fd(), null, null, null, null, null);
         }).toList();
     }
 
@@ -179,7 +186,7 @@ public class EndFileService {
             String remark = l == null ? "Bond" : "Bond: " + l.bondName() + (l.isin() == null ? "" : " " + l.isin());
             return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
                     e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(), remark,
-                    l == null ? null : l.consideration(), null, e.bonds(), null, null, null);
+                    l == null ? null : l.consideration(), null, e.bonds(), null, null, null, null);
         }).toList();
     }
 
@@ -193,7 +200,7 @@ public class EndFileService {
             var l = labels.get(Long.parseLong(e.remarks().substring(4)));
             return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
                     e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(),
-                    l == null ? "AIF" : "AIF: " + l.fundName(), l == null ? null : l.commitment(), null, null, e.aif(), null, null);
+                    l == null ? "AIF" : "AIF: " + l.fundName(), l == null ? null : l.commitment(), null, null, e.aif(), null, null, null);
         }).toList();
     }
 
@@ -208,7 +215,7 @@ public class EndFileService {
             String remark = l == null ? "Loan" : "Loan: " + l.lender() + " " + l.loanType() + (l.trail() ? " (trail)" : "");
             return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
                     e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(), remark,
-                    l == null ? null : l.sanctionedAmount(), null, null, null, e.loans(), null);
+                    l == null ? null : l.sanctionedAmount(), null, null, null, e.loans(), null, null);
         }).toList();
     }
 
@@ -222,7 +229,7 @@ public class EndFileService {
             var l = labels.get(Long.parseLong(e.remarks().substring(5)));
             return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
                     e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(),
-                    l == null ? "GIFT City" : "GIFT City: " + l.fund(), l == null ? null : l.amountInr(), null, null, null, null, e.gift());
+                    l == null ? "GIFT City" : "GIFT City: " + l.fund(), l == null ? null : l.amountInr(), null, null, null, null, e.gift(), null);
         }).toList();
     }
 

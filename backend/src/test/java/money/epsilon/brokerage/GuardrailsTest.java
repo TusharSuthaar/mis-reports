@@ -177,7 +177,7 @@ class GuardrailsTest {
 
     /** table → owning module, from the table in docs/architecture/modules.md. */
     private static Map<String, String> owners() throws IOException {
-        Pattern row = Pattern.compile("^\\|\\s*`([a-z]+)`\\s*\\|([^|]*)\\|");
+        Pattern row = Pattern.compile("^\\|\\s*`([a-z][a-z0-9]*)`\\s*\\|([^|]*)\\|");
         Pattern name = Pattern.compile("`([a-z_][a-z0-9_]*)`");
         Map<String, String> owners = new LinkedHashMap<>();
         for (String line : Files.readAllLines(MODULES_DOC)) {

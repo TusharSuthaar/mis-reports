@@ -261,11 +261,11 @@ public class BondService {
         Map<Long, String> platformNames = new HashMap<>();
         list.stream().map(BondEntry::getPlatformId).distinct().forEach(id -> platformNames.put(id, platforms.get(id).name()));
         Map<LocalDate, Map<Long, Place>> placesByMonth = new HashMap<>();
-        Map<Long, String> codes = new HashMap<>();
+        Map<Long, String> codes = clients.codes(clientIds);
         return list.stream().map(e -> {
             Place place = placesByMonth.computeIfAbsent(e.getMonth(), m -> places(org.asOf(m))).get(e.getRmId());
             String pan = pans.get(e.getClientId());
-            String code = codes.computeIfAbsent(e.getClientId(), id -> clients.get(id).client().iwellCode());
+            String code = codes.get(e.getClientId());
             PartnerView p = e.getPartnerId() == null ? null : partnerById.get(e.getPartnerId());
             return new BondView(e.getId(), YearMonth.from(e.getMonth()), e.getRmId(), place == null ? employees.get(e.getRmId()).name() : place.rm(),
                     place == null ? null : place.branch(), place == null ? null : place.region(), place == null ? null : place.rd(),

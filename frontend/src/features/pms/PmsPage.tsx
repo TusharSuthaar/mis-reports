@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useTableView } from '../../components/useTableView';
 import { api } from '../../api/client';
 import type {
   ClientRow,
@@ -74,6 +75,7 @@ function Investments() {
     list.reload();
     suggestions.reload();
   };
+  const view = useTableView(list.data, { month: (e) => e.month, region: (e) => e.region, client: (e) => e.clientName, rm: (e) => e.rmName, partner_amc: (e) => e.partnerName, pms: (e) => e.strategy, inv_amt: (e) => e.amount, investment_date: (e) => e.investmentDate, trail_yr: (e) => e.trailPercent, status: (e) => e.holdingStatus });
   return (
     <>
       {canEdit && (
@@ -96,25 +98,27 @@ function Investments() {
       {list.error && <p className="error">{list.error}</p>}
       {list.data && list.data.length === 0 && <p className="muted">No PMS investments match.</p>}
       {list.data && list.data.length > 0 && (
-        <table>
+        <>
+<div className="table-scroll">
+<table>
           <thead>
             <tr>
               <th className="num">SR.NO</th>
-              <th>Month</th>
-              <th>Region</th>
-              <th>Client</th>
-              <th>RM</th>
-              <th>Partner (AMC)</th>
-              <th>PMS</th>
-              <th className="num">Inv amt</th>
-              <th>Investment date</th>
-              <th className="num">Trail % / yr</th>
+              {view.th('month', 'Month')}
+              {view.th('region', 'Region')}
+              {view.th('client', 'Client')}
+              {view.th('rm', 'RM')}
+              {view.th('partner_amc', 'Partner (AMC)')}
+              {view.th('pms', 'PMS')}
+              {view.th('inv_amt', 'Inv amt', 'num')}
+              {view.th('investment_date', 'Investment date')}
+              {view.th('trail_yr', 'Trail % / yr', 'num')}
               <th>Payout</th>
-              <th>Status</th>
+              {view.th('status', 'Status')}
             </tr>
           </thead>
           <tbody>
-            {list.data.map((e, i) => (
+            {view.rows.map((e, i) => (
               <tr key={e.id} className={e.status === 'CANCELLED' ? 'muted' : undefined}>
                 <td className="num">{i + 1}</td>
                 <td>{formatMonth(e.month)}</td>
@@ -153,6 +157,9 @@ function Investments() {
             </tr>
           </tbody>
         </table>
+</div>
+{view.more}
+</>
       )}
       {panel === 'new' && (
         <Modal title="Add PMS investment" onClose={() => setPanel(null)}>

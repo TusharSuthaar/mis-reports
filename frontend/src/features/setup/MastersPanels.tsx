@@ -67,6 +67,12 @@ const UPLOADS = [
     write: false,
   },
   {
+    to: '/products?tab=EQUITY',
+    title: 'Equity brokerage (SMC)',
+    text: 'The broker’s monthly Brokerage Due report (“Equity Source”). Each client’s franchise share is the month’s Equity revenue.',
+    write: true,
+  },
+  {
     to: '/setup/import',
     title: 'Org & partner masters (Excel)',
     text: 'Regions, branches, RMs and partners from the import workbook. Dry run first.',

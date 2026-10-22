@@ -29,6 +29,7 @@ export function ListFilters({
   platformLabel = 'Platform',
   payments = PAYMENT_LABEL,
   entryFilters = true,
+  partnerFilter = true,
 }: {
   searchHint: string;
   platformKey?: 'platform' | 'platformId' | 'lender' | 'fund' | 'amc' | 'pop';
@@ -38,6 +39,8 @@ export function ListFilters({
   payments?: Partial<Record<string, string>>;
   /** false: no Payment / Show cancelled (the MF tab has no entries to pay or cancel). */
   entryFilters?: boolean;
+  /** false: no Referral / sub-broker filter (equity brokerage is not entered with a partner). */
+  partnerFilter?: boolean;
 }) {
   const [params, setParams] = useSearchParams();
   const employees = useLoad<Employee[]>('/api/employees');
@@ -88,6 +91,7 @@ export function ListFilters({
           ))}
         </select>
       </label>
+      {partnerFilter && (
       <label>
         Referral / sub-broker
         <select value={params.get('partnerId') ?? ''} onChange={(e) => set('partnerId', e.target.value)}>
@@ -99,6 +103,7 @@ export function ListFilters({
           ))}
         </select>
       </label>
+      )}
       {platformKey && (
       <label>
         {platformLabel}

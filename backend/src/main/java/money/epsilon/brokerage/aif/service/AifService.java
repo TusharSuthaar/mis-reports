@@ -266,11 +266,11 @@ public class AifService {
         instalments.findByAifEntryIdInOrderByAifEntryIdAscSeqAsc(list.stream().map(AifEntry::getId).toList())
                 .forEach(i -> drawdowns.computeIfAbsent(i.getAifEntryId(), k -> new ArrayList<>()).add(new InstalmentView(i.getSeq(), i.getAmount(), i.getPaidOn())));
         Map<LocalDate, Map<Long, Place>> placesByMonth = new HashMap<>();
-        Map<Long, String> codes = new HashMap<>();
+        Map<Long, String> codes = clients.codes(clientIds);
         return list.stream().map(e -> {
             Place place = placesByMonth.computeIfAbsent(e.getMonth(), m -> places(org.asOf(m))).get(e.getRmId());
             String pan = pans.get(e.getClientId());
-            String code = codes.computeIfAbsent(e.getClientId(), id -> clients.get(id).client().iwellCode());
+            String code = codes.get(e.getClientId());
             PartnerView p = e.getPartnerId() == null ? null : partnerById.get(e.getPartnerId());
             List<InstalmentView> paid = drawdowns.getOrDefault(e.getId(), List.of());
             BigDecimal called = paid.stream().map(InstalmentView::amount).reduce(BigDecimal.ZERO, BigDecimal::add);

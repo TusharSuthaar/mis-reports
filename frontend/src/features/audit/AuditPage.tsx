@@ -40,10 +40,15 @@ export function AuditPage() {
   const [open, setOpen] = useState<number | null>(null);
 
   useEffect(() => {
+    // Only the answer for the current filters/page is shown (a slow earlier one arriving last is dropped).
+    let current = true;
     setError(null);
     api<Page<AuditEntry>>(`/api/audit?${auditQuery(filters, page)}`)
-      .then(setData)
-      .catch((e) => setError(e instanceof ApiError ? e.message : 'Could not load the audit log'));
+      .then((d) => current && setData(d))
+      .catch((e) => current && setError(e instanceof ApiError ? e.message : 'Could not load the audit log'));
+    return () => {
+      current = false;
+    };
   }, [filters, page]);
 
   function onSearch(e: FormEvent) {

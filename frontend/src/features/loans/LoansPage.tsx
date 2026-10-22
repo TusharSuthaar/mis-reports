@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useTableView } from '../../components/useTableView';
 import { api } from '../../api/client';
 import {
   LOAN_PAYMENT_LABEL,
@@ -161,28 +162,31 @@ type Sum = 'sanctionedAmount' | 'gross' | 'net' | 'invoice';
 function LoanTable({ rows, onOpen }: { rows: LoanEntry[]; onOpen: (id: number) => void }) {
   const active = rows.filter((e) => e.status === 'ACTIVE');
   const total = (k: Sum) => active.reduce((s, e) => s + e[k], 0);
+  const view = useTableView(rows, { month: (e) => e.month, region: (e) => e.region, client: (e) => e.clientName, rm: (e) => e.rmName, lender: (e) => e.lender, loan_type: (e) => e.loanType, invt_date: (e) => e.disbursalDate, loan_sanctioned: (e) => e.sanctionedAmount, payout: (e) => e.payoutPercent, without_gst: (e) => e.gross, net_revenue: (e) => e.net, invoice: (e) => e.invoice, payment_status: (e) => e.paymentStatus });
   return (
-    <table>
+    <>
+<div className="table-scroll">
+<table>
       <thead>
         <tr>
           <th className="num">SR .NO</th>
-          <th>Month</th>
-          <th>Region</th>
-          <th>Client</th>
-          <th>RM</th>
-          <th>Lender</th>
-          <th>Loan type</th>
-          <th>Invt date</th>
-          <th className="num">Loan / sanctioned</th>
-          <th className="num">Payout %</th>
-          <th className="num">Without GST</th>
-          <th className="num">Net revenue</th>
-          <th className="num">Invoice</th>
-          <th>Payment status</th>
+          {view.th('month', 'Month')}
+          {view.th('region', 'Region')}
+          {view.th('client', 'Client')}
+          {view.th('rm', 'RM')}
+          {view.th('lender', 'Lender')}
+          {view.th('loan_type', 'Loan type')}
+          {view.th('invt_date', 'Invt date')}
+          {view.th('loan_sanctioned', 'Loan / sanctioned', 'num')}
+          {view.th('payout', 'Payout %', 'num')}
+          {view.th('without_gst', 'Without GST', 'num')}
+          {view.th('net_revenue', 'Net revenue', 'num')}
+          {view.th('invoice', 'Invoice', 'num')}
+          {view.th('payment_status', 'Payment status')}
         </tr>
       </thead>
       <tbody>
-        {rows.map((e, i) => (
+        {view.rows.map((e, i) => (
           <tr key={e.id} className={e.status === 'CANCELLED' ? 'muted' : undefined}>
             <td className="num">{i + 1}</td>
             <td>{formatMonth(e.month)}</td>
@@ -239,6 +243,9 @@ function LoanTable({ rows, onOpen }: { rows: LoanEntry[]; onOpen: (id: number) =
         </tr>
       </tbody>
     </table>
+</div>
+{view.more}
+</>
   );
 }
 

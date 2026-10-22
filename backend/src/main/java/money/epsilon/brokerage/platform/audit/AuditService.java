@@ -36,6 +36,15 @@ public class AuditService {
                 toJson(before), toJson(after), CurrentUser.username(), Instant.now()));
     }
 
+    /**
+     * The newest audit entry's id (0 when none). Every saved change writes an audit entry, so this number changes whenever
+     * anything changes: read-mostly lookups (the org chart) use it to know a remembered answer is still current.
+     */
+    @Transactional(readOnly = true)
+    public long lastId() {
+        return repository.findTopByOrderByIdDesc().map(AuditEntry::getId).orElse(0L);
+    }
+
     @Transactional(readOnly = true)
     public PageResponse<AuditView> search(AuditFilter filter, int page, int size) {
         PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Order.desc("at"), Sort.Order.desc("id")));

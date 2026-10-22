@@ -41,9 +41,12 @@ public class PartnerService {
     @Transactional(readOnly = true)
     public List<PartnerView> list() {
         boolean fullPan = Roles.canSeeFullPan();
+        // Every partner's linked-RM count in one query, not one per partner.
+        java.util.Map<Long, Long> rmCounts = new java.util.HashMap<>();
+        links.countOpenByPartner().forEach(r -> rmCounts.put((Long) r[0], (Long) r[1]));
         return partners.findAll().stream()
                 .sorted(Comparator.comparing(Partner::getType).thenComparing(p -> p.getName().toLowerCase()))
-                .map(p -> view(p, fullPan))
+                .map(p -> view(p, fullPan, rmCounts.getOrDefault(p.getId(), 0L)))
                 .toList();
     }
 
@@ -136,9 +139,13 @@ public class PartnerService {
     }
 
     private PartnerView view(Partner p, boolean fullPan) {
+        return view(p, fullPan, links.countByPartnerIdAndValidToIsNull(p.getId()));
+    }
+
+    private PartnerView view(Partner p, boolean fullPan, long linkedRms) {
         String pan = p.getPanEncrypted() == null ? null : panCipher.decrypt(p.getPanEncrypted());
         return new PartnerView(p.getId(), p.getType(), p.getName(), fullPan ? pan : PanCipher.mask(pan), p.getGstin(),
-                p.getArnOrPospCode(), p.getBankRef(), p.getStatus(), links.countByPartnerIdAndValidToIsNull(p.getId()));
+                p.getArnOrPospCode(), p.getBankRef(), p.getStatus(), linkedRms);
     }
 
     /** Never contains the full PAN. */

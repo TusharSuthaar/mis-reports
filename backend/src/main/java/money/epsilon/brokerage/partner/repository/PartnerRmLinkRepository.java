@@ -16,4 +16,8 @@ public interface PartnerRmLinkRepository extends JpaRepository<PartnerRmLink, Lo
     List<PartnerRmLink> findByRmIdAndValidFromAfter(Long rmId, java.time.LocalDate day);
 
     long countByPartnerIdAndValidToIsNull(Long partnerId);
+
+    /** partner id, number of RMs linked now — for every partner with any. */
+    @org.springframework.data.jpa.repository.Query("select l.partnerId, count(l) from PartnerRmLink l where l.validTo is null group by l.partnerId")
+    List<Object[]> countOpenByPartner();
 }

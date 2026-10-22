@@ -60,9 +60,12 @@ public class EmployeeService {
     @Transactional(readOnly = true)
     public List<EmployeeView> list() {
         Map<Long, Branch> branchById = branches.findAll().stream().collect(Collectors.toMap(Branch::getId, Function.identity()));
+        // Everyone's latest branch row in one read, not one query per person.
+        Map<Long, RmBranchAssignment> latest = rmBranches.findAll().stream().collect(Collectors.toMap(RmBranchAssignment::getEmployeeId,
+                Function.identity(), (a, b) -> LATEST.compare(a, b) >= 0 ? a : b));
         return employees.findAll().stream()
                 .sorted(Comparator.comparing(e -> e.getName().toLowerCase()))
-                .map(e -> view(e, branchById))
+                .map(e -> view(e, Optional.ofNullable(latest.get(e.getId())), branchById))
                 .toList();
     }
 
@@ -250,8 +253,15 @@ public class EmployeeService {
         return employees.findById(id).orElseThrow(() -> new NotFoundException("Employee " + id + " not found"));
     }
 
+    private static final Comparator<RmBranchAssignment> LATEST =
+            Comparator.comparing(RmBranchAssignment::getValidFrom).thenComparing(RmBranchAssignment::getId);
+
     private EmployeeView view(Employee e, Map<Long, Branch> branchById) {
-        Branch branch = rmBranches.findFirstByEmployeeIdOrderByValidFromDesc(e.getId())
+        return view(e, rmBranches.findFirstByEmployeeIdOrderByValidFromDesc(e.getId()), branchById);
+    }
+
+    private EmployeeView view(Employee e, Optional<RmBranchAssignment> latestBranch, Map<Long, Branch> branchById) {
+        Branch branch = latestBranch
                 .filter(a -> a.getValidTo() == null || e.getExitedOn() != null && a.getValidTo().equals(e.getExitedOn()))
                 .map(a -> branchById != null ? branchById.get(a.getBranchId()) : branches.findById(a.getBranchId()).orElse(null))
                 .orElse(null);

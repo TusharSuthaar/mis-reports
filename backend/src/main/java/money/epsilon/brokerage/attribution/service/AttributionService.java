@@ -63,6 +63,7 @@ public class AttributionService {
     static final String AIF = "AIF";
     static final String LOAN = "LOAN";
     static final String GIFT = "GIFT";
+    static final String EQUITY = "EQUITY";
 
     private final PeriodService periods;
     private final LedgerService ledger;
@@ -81,10 +82,12 @@ public class AttributionService {
     private final AifService aifs;
     private final money.epsilon.brokerage.loan.service.LoanService loans;
     private final money.epsilon.brokerage.gift.service.GiftService gifts;
+    private final money.epsilon.brokerage.equity.service.EquityService equity;
 
     AttributionService(PeriodService periods, LedgerService ledger, ClientService clients, OrgChartService org, EmployeeService employees,
                        ShareService shares, FdService fds, BondService bonds, AifService aifs,
                        money.epsilon.brokerage.loan.service.LoanService loans, money.epsilon.brokerage.gift.service.GiftService gifts,
+                       money.epsilon.brokerage.equity.service.EquityService equity,
                        AuditService audit, JdbcClient jdbc, JdbcTemplate jdbcTemplate, ObjectMapper mapper,
                        @Value("${mis.sharing.order}") String order, @Value("${mis.sharing.negative-net:SAME_PERCENT}") NegativeNet negativeNet) {
         this.periods = periods;
@@ -98,6 +101,7 @@ public class AttributionService {
         this.aifs = aifs;
         this.loans = loans;
         this.gifts = gifts;
+        this.equity = equity;
         this.audit = audit;
         this.jdbc = jdbc;
         this.jdbcTemplate = jdbcTemplate;
@@ -151,6 +155,10 @@ public class AttributionService {
         Map<Long, Long> giftPartner = new HashMap<>();
         giftEntries.forEach(x -> { if (x.partnerId() != null) giftPartner.put(x.giftEntryId(), x.partnerId()); });
         lines.addAll(ledger.activeLines(periodId, GIFT));
+        // Equity brokerage (R-89): each client's franchise share of the month, split with the client's own partner % like MF.
+        ledger.replaceEquityLines(periodId, equity.forLedger(period.month()).stream()
+                .map(x -> new LedgerService.EquityLineInput(x.uploadId(), x.clientId(), x.share())).toList());
+        lines.addAll(ledger.activeLines(periodId, EQUITY));
         List<Long> own = lines.stream().filter(l -> l.adjustsPeriodId() == null).map(ActiveLine::clientId).distinct().toList();
         long notInMaster = own.size() - clients.rmsOn(own, period.toDate()).size();
         if (notInMaster > 0) {
@@ -265,6 +273,72 @@ public class AttributionService {
         RunResult result = new RunResult(runId, period.month(), lines.size(), net, partners, epsilon);
         audit.record("PERIOD", periodId, "PROCESS", null, result);
         return result;
+    }
+
+    /**
+     * What stands between a month and processing it, checked without changing anything (R-91): the same checks
+     * {@link #process} stops on, on the month's own figures — clients with no RM, partners with no % for a product they
+     * have business in, equity PANs not in Clients — so they can be fixed before anyone presses Process.
+     */
+    public record Readiness(long periodId, YearMonth month, String status, boolean mfSaved, int mfClients, boolean equityUploaded,
+                            int equityClients, int equityNotInClients, Map<String, Integer> entries, long notInMaster,
+                            List<String> missingPercent, boolean ready) {
+    }
+
+    private static final Map<Product, String> PRODUCT_LABEL = Map.of(Product.FD, "FD", Product.BOND, "Bonds", Product.AIF, "AIF",
+            Product.LOAN, "Loans", Product.GIFT, "GIFT City");
+
+    @Transactional(readOnly = true)
+    public Readiness readiness(long periodId) {
+        PeriodView period = periods.get(periodId);
+        YearMonth month = period.month();
+        LocalDate day = period.toDate();
+        List<Long> mfClients = ledger.activeLines(periodId, MF).stream().filter(l -> l.adjustsPeriodId() == null).map(ActiveLine::clientId)
+                .distinct().toList();
+        var eq = equity.check(month);
+        List<FdForLedger> fdEntries = fds.forLedger(month);
+        List<BondForLedger> bondEntries = bonds.forLedger(month);
+        List<AifForLedger> aifEntries = aifs.forLedger(month);
+        var loanEntries = loans.forLedger(month);
+        var giftEntries = gifts.forLedger(month);
+
+        // Clients split with their own partners (MF and equity) and every client with business this month.
+        java.util.Set<Long> splitByShares = new java.util.LinkedHashSet<>(mfClients);
+        splitByShares.addAll(eq.clientIds());
+        java.util.Set<Long> all = new java.util.LinkedHashSet<>(splitByShares);
+        fdEntries.forEach(x -> all.add(x.clientId()));
+        bondEntries.forEach(x -> all.add(x.clientId()));
+        aifEntries.forEach(x -> all.add(x.clientId()));
+        loanEntries.forEach(x -> all.add(x.clientId()));
+        giftEntries.forEach(x -> all.add(x.clientId()));
+        long notInMaster = all.size() - clients.rmsOn(List.copyOf(all), day).size();
+
+        java.util.Set<String> missing = new java.util.TreeSet<>();
+        shares.on(List.copyOf(splitByShares), day).values().forEach(list -> list.stream()
+                .filter(s -> s.source() == ShareService.Source.NO_PARTNER_PERCENT).forEach(s -> missing.add(s.partnerName() + " (MF)")));
+        Map<String, ShareService.ProductShare> seen = new HashMap<>();
+        java.util.function.BiConsumer<Long, Product> need = (partnerId, product) -> {
+            if (partnerId == null) return;
+            ShareService.ProductShare ps = seen.computeIfAbsent(partnerId + product.code(), k -> shares.productShare(partnerId, product, day));
+            if (ps.fraction() == null) missing.add(ps.partnerName() + " (" + PRODUCT_LABEL.get(product) + ")");
+        };
+        fdEntries.forEach(x -> need.accept(x.partnerId(), Product.FD));
+        bondEntries.forEach(x -> need.accept(x.partnerId(), Product.BOND));
+        // An AIF deal's own sharing % stands in for the partner's AIF %.
+        aifEntries.stream().filter(x -> x.sharingPercent() == null).forEach(x -> need.accept(x.partnerId(), Product.AIF));
+        loanEntries.forEach(x -> need.accept(x.partnerId(), Product.LOAN));
+        giftEntries.forEach(x -> need.accept(x.partnerId(), Product.GIFT));
+
+        Map<String, Integer> entries = new LinkedHashMap<>();
+        entries.put(FD, fdEntries.size());
+        entries.put(BOND, bondEntries.size());
+        entries.put(AIF, aifEntries.size());
+        entries.put(LOAN, loanEntries.size());
+        entries.put(GIFT, giftEntries.size());
+        boolean ready = period.status() != Period.Status.LOCKED && !mfClients.isEmpty() && notInMaster == 0 && missing.isEmpty()
+                && eq.notInClients() == 0;
+        return new Readiness(periodId, month, period.status().name(), !mfClients.isEmpty(), mfClients.size(), eq.uploaded(),
+                eq.clientIds().size(), eq.notInClients(), entries, notInMaster, List.copyOf(missing), ready);
     }
 
     /** Voids the month's current split (its figures changed or it is being re-run). */

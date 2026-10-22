@@ -103,7 +103,7 @@ export const PARTNER_STATUS_LABEL: Record<PartnerStatus, string> = {
 };
 
 /** Products a partner can share in (codes as the API sends them), in Master MIS column order. */
-export type Product = 'MF' | 'PREIPO' | 'FD' | 'BOND' | 'LOAN' | 'EQUITY' | 'PMS' | 'AIF' | 'ADVISORY' | 'GIFT' | 'NPS' | 'INS';
+export type Product = 'MF' | 'PREIPO' | 'FD' | 'BOND' | 'LOAN' | 'EQUITY' | 'PMS' | 'AIF' | 'ADVISORY' | 'GIFT' | 'NPS' | 'P2P' | 'INS';
 
 export const PRODUCTS: { code: Product; label: string }[] = [
   { code: 'MF', label: 'MF' },
@@ -117,6 +117,7 @@ export const PRODUCTS: { code: Product; label: string }[] = [
   { code: 'ADVISORY', label: 'Advisory' },
   { code: 'GIFT', label: 'GIFT' },
   { code: 'NPS', label: 'NPS' },
+  { code: 'P2P', label: 'P2P' },
   { code: 'INS', label: 'Insurance' },
 ];
 
@@ -484,7 +485,7 @@ export interface RunResult {
   epsilon: number;
 }
 
-export type ProductCode = 'MF' | 'PREIPO' | 'FD' | 'BOND' | 'LOAN' | 'EQUITY' | 'PMS' | 'AIF' | 'ADVISORY' | 'GIFT' | 'NPS' | 'INS';
+export type ProductCode = 'MF' | 'PREIPO' | 'FD' | 'BOND' | 'LOAN' | 'EQUITY' | 'PMS' | 'AIF' | 'ADVISORY' | 'GIFT' | 'NPS' | 'P2P' | 'INS';
 
 /** GST and TDS of a product over a period (Products & taxes). Percent values: 18 = 18%. */
 export interface TaxRate {
@@ -1002,6 +1003,55 @@ export interface NpsEntry {
   gst: number;
   invoice: number;
   receivedOn: string | null;
+  remarks: string | null;
+  status: 'ACTIVE' | 'CANCELLED';
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+/** One P2P investment (a row of the P2P register, R-87), with a typed brokerage when known. */
+export interface P2pEntry {
+  id: number;
+  month: string;
+  rmId: number;
+  rmName: string;
+  branchName: string | null;
+  region: string | null;
+  rd: string | null;
+  partnerId: number | null;
+  partnerName: string | null;
+  partnerType: string | null;
+  clientId: number;
+  clientName: string;
+  pan: string | null;
+  clientType: string;
+  mobile: string | null;
+  email: string | null;
+  address: string | null;
+  /** The register's PARTNER: the P2P platform. */
+  platform: string;
+  scheme: string;
+  roiPercent: number | null;
+  amount: number | null;
+  fundsInitiatedOn: string | null;
+  startDate: string | null;
+  quarterEndDate: string | null;
+  onPortal: boolean;
+  brokerage: number | null;
+  gross: number;
+  tdsApplied: boolean;
+  tdsPercent: number;
+  tds: number;
+  gstPercent: number;
+  gst: number;
+  net: number;
+  invoice: number;
+  /** The register's PAYMENT STATUS, as written (e.g. "BILL RAISED -13 OCT"). */
+  paymentNote: string | null;
+  receivedOn: string | null;
+  revSharingStatus: string | null;
   remarks: string | null;
   status: 'ACTIVE' | 'CANCELLED';
   createdBy: string;

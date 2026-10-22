@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useTableView } from '../../components/useTableView';
 import { api } from '../../api/client';
 import {
   CERTIFICATE_LABEL,
@@ -124,6 +125,7 @@ export function FdPage({ embedded = false }: { embedded?: boolean } = {}) {
     list.reload();
   };
 
+  const view = useTableView(list.data, { month: (e) => e.month, deposit: (e) => e.depositDate, client: (e) => e.clientName, fd: (e) => e.fdName, rm: (e) => e.rmName, amount: (e) => e.amount, gross: (e) => e.gross, net: (e) => e.net, invoice: (e) => e.invoice, certificate: (e) => e.certificate, payment: (e) => e.paymentStatus });
   return (
     <section>
       <div className="page-head" style={embedded ? { justifyContent: 'flex-end', marginBottom: 12 } : undefined}>
@@ -147,25 +149,27 @@ export function FdPage({ embedded = false }: { embedded?: boolean } = {}) {
       {list.error && <p className="error">{list.error}</p>}
       {list.data && list.data.length === 0 && <p className="muted">No FDs match.</p>}
       {list.data && list.data.length > 0 && (
-        <table>
+        <>
+<div className="table-scroll">
+<table>
           <thead>
             <tr>
               <th className="num">SR.NO</th>
-              <th>Month</th>
-              <th>Deposit</th>
-              <th>Client</th>
-              <th>FD</th>
-              <th>RM</th>
-              <th className="num">Amount</th>
-              <th className="num">Gross</th>
-              <th className="num">Net</th>
-              <th className="num">Invoice</th>
-              <th>Certificate</th>
-              <th>Payment</th>
+              {view.th('month', 'Month')}
+              {view.th('deposit', 'Deposit')}
+              {view.th('client', 'Client')}
+              {view.th('fd', 'FD')}
+              {view.th('rm', 'RM')}
+              {view.th('amount', 'Amount', 'num')}
+              {view.th('gross', 'Gross', 'num')}
+              {view.th('net', 'Net', 'num')}
+              {view.th('invoice', 'Invoice', 'num')}
+              {view.th('certificate', 'Certificate')}
+              {view.th('payment', 'Payment')}
             </tr>
           </thead>
           <tbody>
-            {list.data.map((e, i) => (
+            {view.rows.map((e, i) => (
               <tr key={e.id} className={e.status === 'CANCELLED' ? 'muted' : undefined}>
                 <td className="num">{i + 1}</td>
                 <td>{formatMonth(e.month)}</td>
@@ -199,6 +203,9 @@ export function FdPage({ embedded = false }: { embedded?: boolean } = {}) {
             </tr>
           </tbody>
         </table>
+</div>
+{view.more}
+</>
       )}
       {panel === 'new' && (
         <Modal title="Add FD" onClose={() => setPanel(null)}>

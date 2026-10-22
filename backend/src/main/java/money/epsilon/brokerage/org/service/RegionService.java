@@ -53,9 +53,12 @@ public class RegionService {
     @Transactional(readOnly = true)
     public List<RegionView> list() {
         Map<Long, Employee> people = employees.findAll().stream().collect(Collectors.toMap(Employee::getId, Function.identity()));
+        // Every region's latest RD row in one read, not one query per region.
+        Map<Long, RdAssignment> latest = rds.findAll().stream().collect(Collectors.toMap(RdAssignment::getRegionId, Function.identity(),
+                (a, b) -> LATEST_RD.compare(a, b) >= 0 ? a : b));
         return regions.findAll().stream()
                 .sorted(ORDER)
-                .map(r -> view(r, people))
+                .map(r -> view(r, Optional.ofNullable(latest.get(r.getId())), people))
                 .toList();
     }
 
@@ -156,8 +159,14 @@ public class RegionService {
         return regions.findById(id).orElseThrow(() -> new NotFoundException("Region " + id + " not found"));
     }
 
+    private static final Comparator<RdAssignment> LATEST_RD = Comparator.comparing(RdAssignment::getValidFrom).thenComparing(RdAssignment::getId);
+
     private RegionView view(Region r, Map<Long, Employee> people) {
-        PersonRef rd = rds.findFirstByRegionIdOrderByValidFromDesc(r.getId())
+        return view(r, rds.findFirstByRegionIdOrderByValidFromDesc(r.getId()), people);
+    }
+
+    private RegionView view(Region r, Optional<RdAssignment> latestRd, Map<Long, Employee> people) {
+        PersonRef rd = latestRd
                 .filter(a -> a.getValidTo() == null)
                 .map(a -> people != null ? people.get(a.getEmployeeId()) : employees.findById(a.getEmployeeId()).orElse(null))
                 .map(e -> new PersonRef(e.getId(), e.getEmpCode(), e.getName()))

@@ -15,6 +15,12 @@ export class ApiError extends Error {
 type Method = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
 let sessionExpired: () => void = () => {};
+const writeListeners: (() => void)[] = [];
+
+/** Called after every successful save (any method but GET), e.g. to forget cached lists. */
+export function onWrite(handler: () => void) {
+  writeListeners.push(handler);
+}
 
 /** Called when the server says we are no longer signed in (401) on any call except the sign-in checks. */
 export function onSessionExpired(handler: () => void) {
@@ -55,6 +61,7 @@ export async function api<T>(path: string, options: { method?: Method; body?: un
     const reference: string | null = problem?.reference ?? res.headers.get('X-Request-Id');
     throw new ApiError(res.status, problem?.detail ?? res.statusText ?? 'Request failed', problem?.errors ?? {}, reference);
   }
+  if (method !== 'GET') writeListeners.forEach((h) => h());
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }

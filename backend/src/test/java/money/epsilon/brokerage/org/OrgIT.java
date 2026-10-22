@@ -146,6 +146,21 @@ class OrgIT extends IntegrationTestBase {
 
 
     @Test
+    void aRememberedOrgChartIsNeverStaleAfterAChange() throws Exception {
+        long r = region(uniqueName("R"));
+        long b = branch(uniqueName("B"), r, "2026-04-01");
+        long rm = employee("RM", "2026-01-01");
+        assign(rm, b, "2026-04-01", 204);
+        String date = "/api/org?date=2026-08-31";
+        assertThat(getJson(date, admin, 200).toString()).contains("\"id\":" + rm);
+        getJson(date, admin, 200);   // the same day again: answered from memory
+
+        String renamed = uniqueName("RENAMED");
+        patchJson("/api/employees/" + rm, Map.of("name", renamed), admin, 200);
+        assertThat(getJson(date, admin, 200).toString()).contains(renamed);   // the change shows at once
+    }
+
+    @Test
     void exitClosesBranchAndRdOnTheLastDay() throws Exception {
         long r = region(uniqueName("R"));
         long b = branch(uniqueName("B"), r, "2026-04-01");

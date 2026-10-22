@@ -25,6 +25,8 @@ reads or writes those tables with SQL — it calls the owner's public service.
 | `bond` | `bond_entry` | Bond deals entered on the Bonds screen, with their brokerage (gross, TDS, GST, net, invoice) | `BondService` |
 | `aif` | `aif_entry`, `aif_instalment` | AIF commitments entered on the AIF screen, their drawdowns, brokerage and per-deal sharing % | `AifService` |
 | `fx` | `exchange_rate` | Exchange rates by day: fetched from Frankfurter (ECB) once per day, or set by hand | `ExchangeRateService` |
+| `equity` | `equity_upload`, `equity_trade` | Equity brokerage: the broker's monthly Brokerage Due report (SMC) uploaded, kept trade by trade; each client's franchise share is the month's Equity line | `EquityService` |
+| `p2p` | `p2p_entry` | P2P investments (platform, scheme, ROI, dates) with a typed brokerage, entry only for now | `P2pService` |
 | `nps` | `nps_entry` | NPS investments with their revenue (POP charges × sharing %, or typed; CGST + SGST), entry only for now | `NpsService` |
 | `pms` | `pms_investment`, `pms_payout` | PMS client investments and AMC payouts per invoice period (entry only for now) | `PmsService` |
 | `gift` | `gift_entry` | GIFT City investments entered on the GIFT CITY screen (USD / ₹ amount, fund, transaction status) with a typed brokerage (TDS, GST, net, invoice) | `GiftService` |
@@ -45,6 +47,8 @@ client, org, partner, tax  ←  fd  ←  attribution (FD lines), reporting (FD l
 client, org, partner, tax  ←  loan  ←  attribution (loan lines), reporting (loan labels)
 client, org, partner, tax  ←  pms
 client, org, partner, tax  ←  nps
+client, org, partner, tax  ←  p2p
+client, period  ←  equity  ←  attribution (equity lines)
 client, org, partner, tax  ←  gift  ←  attribution (GIFT City lines), reporting (GIFT City labels)
 client, org, partner, tax, intermediary  ←  bond  ←  attribution (bond lines), reporting (bond labels)
 client, org, partner, tax, intermediary  ←  aif  ←  attribution (AIF lines), reporting (AIF labels)

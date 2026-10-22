@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useTableView } from '../../components/useTableView';
 import { api } from '../../api/client';
 import {
   GIFT_PAYMENT_LABEL,
@@ -66,6 +67,7 @@ export function GiftPage({ embedded = false }: { embedded?: boolean } = {}) {
     funds.reload();
   };
 
+  const view = useTableView(list.data, { month: (e) => e.month, region: (e) => e.region, client: (e) => e.clientName, rm: (e) => e.rmName, partner_fund: (e) => e.partnerName, amt: (e) => e.amountUsd, amt_in_rs: (e) => e.amountInr, trxn_status: (e) => e.trxnStatus, brokerage: (e) => e.brokerage, invoice: (e) => e.invoice, payment: (e) => e.paymentStatus });
   return (
     <section>
       <div className="page-head" style={embedded ? { justifyContent: 'flex-end', marginBottom: 12 } : undefined}>
@@ -91,26 +93,28 @@ export function GiftPage({ embedded = false }: { embedded?: boolean } = {}) {
       {list.error && <p className="error">{list.error}</p>}
       {list.data && list.data.length === 0 && <p className="muted">No GIFT City entries match.</p>}
       {list.data && list.data.length > 0 && (
-        <table>
+        <>
+<div className="table-scroll">
+<table>
           <thead>
             <tr>
               <th className="num">SR .NO</th>
-              <th>Month</th>
-              <th>Region</th>
-              <th>Client</th>
-              <th>RM</th>
-              <th>Partner (fund)</th>
-              <th className="num">AMT</th>
-              <th className="num">AMT in Rs.</th>
+              {view.th('month', 'Month')}
+              {view.th('region', 'Region')}
+              {view.th('client', 'Client')}
+              {view.th('rm', 'RM')}
+              {view.th('partner_fund', 'Partner (fund)')}
+              {view.th('amt', 'AMT', 'num')}
+              {view.th('amt_in_rs', 'AMT in Rs.', 'num')}
               <th>Entry status</th>
-              <th>Trxn status</th>
-              <th className="num">Brokerage</th>
-              <th className="num">Invoice</th>
-              <th>Payment</th>
+              {view.th('trxn_status', 'Trxn status')}
+              {view.th('brokerage', 'Brokerage', 'num')}
+              {view.th('invoice', 'Invoice', 'num')}
+              {view.th('payment', 'Payment')}
             </tr>
           </thead>
           <tbody>
-            {list.data.map((e, i) => (
+            {view.rows.map((e, i) => (
               <tr key={e.id} className={e.status === 'CANCELLED' ? 'muted' : undefined}>
                 <td className="num">{i + 1}</td>
                 <td>{formatMonth(e.month)}</td>
@@ -151,6 +155,9 @@ export function GiftPage({ embedded = false }: { embedded?: boolean } = {}) {
             </tr>
           </tbody>
         </table>
+</div>
+{view.more}
+</>
       )}
       {panel === 'new' && (
         <Modal title="Add GIFT City entry" onClose={() => setPanel(null)}>

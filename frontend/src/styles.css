@@ -380,3 +380,23 @@ td { font-size: 13.5px; }
 .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
 .segmented button { background: var(--surface); color: var(--text); border: 0; border-radius: 0; padding: 6px 14px; }
 .segmented button.on { background: var(--primary); color: #fff; }
+
+/* List tables (useTableView): scroll inside the box with the header and the totals row kept in view; sortable headers */
+.table-scroll { max-height: calc(100vh - 230px); overflow: auto; border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); }
+.table-scroll table { overflow: visible; box-shadow: none; border: none; border-radius: 0; }
+.table-scroll thead th { position: sticky; top: 0; z-index: 1; }
+.table-scroll tr.total td { position: sticky; bottom: 0; background: var(--surface); box-shadow: 0 -1px 0 var(--border); }
+.sort-head { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; }
+th.num .sort-head { flex-direction: row-reverse; }
+.sort-head:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 3px; }
+.sort-mark { font-size: 9px; opacity: 0.45; }
+th[aria-sort='ascending'] .sort-mark, th[aria-sort='descending'] .sort-mark { opacity: 1; color: var(--primary); }
+.table-more { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+
+/* Dashboard: month pre-check (R-91) */
+.precheck { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.precheck h3 { font-size: 13px; margin: 0 0 4px; text-transform: uppercase; letter-spacing: 0.03em; color: #475467; }
+.precheck .mark { display: inline-flex; width: 20px; height: 20px; border-radius: 50%; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex: none; }
+.precheck li.ok .mark { background: #ecfdf3; color: #067647; }
+.precheck li.blocker .mark { background: #fef3f2; color: #b42318; }
+.precheck li.info .mark { background: var(--accent-bg); color: var(--primary); }

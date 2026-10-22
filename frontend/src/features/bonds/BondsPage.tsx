@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useTableView } from '../../components/useTableView';
 import { api } from '../../api/client';
 import {
   BOND_PAYOUT_LABEL,
@@ -60,6 +61,7 @@ export function BondsPage({ embedded = false }: { embedded?: boolean } = {}) {
     list.reload();
   };
 
+  const view = useTableView(list.data, { month: (e) => e.month, inv_date: (e) => e.investmentDate, client: (e) => e.clientName, bond: (e) => e.bondName, platform: (e) => e.platformName, rm: (e) => e.rmName, consideration: (e) => e.consideration, gross: (e) => e.gross, net: (e) => e.net, invoice: (e) => e.invoice, payment: (e) => e.paymentStatus });
   return (
     <section>
       <div className="page-head" style={embedded ? { justifyContent: 'flex-end', marginBottom: 12 } : undefined}>
@@ -83,25 +85,27 @@ export function BondsPage({ embedded = false }: { embedded?: boolean } = {}) {
       {list.error && <p className="error">{list.error}</p>}
       {list.data && list.data.length === 0 && <p className="muted">No bond deals match.</p>}
       {list.data && list.data.length > 0 && (
-        <table>
+        <>
+<div className="table-scroll">
+<table>
           <thead>
             <tr>
               <th className="num">SR.NO</th>
-              <th>Month</th>
-              <th>Inv date</th>
-              <th>Client</th>
-              <th>Bond</th>
-              <th>Platform</th>
-              <th>RM</th>
-              <th className="num">Consideration</th>
-              <th className="num">Gross</th>
-              <th className="num">Net</th>
-              <th className="num">Invoice</th>
-              <th>Payment</th>
+              {view.th('month', 'Month')}
+              {view.th('inv_date', 'Inv date')}
+              {view.th('client', 'Client')}
+              {view.th('bond', 'Bond')}
+              {view.th('platform', 'Platform')}
+              {view.th('rm', 'RM')}
+              {view.th('consideration', 'Consideration', 'num')}
+              {view.th('gross', 'Gross', 'num')}
+              {view.th('net', 'Net', 'num')}
+              {view.th('invoice', 'Invoice', 'num')}
+              {view.th('payment', 'Payment')}
             </tr>
           </thead>
           <tbody>
-            {list.data.map((e, i) => (
+            {view.rows.map((e, i) => (
               <tr key={e.id} className={e.status === 'CANCELLED' ? 'muted' : undefined}>
                 <td className="num">{i + 1}</td>
                 <td>{formatMonth(e.month)}</td>
@@ -135,6 +139,9 @@ export function BondsPage({ embedded = false }: { embedded?: boolean } = {}) {
             </tr>
           </tbody>
         </table>
+</div>
+{view.more}
+</>
       )}
       {panel === 'new' && (
         <Modal title="Add bond" onClose={() => setPanel(null)}>
