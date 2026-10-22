@@ -27,6 +27,12 @@ docker compose up -d --build
 On first start with an empty user table, the API creates the ADMIN from `MIS_BOOTSTRAP_ADMIN_*`.
 After that those variables are ignored; manage users under **Users**.
 
+### Try it with demo data
+
+[demo-data/](demo-data/README.md) holds an invented month (August 2026) in the real files' layouts. Load it into an
+empty app with `python tools/demo-data/seed.py` (reads the admin from `.env`). On Linux or in a Claude Code cloud
+session, `tools/cloud/start-app.sh` runs the whole app without Docker and loads it (sign in `demo` / `Sandbox@2026`).
+
 ## Develop
 
 Backend: no local JDK needed, Maven runs in a container. The Docker socket is mounted so the

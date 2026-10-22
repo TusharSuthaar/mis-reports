@@ -12,4 +12,5 @@ MSYS_NO_PATHCONV=1 docker run --rm \
   -v epsilon-m2:/root/.m2 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal \
+  --add-host=host.docker.internal:host-gateway \
   maven:3.9-eclipse-temurin-21 mvn -B "$@"

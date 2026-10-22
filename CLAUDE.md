@@ -22,6 +22,18 @@ Read [docs/README.md](docs/README.md) first, then [docs/architecture/guardrails.
 - `cd frontend && npm test` — frontend tests
 - `docker compose up -d --build` — run the app on http://localhost:5180
 
+## Cloud sessions (Claude Code on the web)
+- **Only demo data exists here.** `private-data/` and `.env` are not in Git, so a cloud session never has real client
+  files — and must never be given any. Work against [demo-data/](demo-data/README.md): an invented August 2026 in the real
+  files' layouts (PANs with X as 4th letter cannot be real).
+- The SessionStart hook ([tools/cloud/session-start.sh](tools/cloud/session-start.sh)) runs only in the cloud: it
+  installs frontend packages, starts the Docker daemon (for Testcontainers) and starts the app with the demo month in
+  the background — log `/tmp/mis-start.log`. API http://localhost:8090, screens http://localhost:5180, sign in
+  `demo` / `Sandbox@2026`. Restart after backend changes: `tools/cloud/start-app.sh` (rebuilds when code changed).
+- Backend tests in the cloud: `cd backend && mvn -B verify` (the VM has Java 21 + Maven; `mvnw-docker.sh` is for Windows).
+- Anything that needs the real month (comparing with the real END file, loading real files, timings on real volumes)
+  is done on the office computer: say so in the hand-off instead of guessing.
+
 ## Working lean (token use)
 - One task per session; the docs and these rules carry the context, not a long chat.
 - Test runs: show only the summary and failing tests (e.g. `grep -E "Tests run:.*(Fail|Err)|ERROR\]   "`), never whole logs.

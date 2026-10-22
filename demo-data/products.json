@@ -1,0 +1,828 @@
+{
+ "platforms": [
+  {
+   "name": "DEMO BOND HOUSE",
+   "terms": {
+    "gstInclusive": true,
+    "tdsPercent": 5,
+    "ourShare": 100,
+    "from": "2025-04-01"
+   }
+  },
+  {
+   "name": "DEMO ALTERNATES",
+   "terms": {
+    "gstInclusive": false,
+    "tdsPercent": 2,
+    "ourShare": 100,
+    "from": "2025-04-01"
+   }
+  }
+ ],
+ "entries": [
+  {
+   "kind": "fd",
+   "client": {
+    "pan": "LKQXX2074R",
+    "partner": "Banyan Demo Investments"
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": "Banyan Demo Investments",
+    "fdName": "DEMO FINANCE FD",
+    "fdNo": "FD43889",
+    "interestFrequency": "QUARTERLY",
+    "depositDate": "2026-08-18",
+    "periodMonths": 12,
+    "maturityDate": "2027-08-28",
+    "ratePercent": 8,
+    "amount": 250000,
+    "certificate": "RECEIVED",
+    "marginPercent": 1
+   }
+  },
+  {
+   "kind": "fd",
+   "client": {
+    "pan": "MYNXG4584R",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": null,
+    "fdName": "DEMO FINANCE FD",
+    "fdNo": "FD76211",
+    "interestFrequency": "CUMULATIVE",
+    "depositDate": "2026-08-06",
+    "periodMonths": 12,
+    "maturityDate": "2027-08-28",
+    "ratePercent": 8.25,
+    "amount": 250000,
+    "certificate": "RECEIVED",
+    "marginPercent": 1
+   }
+  },
+  {
+   "kind": "fd",
+   "client": {
+    "pan": "BWFXI5458R",
+    "partner": "Horizon Demo Investments"
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": "Horizon Demo Investments",
+    "fdName": "SAMPLE HOUSING FD",
+    "fdNo": "FD71666",
+    "interestFrequency": "QUARTERLY",
+    "depositDate": "2026-08-01",
+    "periodMonths": 12,
+    "maturityDate": "2027-08-28",
+    "ratePercent": 7.5,
+    "amount": 250000,
+    "certificate": "RECEIVED",
+    "marginPercent": 1
+   }
+  },
+  {
+   "kind": "fd",
+   "client": {
+    "pan": "ZTYXS0371I",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": null,
+    "fdName": "DEMO FINANCE FD",
+    "fdNo": "FD51249",
+    "interestFrequency": "CUMULATIVE",
+    "depositDate": "2026-08-19",
+    "periodMonths": 12,
+    "maturityDate": "2027-08-28",
+    "ratePercent": 7.5,
+    "amount": 100000,
+    "certificate": "RECEIVED",
+    "marginPercent": 1
+   }
+  },
+  {
+   "kind": "fd",
+   "client": {
+    "pan": "WCRXI4758Z",
+    "partner": "Rahul Javrekar"
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": "Rahul Javrekar",
+    "fdName": "DEMO FINANCE FD",
+    "fdNo": "FD87448",
+    "interestFrequency": "CUMULATIVE",
+    "depositDate": "2026-08-12",
+    "periodMonths": 12,
+    "maturityDate": "2027-08-28",
+    "ratePercent": 7.5,
+    "amount": 100000,
+    "certificate": "RECEIVED",
+    "marginPercent": 1
+   }
+  },
+  {
+   "kind": "fd",
+   "client": {
+    "pan": "FPBXT3246B",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": null,
+    "fdName": "DEMO FINANCE FD",
+    "fdNo": "FD65862",
+    "interestFrequency": "QUARTERLY",
+    "depositDate": "2026-08-15",
+    "periodMonths": 12,
+    "maturityDate": "2027-08-28",
+    "ratePercent": 8.25,
+    "amount": 100000,
+    "certificate": "RECEIVED",
+    "marginPercent": 1
+   }
+  },
+  {
+   "kind": "bonds",
+   "client": {
+    "pan": "XYMXW9662O",
+    "partner": "Banyan Demo Investments"
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": "Banyan Demo Investments",
+    "platform": "DEMO BOND HOUSE",
+    "bondName": "DEMO STATE DEVELOPMENT 1",
+    "isin": "INE0DEMO0000",
+    "couponPercent": 9.5,
+    "payoutFrequency": "QUARTERLY",
+    "investmentDate": "2026-08-05",
+    "maturityDate": "2029-03-31",
+    "quantity": 1,
+    "ratePerUnit": 1010000,
+    "investmentAmount": 1000000,
+    "accruedInterest": 10000,
+    "markupPercent": 0.4,
+    "tdsApplied": true,
+    "tdsPercent": 5
+   }
+  },
+  {
+   "kind": "bonds",
+   "client": {
+    "pan": "WEQXT1185O",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": null,
+    "platform": "DEMO BOND HOUSE",
+    "bondName": "DEMO STATE DEVELOPMENT 2",
+    "isin": "INE0DEMO0001",
+    "couponPercent": 9.5,
+    "payoutFrequency": "QUARTERLY",
+    "investmentDate": "2026-08-06",
+    "maturityDate": "2029-03-31",
+    "quantity": 1,
+    "ratePerUnit": 1010000,
+    "investmentAmount": 1000000,
+    "accruedInterest": 10000,
+    "markupPercent": 0.4,
+    "tdsApplied": true,
+    "tdsPercent": 5
+   }
+  },
+  {
+   "kind": "bonds",
+   "client": {
+    "pan": "KNPXQ7610B",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": null,
+    "platform": "DEMO BOND HOUSE",
+    "bondName": "DEMO STATE DEVELOPMENT 3",
+    "isin": "INE0DEMO0002",
+    "couponPercent": 9.5,
+    "payoutFrequency": "QUARTERLY",
+    "investmentDate": "2026-08-07",
+    "maturityDate": "2029-03-31",
+    "quantity": 1,
+    "ratePerUnit": 1010000,
+    "investmentAmount": 1000000,
+    "accruedInterest": 10000,
+    "markupPercent": 0.4,
+    "tdsApplied": true,
+    "tdsPercent": 5
+   }
+  },
+  {
+   "kind": "bonds",
+   "client": {
+    "pan": "EJPXK6421P",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": null,
+    "platform": "DEMO BOND HOUSE",
+    "bondName": "DEMO STATE DEVELOPMENT 4",
+    "isin": "INE0DEMO0003",
+    "couponPercent": 9.5,
+    "payoutFrequency": "QUARTERLY",
+    "investmentDate": "2026-08-08",
+    "maturityDate": "2029-03-31",
+    "quantity": 1,
+    "ratePerUnit": 1010000,
+    "investmentAmount": 1000000,
+    "accruedInterest": 10000,
+    "markupPercent": 0.4,
+    "tdsApplied": true,
+    "tdsPercent": 5
+   }
+  },
+  {
+   "kind": "aif",
+   "client": {
+    "pan": "JFSXP6771W",
+    "partner": "Meadow Demo Investments"
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": "Meadow Demo Investments",
+    "sharingPercent": 50,
+    "platform": "DEMO ALTERNATES",
+    "fundName": "DEMO GROWTH FUND 1",
+    "commitment": 10000000,
+    "agreementDate": "2026-08-10",
+    "tenure": "Five Years",
+    "markupPercent": 1.3,
+    "tdsApplied": true,
+    "tdsPercent": 2,
+    "payoutTerms": "Paid quarterly",
+    "instalments": [
+     {
+      "amount": 2500000,
+      "paidOn": "2026-08-20"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "aif",
+   "client": {
+    "pan": "NJQXC6133D",
+    "partner": "Priya Induaseth"
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": "Priya Induaseth",
+    "sharingPercent": null,
+    "platform": "DEMO ALTERNATES",
+    "fundName": "DEMO GROWTH FUND 2",
+    "commitment": 10000000,
+    "agreementDate": "2026-08-11",
+    "tenure": "Five Years",
+    "markupPercent": 1.3,
+    "tdsApplied": true,
+    "tdsPercent": 2,
+    "payoutTerms": "Paid quarterly",
+    "instalments": [
+     {
+      "amount": 2500000,
+      "paidOn": "2026-08-21"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "aif",
+   "client": {
+    "pan": "OTHXN4597E",
+    "partner": "Rekha Varvimani"
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": "Rekha Varvimani",
+    "sharingPercent": null,
+    "platform": "DEMO ALTERNATES",
+    "fundName": "DEMO GROWTH FUND 3",
+    "commitment": 10000000,
+    "agreementDate": "2026-08-12",
+    "tenure": "Five Years",
+    "markupPercent": 1.3,
+    "tdsApplied": true,
+    "tdsPercent": 2,
+    "payoutTerms": "Paid quarterly",
+    "instalments": [
+     {
+      "amount": 2500000,
+      "paidOn": "2026-08-22"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "loans",
+   "client": {
+    "pan": "SIAXW2784A",
+    "partner": "Meena Dharivale"
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": "Meena Dharivale",
+    "lender": "DEMO BANK",
+    "loanType": "LAP",
+    "disbursalDate": "2026-08-13",
+    "sanctionedAmount": 2500000,
+    "ratePercent": 9.5,
+    "payoutPercent": 0.5,
+    "tdsApplied": true,
+    "tdsPercent": 2,
+    "loanClosed": false
+   }
+  },
+  {
+   "kind": "loans",
+   "client": {
+    "pan": "SRJXD5763O",
+    "partner": "Rekha Varvimani"
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": "Rekha Varvimani",
+    "lender": "SAMPLE NBFC",
+    "loanType": "Home Loan",
+    "disbursalDate": "2026-08-17",
+    "sanctionedAmount": 500000,
+    "ratePercent": 9.5,
+    "payoutPercent": 1.5,
+    "tdsApplied": true,
+    "tdsPercent": 2,
+    "loanClosed": false
+   }
+  },
+  {
+   "kind": "loans",
+   "client": {
+    "pan": "UQAXX0645I",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": null,
+    "lender": "DEMO BANK",
+    "loanType": "LAP",
+    "disbursalDate": "2026-08-11",
+    "sanctionedAmount": 500000,
+    "ratePercent": 9.5,
+    "payoutPercent": 1.5,
+    "tdsApplied": true,
+    "tdsPercent": 2,
+    "loanClosed": false
+   }
+  },
+  {
+   "kind": "loans",
+   "client": {
+    "pan": "UADXD9305B",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": null,
+    "lender": "SAMPLE NBFC",
+    "loanType": "LAP",
+    "disbursalDate": "2026-08-19",
+    "sanctionedAmount": 4000000,
+    "ratePercent": 9.5,
+    "payoutPercent": 0.5,
+    "tdsApplied": true,
+    "tdsPercent": 2,
+    "loanClosed": false
+   }
+  },
+  {
+   "kind": "loans",
+   "client": {
+    "pan": "XAXXY1899S",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": null,
+    "lender": "DEMO BANK",
+    "loanType": "LAP",
+    "disbursalDate": "2026-08-01",
+    "sanctionedAmount": 4000000,
+    "ratePercent": 9.5,
+    "payoutPercent": 0.5,
+    "tdsApplied": true,
+    "tdsPercent": 2,
+    "loanClosed": true
+   }
+  },
+  {
+   "kind": "gift",
+   "client": {
+    "pan": "FVLXM8903G",
+    "partner": "Sunita Gauvimani"
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": "Sunita Gauvimani",
+    "fund": "DEMO GIFT CITY FUND",
+    "amountUsd": 10000,
+    "fxRate": 87.5,
+    "fxRateDate": "2026-08-14",
+    "fxSource": "Demo rate",
+    "onPortal": true,
+    "trxnStatus": "DONE",
+    "brokerage": 3000,
+    "tdsApplied": true,
+    "tdsPercent": 2
+   }
+  },
+  {
+   "kind": "gift",
+   "client": {
+    "pan": "QQSXI3630N",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": null,
+    "fund": "DEMO GIFT CITY FUND",
+    "amountUsd": 10000,
+    "fxRate": 87.5,
+    "fxRateDate": "2026-08-14",
+    "fxSource": "Demo rate",
+    "onPortal": true,
+    "trxnStatus": "DONE",
+    "brokerage": 3000,
+    "tdsApplied": true,
+    "tdsPercent": 2
+   }
+  },
+  {
+   "kind": "gift",
+   "client": {
+    "pan": "WDGXK6408N",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": null,
+    "fund": "DEMO GIFT CITY FUND",
+    "amountUsd": 10000,
+    "fxRate": 87.5,
+    "fxRateDate": "2026-08-14",
+    "fxSource": "Demo rate",
+    "onPortal": true,
+    "trxnStatus": "DONE",
+    "brokerage": 7500,
+    "tdsApplied": true,
+    "tdsPercent": 2
+   }
+  },
+  {
+   "kind": "pms",
+   "client": {
+    "pan": "MGFXE9020Z",
+    "partner": "Meadow Demo Investments"
+   },
+   "body": {
+    "month": "2026-04-01",
+    "partner": "Meadow Demo Investments",
+    "amc": "DEMO PMS AMC",
+    "strategy": "DEMO MULTICAP 1",
+    "amount": 5000000,
+    "investmentDate": "2026-04-15",
+    "onPortal": true,
+    "trailPercent": 1.25,
+    "payoutFrequency": "QUARTERLY"
+   }
+  },
+  {
+   "kind": "pms",
+   "client": {
+    "pan": "AVLXD3601C",
+    "partner": "Priya Induaseth"
+   },
+   "body": {
+    "month": "2026-05-01",
+    "partner": "Priya Induaseth",
+    "amc": "DEMO PMS AMC",
+    "strategy": "DEMO MULTICAP 2",
+    "amount": 5000000,
+    "investmentDate": "2026-05-15",
+    "onPortal": true,
+    "trailPercent": 1.25,
+    "payoutFrequency": "QUARTERLY"
+   }
+  },
+  {
+   "kind": "pms",
+   "client": {
+    "pan": "BHJXH2454W",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-06-01",
+    "partner": null,
+    "amc": "DEMO PMS AMC",
+    "strategy": "DEMO MULTICAP 1",
+    "amount": 7500000,
+    "investmentDate": "2026-06-15",
+    "onPortal": true,
+    "trailPercent": 1.25,
+    "payoutFrequency": "QUARTERLY"
+   }
+  },
+  {
+   "kind": "pms",
+   "client": {
+    "pan": "HXEXU8415B",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-07-01",
+    "partner": null,
+    "amc": "DEMO PMS AMC",
+    "strategy": "DEMO MULTICAP 2",
+    "amount": 5000000,
+    "investmentDate": "2026-07-15",
+    "onPortal": true,
+    "trailPercent": 1.25,
+    "payoutFrequency": "QUARTERLY"
+   }
+  },
+  {
+   "kind": "pms",
+   "client": {
+    "pan": "IIYXZ0298L",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "partner": null,
+    "amc": "DEMO PMS AMC",
+    "strategy": "DEMO MULTICAP 1",
+    "amount": 5000000,
+    "investmentDate": "2026-08-15",
+    "onPortal": true,
+    "trailPercent": 1.25,
+    "payoutFrequency": "QUARTERLY"
+   }
+  },
+  {
+   "kind": "pms",
+   "client": {
+    "pan": "XWWXT8121Y",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-04-01",
+    "partner": null,
+    "amc": "DEMO PMS AMC",
+    "strategy": "DEMO MULTICAP 2",
+    "amount": 5000000,
+    "investmentDate": "2026-04-15",
+    "onPortal": true,
+    "trailPercent": 1.25,
+    "payoutFrequency": "QUARTERLY"
+   }
+  },
+  {
+   "kind": "pms-payout",
+   "client": null,
+   "body": {
+    "amc": "DEMO PMS AMC",
+    "periodFrom": "2026-04-01",
+    "periodTo": "2026-06-01",
+    "amount": 9607.02,
+    "tdsApplied": true,
+    "tdsPercent": 2,
+    "receivedOn": "2026-08-21"
+   }
+  },
+  {
+   "kind": "pms-payout",
+   "client": null,
+   "body": {
+    "amc": "DEMO PMS AMC",
+    "periodFrom": "2026-04-01",
+    "periodTo": "2026-06-01",
+    "amount": 7145.81,
+    "tdsApplied": true,
+    "tdsPercent": 2,
+    "receivedOn": "2026-08-21"
+   }
+  },
+  {
+   "kind": "pms-payout",
+   "client": null,
+   "body": {
+    "amc": "DEMO PMS AMC",
+    "periodFrom": "2026-04-01",
+    "periodTo": "2026-06-01",
+    "amount": 14952.98,
+    "tdsApplied": true,
+    "tdsPercent": 2,
+    "receivedOn": "2026-08-21"
+   }
+  },
+  {
+   "kind": "pms-payout",
+   "client": null,
+   "body": {
+    "amc": "DEMO PMS AMC",
+    "periodFrom": "2026-04-01",
+    "periodTo": "2026-06-01",
+    "amount": 7785.36,
+    "tdsApplied": true,
+    "tdsPercent": 2,
+    "receivedOn": "2026-08-21"
+   }
+  },
+  {
+   "kind": "nps",
+   "client": {
+    "pan": "PHDXM2321I",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "pop": "DEMO NPS POP",
+    "investmentDate": "2026-08-03",
+    "amount": 400000,
+    "welcomeMail": true,
+    "onPortal": true,
+    "revenueRemarks": "60% of POP charges",
+    "popCharges": 2000,
+    "sharePercent": 60
+   }
+  },
+  {
+   "kind": "nps",
+   "client": {
+    "pan": "JZQXG0229Y",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "pop": "DEMO NPS POP",
+    "investmentDate": "2026-08-04",
+    "amount": 100000,
+    "welcomeMail": true,
+    "onPortal": true,
+    "revenueRemarks": "60% of POP charges",
+    "popCharges": 2000,
+    "sharePercent": 60
+   }
+  },
+  {
+   "kind": "nps",
+   "client": {
+    "pan": "AXBXW7404S",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "pop": "DEMO NPS POP",
+    "investmentDate": "2026-08-05",
+    "amount": 400000,
+    "welcomeMail": true,
+    "onPortal": true,
+    "revenueRemarks": "60% of POP charges",
+    "popCharges": 2000,
+    "sharePercent": 60
+   }
+  },
+  {
+   "kind": "nps",
+   "client": {
+    "pan": "MZYXG4246H",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "pop": "DEMO NPS POP",
+    "investmentDate": "2026-08-06",
+    "amount": 100000,
+    "welcomeMail": true,
+    "onPortal": true,
+    "revenueRemarks": "60% of POP charges",
+    "popCharges": 2000,
+    "sharePercent": 60
+   }
+  },
+  {
+   "kind": "nps",
+   "client": {
+    "pan": "TGRXT2421I",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "pop": "DEMO NPS POP",
+    "investmentDate": "2026-08-07",
+    "amount": 400000,
+    "welcomeMail": true,
+    "onPortal": true,
+    "revenueRemarks": "60% of POP charges",
+    "popCharges": 2000,
+    "sharePercent": 60
+   }
+  },
+  {
+   "kind": "p2p",
+   "client": {
+    "pan": "IBNXJ7579G",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "platform": "DEMO P2P",
+    "scheme": "YEARLY",
+    "roiPercent": 12,
+    "amount": 500000,
+    "fundsInitiatedOn": "2026-08-06",
+    "startDate": "2026-09-01",
+    "quarterEndDate": "2026-09-30",
+    "onPortal": true,
+    "brokerage": 4000,
+    "tdsApplied": true,
+    "tdsPercent": 2
+   }
+  },
+  {
+   "kind": "p2p",
+   "client": {
+    "pan": "XUEXS2765Q",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "platform": "DEMO P2P",
+    "scheme": "YEARLY",
+    "roiPercent": 12,
+    "amount": 200000,
+    "fundsInitiatedOn": "2026-08-07",
+    "startDate": "2026-09-01",
+    "quarterEndDate": "2026-09-30",
+    "onPortal": true,
+    "brokerage": 4000,
+    "tdsApplied": true,
+    "tdsPercent": 2
+   }
+  },
+  {
+   "kind": "p2p",
+   "client": {
+    "pan": "RNLXT5837U",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "platform": "DEMO P2P",
+    "scheme": "YEARLY",
+    "roiPercent": 12,
+    "amount": 500000,
+    "fundsInitiatedOn": "2026-08-08",
+    "startDate": "2026-09-01",
+    "quarterEndDate": "2026-09-30",
+    "onPortal": true,
+    "brokerage": 1500,
+    "tdsApplied": true,
+    "tdsPercent": 2
+   }
+  },
+  {
+   "kind": "p2p",
+   "client": {
+    "pan": "SXAXC4236J",
+    "partner": null
+   },
+   "body": {
+    "month": "2026-08-01",
+    "platform": "DEMO P2P",
+    "scheme": "YEARLY",
+    "roiPercent": 12,
+    "amount": 500000,
+    "fundsInitiatedOn": "2026-08-09",
+    "startDate": "2026-09-01",
+    "quarterEndDate": "2026-09-30",
+    "onPortal": true,
+    "brokerage": 4000,
+    "tdsApplied": true,
+    "tdsPercent": 2
+   }
+  }
+ ]
+}
