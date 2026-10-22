@@ -13,6 +13,7 @@ One app (Java + React + PostgreSQL), run with `docker compose up -d --build` (se
 | Find out what happened / what failed (logs, references, Activity) | [architecture/logging.md](architecture/logging.md) | 3 min |
 | Work in a Claude Code cloud session, or try the app with made-up data | [cloud-sessions.md](cloud-sessions.md) · [demo-data](../demo-data/README.md) | 2 min |
 | Know *why* something is the way it is | [decisions/](decisions/) — one page each | 1 min each |
+| See what is planned next (the one-asset-table database rebuild) | [design/db-rework-plan.md](design/db-rework-plan.md) · [decisions/0012](decisions/0012-one-asset-table-future-rebuild.md) | 3 min |
 
 ## The rules for these docs
 - One page, one job. If a page needs scrolling twice, split it.

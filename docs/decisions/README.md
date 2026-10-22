@@ -15,3 +15,5 @@ Never edit an old one to change it — add a new one that replaces it, and link 
 | [0008](0008-shared-kernel.md) | One way to do each common job (Excel, uploads, jobs, matching, dated changes) | 2026-10-15 |
 | [0009](0009-references-and-json-logs.md) | One reference per request; JSON logs with PANs masked; Activity screen | 2026-10-15 |
 | [0010](0010-partner-rate-cards-and-branch-rules.md) | Partner % per product (rate card), client exceptions, pending partners, branch rules | 2026-10-15 |
+| [0011](0011-other-products-fd-entry-and-tax-master.md) | Other products: FD entered by hand; GST/TDS per product in a dated master | 2026-10-19 |
+| [0012](0012-one-asset-table-future-rebuild.md) | **Planned:** rebuild the database around one asset table | 2026-10-22 |
