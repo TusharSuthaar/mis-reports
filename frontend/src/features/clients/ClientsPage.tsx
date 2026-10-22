@@ -12,7 +12,7 @@ import { DatedChangeForm } from '../../components/DatedChangeForm';
 import { HistoryTable } from '../../components/HistoryTable';
 import { SidePanel } from '../../components/SidePanel';
 import { Tabs, useTab } from '../../components/Tabs';
-import type { AifEntry, BondEntry, FdEntry, GiftEntry, LoanEntry, NpsEntry, P2pEntry, PmsInvestment } from '../../api/types';
+import type { ClientHoldings, HoldingMember } from '../../api/types';
 import { Amount } from '../../components/Amount';
 import { formatMonth } from '../fd/FdPage';
 import { formatDate, formatDateTime, todayIso } from '../../format';
@@ -446,7 +446,7 @@ export function ClientProfilePage() {
               <PartnerSection clientId={id} canEdit={canEdit} onChanged={changed} />
             </div>
           )}
-          {tab === 'holdings' && <Holdings clientId={id} name={c.name} />}
+          {tab === 'holdings' && <Holdings clientId={id} />}
           {tab === 'changes' && (
             <div className="panel-card">
               <RecordChanges key={`${id}-${c.pan}`} clientId={id} />
@@ -458,56 +458,69 @@ export function ClientProfilePage() {
   );
 }
 
-/** The client's FD, bond and AIF entries (all months). */
-function Holdings({ clientId, name }: { clientId: number; name: string }) {
-  const q = `?q=${encodeURIComponent(name)}&includeCancelled=false`;
-  const fd = useLoad<FdEntry[]>(`/api/fd${q}`);
-  const bonds = useLoad<BondEntry[]>(`/api/bonds${q}`);
-  const aif = useLoad<AifEntry[]>(`/api/aif${q}`);
-  const loans = useLoad<LoanEntry[]>(`/api/loans${q}`);
-  const gifts = useLoad<GiftEntry[]>(`/api/gift${q}`);
-  const pms = useLoad<PmsInvestment[]>(`/api/pms${q}`);
-  const nps = useLoad<NpsEntry[]>(`/api/nps${q}`);
-  const p2p = useLoad<P2pEntry[]>(`/api/p2p${q}`);
-  const rows = [
-    ...(fd.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `FD-${e.id}`, product: 'FD', tab: 'FD', id: e.id, month: e.month, item: e.fdName, amount: e.amount, gross: e.gross })),
-    ...(bonds.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `B-${e.id}`, product: 'Bond', tab: 'BOND', id: e.id, month: e.month, item: e.bondName, amount: e.consideration, gross: e.gross })),
-    ...(aif.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `A-${e.id}`, product: 'AIF', tab: 'AIF', id: e.id, month: e.month, item: e.fundName, amount: e.commitment, gross: e.gross })),
-    ...(loans.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `L-${e.id}`, product: 'Loan', tab: 'LOAN', id: e.id, month: e.month, item: `${e.lender} ${e.loanType}${e.payoutKind === 'TRAIL' ? ' (trail)' : ''}`, amount: e.sanctionedAmount, gross: e.gross })),
-    ...(gifts.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `G-${e.id}`, product: 'GIFT City', tab: 'GIFT', id: e.id, month: e.month, item: e.fund, amount: e.amountInr ?? 0, gross: e.gross })),
-    ...(pms.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `P-${e.id}`, product: 'PMS', tab: 'PMS', id: e.id, month: e.month, item: `${e.amc} · ${e.strategy}`, amount: e.amount, gross: 0 })),
-    ...(nps.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `N-${e.id}`, product: 'NPS', tab: 'NPS', id: e.id, month: e.month, item: e.pop, amount: e.amount, gross: e.revenue })),
-    ...(p2p.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `Q-${e.id}`, product: 'P2P', tab: 'P2P', id: e.id, month: e.month, item: `${e.platform} · ${e.scheme}`, amount: e.amount ?? 0, gross: e.gross })),
-  ].sort((a, b) => b.month.localeCompare(a.month));
-  if (!fd.data || !bonds.data || !aif.data || !loans.data || !gifts.data || !pms.data || !nps.data || !p2p.data) return <p className="muted">Loading…</p>;
-  if (rows.length === 0) return <div className="empty">No FD, bond, AIF, loan, GIFT City, PMS, NPS or P2P entries for this client.</div>;
+const RELATION_LABEL: Record<HoldingMember['relation'], string> = { THIS: 'this record', SAME_PAN: 'same PAN', MINOR: 'minor' };
+
+/**
+ * Everything the client's PAN holds (R-09): this record, any other record with the same PAN and minors mapped to it by
+ * guardian PAN, across FD, bonds, AIF, loans, GIFT City, PMS, NPS, P2P and equity.
+ */
+function Holdings({ clientId }: { clientId: number }) {
+  const { data } = useLoad<ClientHoldings>(`/api/clients/${clientId}/holdings`);
+  if (!data) return <p className="muted">Loading…</p>;
+  const several = data.members.length > 1;
+  const products = [...new Set(data.rows.map((r) => r.product))];
   return (
-    <table>
-      <thead>
-        <tr>
-          <th>Product</th>
-          <th>Month</th>
-          <th>FD / bond / fund / loan</th>
-          <th className="num">Amount</th>
-          <th className="num">Gross</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r.k}>
-            <td>
-              <span className="badge">{r.product}</span>
-            </td>
-            <td>{formatMonth(r.month)}</td>
-            <td>
-              <Link to={`/products?tab=${r.tab}&open=${r.id}`}>{r.item}</Link>
-            </td>
-            <td className="num"><Amount value={r.amount} /></td>
-            <td className="num"><Amount value={r.gross} /></td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <>
+      <p className="muted">
+        {several ? 'Holdings of every record under this PAN: ' : 'Holdings under this PAN. '}
+        {several &&
+          data.members.map((m, i) => (
+            <span key={m.clientId}>
+              {i > 0 && ', '}
+              {m.relation === 'THIS' ? m.name : <Link to={`/clients/${m.clientId}?tab=holdings`}>{m.name}</Link>}
+              <span className="badge">{RELATION_LABEL[m.relation]}</span>
+            </span>
+          ))}
+        {!several && data.members[0]?.pan == null && 'This record has no PAN, so only its own entries show.'}
+      </p>
+      {data.rows.length === 0 ? (
+        <div className="empty">No FD, bond, AIF, loan, GIFT City, PMS, NPS, P2P or equity holdings under this PAN.</div>
+      ) : (
+        <>
+          <p className="muted">
+            {products.map((p) => `${p} ${data.rows.filter((r) => r.product === p).length}`).join(' · ')}
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Month</th>
+                {several && <th>Client</th>}
+                <th>Holding</th>
+                <th className="num">Amount</th>
+                <th className="num">Gross</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.rows.map((r, i) => (
+                <tr key={`${r.tab}-${r.id ?? i}`}>
+                  <td>
+                    <span className="badge">{r.product}</span>
+                  </td>
+                  <td>{formatMonth(r.month)}</td>
+                  {several && <td>{r.clientName ?? <span className="muted">not a client yet</span>}</td>}
+                  <td>
+                    <Link to={r.id == null ? `/products?tab=${r.tab}` : `/products?tab=${r.tab}&open=${r.id}`}>{r.item}</Link>
+                  </td>
+                  <td className="num"><Amount value={r.amount} /></td>
+                  <td className="num"><Amount value={r.gross} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </>
   );
 }
 

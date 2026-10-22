@@ -16,4 +16,7 @@ public interface LoanEntryRepository extends JpaRepository<LoanEntry, Long> {
 
     /** Newest first: for suggestions (lenders, loan types, the payout % last used). */
     List<LoanEntry> findTop500ByStatusOrderByIdDesc(LoanEntry.Status status);
+
+    /** Every entry of these clients, all months, newest first (the client page's holdings). */
+    List<LoanEntry> findByClientIdInOrderByMonthDescIdDesc(java.util.Collection<Long> clientIds);
 }

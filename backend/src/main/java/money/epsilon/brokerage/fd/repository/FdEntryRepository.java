@@ -15,4 +15,7 @@ public interface FdEntryRepository extends JpaRepository<FdEntry, Long> {
 
     /** Newest first: for suggestions (company and platform names, the margin last used). */
     List<FdEntry> findTop500ByStatusOrderByIdDesc(FdEntry.Status status);
+
+    /** Every entry of these clients, all months, newest first (the client page's holdings). */
+    List<FdEntry> findByClientIdInOrderByMonthDescIdDesc(java.util.Collection<Long> clientIds);
 }

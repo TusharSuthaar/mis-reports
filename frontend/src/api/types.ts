@@ -262,6 +262,32 @@ export interface ClientDetail {
   familyHeadName: string | null;
 }
 
+/** A client record under the PAN on the Holdings tab: the client itself, another record with the same PAN, or a minor. */
+export interface HoldingMember {
+  clientId: number;
+  name: string;
+  pan: string | null;
+  relation: 'THIS' | 'SAME_PAN' | 'MINOR';
+}
+
+/** One holding of the PAN; id null for equity (one row per month, not an entry). */
+export interface HoldingRow {
+  product: string;
+  tab: string;
+  id: number | null;
+  clientId: number | null;
+  clientName: string | null;
+  month: string;
+  item: string;
+  amount: number | null;
+  gross: number | null;
+}
+
+export interface ClientHoldings {
+  members: HoldingMember[];
+  rows: HoldingRow[];
+}
+
 export type MatchStatus = 'MATCHED' | 'REMEMBERED' | 'SEVERAL' | 'UNKNOWN';
 
 export interface Choice {

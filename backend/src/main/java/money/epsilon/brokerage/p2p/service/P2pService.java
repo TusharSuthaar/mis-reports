@@ -183,6 +183,13 @@ public class P2pService {
         return entries.findById(id).orElseThrow(() -> new NotFoundException("P2P entry " + id + " not found"));
     }
 
+    /** The P2P entries of these clients (cancelled ones left out), all months, newest first: the client page's holdings (R-09). */
+    @Transactional(readOnly = true)
+    public List<P2pView> forClients(java.util.Collection<Long> clientIds) {
+        if (clientIds.isEmpty()) return List.of();
+        return views(entries.findByClientIdInOrderByMonthDescIdDesc(clientIds).stream().filter(e -> e.getStatus() == P2pEntry.Status.ACTIVE).toList());
+    }
+
     private List<P2pView> views(List<P2pEntry> list) {
         if (list.isEmpty()) return List.of();
         Set<Long> clientIds = list.stream().map(P2pEntry::getClientId).collect(Collectors.toSet());

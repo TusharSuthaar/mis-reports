@@ -152,6 +152,12 @@ public class ClientService {
         return new Identity(id, c.getPanHash(), former, codes);
     }
 
+    /** The clients holding this PAN today (more than one only until the duplicates are merged), oldest first. */
+    @Transactional(readOnly = true)
+    public List<Long> idsWithPan(String panHash) {
+        return jdbc.sql("SELECT id FROM client WHERE pan_hash = ? ORDER BY id").param(panHash).query(Long.class).list();
+    }
+
     /**
      * client id → its client code (the Investwell code, as {@link #get} shows it), for many clients in one query: lists use
      * this instead of {@link #get} per row.

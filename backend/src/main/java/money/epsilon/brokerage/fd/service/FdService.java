@@ -242,6 +242,13 @@ public class FdService {
         return entries.findById(id).orElseThrow(() -> new NotFoundException("FD entry " + id + " not found"));
     }
 
+    /** The FD entries of these clients (cancelled ones left out), all months, newest first: the client page's holdings (R-09). */
+    @Transactional(readOnly = true)
+    public List<FdView> forClients(java.util.Collection<Long> clientIds) {
+        if (clientIds.isEmpty()) return List.of();
+        return views(entries.findByClientIdInOrderByMonthDescIdDesc(clientIds).stream().filter(e -> e.getStatus() == FdEntry.Status.ACTIVE).toList());
+    }
+
     private List<FdView> views(List<FdEntry> list) {
         if (list.isEmpty()) return List.of();
         Set<Long> clientIds = list.stream().map(FdEntry::getClientId).collect(Collectors.toSet());

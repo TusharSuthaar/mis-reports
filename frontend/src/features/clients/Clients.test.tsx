@@ -266,3 +266,34 @@ describe('load clients', () => {
     expect(screen.queryByRole('button', { name: /Load/ })).not.toBeInTheDocument();
   });
 });
+
+describe('client holdings', () => {
+  it('shows every holding under the PAN, from this record, a duplicate record and a minor, equity included', async () => {
+    fakeApi({
+      'GET /api/auth/me': ok(me('HO')),
+      'GET /api/employees': ok(rms),
+      'GET /api/clients/100': ok({ client: page.items[0], iwellCode2: null, familyHeadCode: null, familyHeadName: null }),
+      'GET /api/clients/100/rm': ok([]),
+      'GET /api/clients/100/holdings': ok({
+        members: [
+          { clientId: 100, name: 'ANITA RAO', pan: 'PQRST****K', relation: 'THIS' },
+          { clientId: 102, name: 'ANITA R', pan: 'PQRST****K', relation: 'SAME_PAN' },
+          { clientId: 103, name: 'BABY RAO', pan: null, relation: 'MINOR' },
+        ],
+        rows: [
+          { product: 'Equity', tab: 'EQUITY', id: null, clientId: 100, clientName: 'ANITA RAO', month: '2026-08', item: 'P100 · 3 trades · NSE', amount: null, gross: 120 },
+          { product: 'FD', tab: 'FD', id: 7, clientId: 102, clientName: 'ANITA R', month: '2026-08', item: 'Bajaj Finance', amount: 500000, gross: 3850 },
+          { product: 'NPS', tab: 'NPS', id: 9, clientId: 103, clientName: 'BABY RAO', month: '2026-07', item: 'HDFC Pension', amount: 50000, gross: 250 },
+        ],
+      }),
+    });
+    renderAt('/clients/100?tab=holdings');
+
+    expect(await screen.findByRole('link', { name: 'Bajaj Finance' })).toHaveAttribute('href', '/products?tab=FD&open=7');
+    expect(screen.getByRole('link', { name: 'ANITA R' })).toHaveAttribute('href', '/clients/102?tab=holdings');
+    expect(screen.getByText('minor')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'P100 · 3 trades · NSE' })).toHaveAttribute('href', '/products?tab=EQUITY');
+    expect(screen.getByText('Equity 1 · FD 1 · NPS 1')).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: 'BABY RAO' })).toBeInTheDocument();
+  });
+});

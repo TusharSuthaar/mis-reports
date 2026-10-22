@@ -206,6 +206,13 @@ public class GiftService {
         return entries.findById(id).orElseThrow(() -> new NotFoundException("GIFT City entry " + id + " not found"));
     }
 
+    /** The GIFT City entries of these clients (cancelled ones left out), all months, newest first: the client page's holdings (R-09). */
+    @Transactional(readOnly = true)
+    public List<GiftView> forClients(java.util.Collection<Long> clientIds) {
+        if (clientIds.isEmpty()) return List.of();
+        return views(entries.findByClientIdInOrderByMonthDescIdDesc(clientIds).stream().filter(e -> e.getStatus() == GiftEntry.Status.ACTIVE).toList());
+    }
+
     private List<GiftView> views(List<GiftEntry> list) {
         if (list.isEmpty()) return List.of();
         Set<Long> clientIds = list.stream().map(GiftEntry::getClientId).collect(Collectors.toSet());

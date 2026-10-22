@@ -247,6 +247,13 @@ public class LoanService {
         return entries.findById(id).orElseThrow(() -> new NotFoundException("Loan entry " + id + " not found"));
     }
 
+    /** The loan entries of these clients (cancelled ones left out), all months, newest first: the client page's holdings (R-09). */
+    @Transactional(readOnly = true)
+    public List<LoanView> forClients(java.util.Collection<Long> clientIds) {
+        if (clientIds.isEmpty()) return List.of();
+        return views(entries.findByClientIdInOrderByMonthDescIdDesc(clientIds).stream().filter(e -> e.getStatus() == LoanEntry.Status.ACTIVE).toList());
+    }
+
     private List<LoanView> views(List<LoanEntry> list) {
         if (list.isEmpty()) return List.of();
         Set<Long> clientIds = list.stream().map(LoanEntry::getClientId).collect(Collectors.toSet());

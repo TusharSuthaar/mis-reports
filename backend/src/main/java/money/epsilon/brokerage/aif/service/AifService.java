@@ -252,6 +252,13 @@ public class AifService {
         return entries.findById(id).orElseThrow(() -> new NotFoundException("AIF entry " + id + " not found"));
     }
 
+    /** The AIF entries of these clients (cancelled ones left out), all months, newest first: the client page's holdings (R-09). */
+    @Transactional(readOnly = true)
+    public List<AifView> forClients(java.util.Collection<Long> clientIds) {
+        if (clientIds.isEmpty()) return List.of();
+        return views(entries.findByClientIdInOrderByMonthDescIdDesc(clientIds).stream().filter(e -> e.getStatus() == AifEntry.Status.ACTIVE).toList());
+    }
+
     private List<AifView> views(List<AifEntry> list) {
         if (list.isEmpty()) return List.of();
         Set<Long> clientIds = list.stream().map(AifEntry::getClientId).collect(Collectors.toSet());

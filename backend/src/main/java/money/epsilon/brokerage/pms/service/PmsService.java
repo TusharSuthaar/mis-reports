@@ -184,6 +184,13 @@ public class PmsService {
         return investments.findById(id).orElseThrow(() -> new NotFoundException("PMS entry " + id + " not found"));
     }
 
+    /** The PMS entries of these clients (cancelled ones left out), all months, newest first: the client page's holdings (R-09). */
+    @Transactional(readOnly = true)
+    public List<InvestmentView> forClients(java.util.Collection<Long> clientIds) {
+        if (clientIds.isEmpty()) return List.of();
+        return views(investments.findByClientIdInOrderByMonthDescIdDesc(clientIds).stream().filter(e -> e.getStatus() == PmsInvestment.Status.ACTIVE).toList());
+    }
+
     private List<InvestmentView> views(List<PmsInvestment> list) {
         if (list.isEmpty()) return List.of();
         Set<Long> clientIds = list.stream().map(PmsInvestment::getClientId).collect(Collectors.toSet());

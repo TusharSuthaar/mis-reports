@@ -250,6 +250,13 @@ public class BondService {
         return entries.findById(id).orElseThrow(() -> new NotFoundException("Bond entry " + id + " not found"));
     }
 
+    /** The bond entries of these clients (cancelled ones left out), all months, newest first: the client page's holdings (R-09). */
+    @Transactional(readOnly = true)
+    public List<BondView> forClients(java.util.Collection<Long> clientIds) {
+        if (clientIds.isEmpty()) return List.of();
+        return views(entries.findByClientIdInOrderByMonthDescIdDesc(clientIds).stream().filter(e -> e.getStatus() == BondEntry.Status.ACTIVE).toList());
+    }
+
     private List<BondView> views(List<BondEntry> list) {
         if (list.isEmpty()) return List.of();
         Set<Long> clientIds = list.stream().map(BondEntry::getClientId).collect(Collectors.toSet());

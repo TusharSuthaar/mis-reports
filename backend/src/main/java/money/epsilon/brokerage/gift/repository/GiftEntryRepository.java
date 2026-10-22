@@ -16,4 +16,7 @@ public interface GiftEntryRepository extends JpaRepository<GiftEntry, Long> {
 
     /** Newest first: for suggestions (fund names). */
     List<GiftEntry> findTop500ByStatusOrderByIdDesc(GiftEntry.Status status);
+
+    /** Every entry of these clients, all months, newest first (the client page's holdings). */
+    List<GiftEntry> findByClientIdInOrderByMonthDescIdDesc(java.util.Collection<Long> clientIds);
 }

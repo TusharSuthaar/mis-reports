@@ -11,4 +11,7 @@ public interface PmsInvestmentRepository extends JpaRepository<PmsInvestment, Lo
 
     /** Newest first: for suggestions (AMCs, strategies). */
     List<PmsInvestment> findTop500ByStatusOrderByIdDesc(PmsInvestment.Status status);
+
+    /** Every entry of these clients, all months, newest first (the client page's holdings). */
+    List<PmsInvestment> findByClientIdInOrderByMonthDescIdDesc(java.util.Collection<Long> clientIds);
 }

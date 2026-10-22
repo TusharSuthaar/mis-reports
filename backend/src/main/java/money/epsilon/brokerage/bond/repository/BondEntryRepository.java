@@ -16,4 +16,7 @@ public interface BondEntryRepository extends JpaRepository<BondEntry, Long> {
 
     /** Newest first: for suggestions (bond names, ISINs, the mark-up last used). */
     List<BondEntry> findTop500ByStatusOrderByIdDesc(BondEntry.Status status);
+
+    /** Every entry of these clients, all months, newest first (the client page's holdings). */
+    List<BondEntry> findByClientIdInOrderByMonthDescIdDesc(java.util.Collection<Long> clientIds);
 }

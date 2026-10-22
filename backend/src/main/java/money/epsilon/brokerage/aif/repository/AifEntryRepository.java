@@ -16,4 +16,7 @@ public interface AifEntryRepository extends JpaRepository<AifEntry, Long> {
 
     /** Newest first: for suggestions (fund names, the mark-up last used). */
     List<AifEntry> findTop500ByStatusOrderByIdDesc(AifEntry.Status status);
+
+    /** Every entry of these clients, all months, newest first (the client page's holdings). */
+    List<AifEntry> findByClientIdInOrderByMonthDescIdDesc(java.util.Collection<Long> clientIds);
 }

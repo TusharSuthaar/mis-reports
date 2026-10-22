@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -226,6 +227,21 @@ public class EquityService {
     /** The equity tab: every client-month of the active uploads, newest month first; filters optional. */
     @Transactional(readOnly = true)
     public List<ClientMonth> clientMonths(Filter f) {
+        return clientMonths(f, null, null);
+    }
+
+    /**
+     * The client page's holdings (R-09): every month of the active uploads with trades under these PANs (hashes) or
+     * already linked to these clients, newest first. A trade whose PAN is not a client yet still shows by its PAN.
+     */
+    @Transactional(readOnly = true)
+    public List<ClientMonth> forPans(Collection<String> panHashes, Collection<Long> clientIds) {
+        if (panHashes.isEmpty() && clientIds.isEmpty()) return List.of();
+        return clientMonths(new Filter(null, null, null, null), panHashes, clientIds);
+    }
+
+    /** {@code panHashes} / {@code clientIds} null = every client. */
+    private List<ClientMonth> clientMonths(Filter f, Collection<String> panHashes, Collection<Long> clientIds) {
         LocalDate from = f.from() == null ? LocalDate.of(2000, 1, 1) : f.from().atDay(1);
         LocalDate to = f.to() == null ? LocalDate.of(2999, 12, 1) : f.to().atDay(1);
         record Agg(LocalDate month, Long clientId, String pan, String name, String party, int trades, String exchanges, BigDecimal gross, BigDecimal share) {
@@ -234,9 +250,12 @@ public class EquityService {
                         SELECT u.month, t.client_id, min(t.pan_encrypted) AS pan, min(t.client_name) AS name, min(t.party_code) AS party, count(*) AS trades,
                                string_agg(DISTINCT t.exchange, '+') AS exchanges, sum(t.gross) AS gross, sum(t.share) AS share
                         FROM equity_trade t JOIN equity_upload u ON u.id = t.upload_id
-                        WHERE u.status = 'ACTIVE' AND u.month BETWEEN ? AND ?
+                        WHERE u.status = 'ACTIVE' AND u.month BETWEEN :from AND :to
+                          AND (:all OR t.pan_hash IN (:hashes) OR t.client_id IN (:ids))
                         GROUP BY u.month, t.client_id, t.pan_hash ORDER BY u.month DESC, sum(t.share) DESC""")
-                .params(from, to)
+                .param("from", from).param("to", to).param("all", panHashes == null)
+                .param("hashes", panHashes == null || panHashes.isEmpty() ? List.of("-") : List.copyOf(panHashes))
+                .param("ids", clientIds == null || clientIds.isEmpty() ? List.of(-1L) : List.copyOf(clientIds))
                 .query((rs, n) -> new Agg(rs.getDate("month").toLocalDate(), (Long) rs.getObject("client_id"), rs.getString("pan"), rs.getString("name"),
                         rs.getString("party"), rs.getInt("trades"), rs.getString("exchanges"), rs.getBigDecimal("gross"), rs.getBigDecimal("share")))
                 .list();
