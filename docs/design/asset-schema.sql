@@ -277,3 +277,62 @@ CREATE TABLE asset_goal (
     allocation_pct NUMERIC(6, 3) NOT NULL DEFAULT 100 CHECK (allocation_pct > 0 AND allocation_pct <= 100),
     PRIMARY KEY (asset_id, goal_id)
 );
+
+-- ── Movements and money (plan phases 3 and 5) ───────────────────────────────────────────────────────────────────────
+
+-- What happened to a holding over time: purchases, SIPs, redemptions, switches, AIF drawdowns, interest, premiums.
+CREATE TABLE asset_transaction (
+    id          BIGSERIAL PRIMARY KEY,
+    asset_id    BIGINT         NOT NULL REFERENCES asset (id),
+    type        VARCHAR(20)    NOT NULL CHECK (type IN ('PURCHASE', 'ADDITIONAL', 'SIP', 'REDEMPTION', 'SWITCH_IN', 'SWITCH_OUT',
+                                                       'DRAWDOWN', 'DIVIDEND', 'INTEREST', 'PREMIUM', 'MATURITY')),
+    txn_date    DATE           NOT NULL,
+    units       NUMERIC(20, 6),
+    price       NUMERIC(18, 6),
+    amount      NUMERIC(18, 2) NOT NULL,
+    upload_id   BIGINT         REFERENCES upload (id),
+    created_by  VARCHAR(50)    NOT NULL,
+    created_at  TIMESTAMPTZ    NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_asset_transaction_asset ON asset_transaction (asset_id, txn_date);
+
+-- One commission earned, for any product: what the nine entry tables keep today (gross, TDS, GST, net, invoice,
+-- payment). A ledger line points at it with brokerage_line.revenue_id. rm_id / partner_id are joined through their
+-- modules' services, like the entry tables do today.
+CREATE TABLE revenue (
+    id                   BIGSERIAL PRIMARY KEY,
+    month                DATE           NOT NULL CHECK (extract(day FROM month) = 1),
+    client_id            BIGINT         NOT NULL REFERENCES client (id),
+    product_type_id      SMALLINT       NOT NULL REFERENCES product_type (id),
+    asset_id             BIGINT         REFERENCES asset (id),
+    asset_transaction_id BIGINT         REFERENCES asset_transaction (id),
+    rm_id                BIGINT         NOT NULL,
+    partner_id           BIGINT,
+    platform_id          BIGINT         REFERENCES intermediary (id),
+    gross                NUMERIC(18, 2) NOT NULL,
+    tds_applied          BOOLEAN        NOT NULL DEFAULT FALSE,
+    tds_percent          NUMERIC(6, 3),
+    tds                  NUMERIC(18, 2) NOT NULL DEFAULT 0,
+    gst_percent          NUMERIC(6, 3),
+    gst                  NUMERIC(18, 2) NOT NULL DEFAULT 0,
+    net                  NUMERIC(18, 2) NOT NULL,
+    invoice              NUMERIC(18, 2) NOT NULL,
+    figures_as_given     BOOLEAN        NOT NULL DEFAULT FALSE,
+    invoice_raised       BOOLEAN        NOT NULL DEFAULT FALSE,
+    payment_status       VARCHAR(20)    NOT NULL DEFAULT 'PENDING' CHECK (payment_status IN ('PENDING', 'RECEIVED', 'NOT_DUE')),
+    received_on          DATE,
+    status               VARCHAR(20)    NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'CANCELLED')),
+    remarks              VARCHAR(1000),
+    legacy_product       VARCHAR(20),                          -- FD, BOND, AIF… while the old entry tables exist
+    legacy_id            BIGINT,
+    created_by           VARCHAR(50)    NOT NULL,
+    created_at           TIMESTAMPTZ    NOT NULL DEFAULT now(),
+    updated_by           VARCHAR(50),
+    updated_at           TIMESTAMPTZ
+);
+CREATE INDEX ix_revenue_month ON revenue (month, product_type_id);
+CREATE INDEX ix_revenue_client ON revenue (client_id);
+CREATE UNIQUE INDEX ux_revenue_legacy ON revenue (legacy_product, legacy_id) WHERE legacy_id IS NOT NULL;
+
+-- New ledger lines name their revenue; old lines keep their *_entry_id (the ledger is append-only).
+ALTER TABLE brokerage_line ADD COLUMN revenue_id BIGINT;
