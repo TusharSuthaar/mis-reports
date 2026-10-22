@@ -1,0 +1,40 @@
+# 0012 — Future: rebuild the database around one asset table
+
+Date: 2026-10-22 · Status: **planned, not started** (user, 2026-10-22: "keep this in future plans of rewinding entire DB
+to fix the system")
+
+## Context
+Every product got its own entry table (`fd_entry`, `bond_entry`, `aif_entry`, `loan_entry`, `gift_entry`, `p2p_entry`,
+`nps_entry`, `pms_investment`, `equity_trade`), each mixing what a client holds with what Epsilon earns on it. The
+schema is now 45 tables, and a client's holdings have to be pieced together from nine modules (R-09). The user finds
+this too many tables and wants a simpler model, built around one holdings table, as in their wealth-platform layout
+(112 columns: units, NAV, current value, returns, bond / FD / insurance details).
+
+## Plan
+The proposed schema is [docs/design/asset-schema.sql](../design/asset-schema.sql) (tested on PostgreSQL 16 over V1–V38):
+- `asset`: one row per holding of one client (PAN), with value and returns as a daily snapshot. Lists, totals and the
+  PAN view read it alone.
+- `product` (+ `product_nav`): the security, stored once for every holder: codes, bond terms, latest NAV.
+- `asset_fd`, `asset_bond`, `asset_insurance`: 1:1 details only those products have.
+- `asset_holder` (joint holders, nominees, guardian by PAN) and `asset_goal`: the joins.
+- Masters: product type, asset category / sub-category, provider, frequency, ARN, DP, goal, policy type / sub-type /
+  status, business type. Reuses `client`, `partner`, `intermediary`, `upload`.
+
+## Plan of work
+Phases, the two ways to do it (in place vs fresh start), checks and risks: [docs/design/db-rework-plan.md](../design/db-rework-plan.md).
+
+## To decide before starting
+1. Revenue: the entry tables keep brokerage, GST, TDS and invoices and point at `asset`, or that money moves into the
+   new model too (then the ledger, split and END file read from it).
+2. Moving the data: a migration that copies each entry table into `asset` + details, checked total by total against
+   the old tables, before any old table is dropped. Locked months and the append-only ledger must come out unchanged.
+3. Where the snapshot values come from (RTA / platform files, a daily NAV job) and how often.
+4. Which module owns `asset` and its masters (rule 1 in CLAUDE.md).
+
+## Until then
+Nothing changes: the entry tables stay, and the client page's Holdings reads them at PAN level (R-09).
+
+## Rejected for now
+- One 112-column table, as given: every row would carry dozens of empty FD / bond / policy columns, and scheme data
+  would be repeated on every holding.
+- Doing it now: it touches nine modules, the ledger and the END file; it is planned as its own piece of work.
