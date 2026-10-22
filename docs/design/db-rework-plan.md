@@ -7,18 +7,18 @@ Target schema: [asset-schema.sql](asset-schema.sql).
 
 | | Today | After |
 |---|---|---|
-| A client's holdings | 9 entry tables, one per product (`fd_entry` … `pms_investment`) | `asset` (+ `asset_fd` / `asset_bond` / `asset_insurance`), one row per holding per PAN |
-| The security held | typed into each entry (FD company, bond name, fund) | `product` + `product_nav`, stored once |
+| A client's holdings | 9 entry tables, one per product (`fd_entry` … `pms_investment`) | `asset` (+ `asset_terms` for fixed income, `asset_transaction`, `asset_holder`, `asset_check`, `asset_snapshot`), one row per holding per PAN |
+| The security held | typed into each entry (FD company, bond name, fund) | `product` + `product_price`, stored once |
 | Commission, GST, TDS, invoice | columns on each entry table | `revenue`, one row per commission earned, any product |
 | Where a ledger line came from | 6 nullable columns on `brokerage_line` | one `revenue_id` |
 | Backend modules for products | `fd`, `bond`, `aif`, `loan`, `gift`, `p2p`, `nps`, `pms` | `holding` (assets, products, masters) and `revenue` |
 | Screens | one per product | one holding form with a section per product type; per-product Excel exports kept |
 | A new product | new table, module, screen, ledger column | new `product_type` row and products |
 
-**Table count:** 45 today → about 57 (11 masters, 11 holdings / revenue tables, 10 entry tables removed). The number barely moves; the duplication does. If the
-count itself matters, the 8 small lookups (product type, categories, frequency, policy type / sub-type / status,
-business type) can become one `lookup` table (→ about 50), at the cost of the database no longer checking that, say, a
-frequency id really is a frequency. Recommended: keep them separate.
+**Table count:** 45 today → 50 (10 entry tables removed; 5 masters, 8 holdings tables, `revenue` and `client_contact`
+added); columns 677 → 502. Mobile, e-mail and address move to `client_contact`, servicing ticks become rows in
+`asset_check`. Left out until a screen needs them: goals, ARN / DP masters, insurance policy details. Checked by
+building the whole after-state on PostgreSQL 16.
 
 ## Stays as it is
 Clients and PANs (`client`, `client_external_id`, `client_former_pan`, `client_rm_assignment`), org, partners, sharing,
@@ -45,8 +45,8 @@ Each phase is its own branch, migration and tests; the app works after every pha
 | # | Phase | Migration | Done when |
 |---|---|---|---|
 | 0 | **Decide** the 5 open points below | — | answers recorded as rule rows / decision notes |
-| 1 | **Masters**: product types, categories, provider, frequency, ARN, DP, policy lookups; Masters → Asset masters screen | V39 | masters editable, audited, retire-not-delete |
-| 2 | **Holdings tables**: `product`, `product_nav`, `goal`, `asset`, details, `asset_holder`, `asset_goal`, `asset_transaction`; new `holding` module | V40 | empty tables, service + API, guardrail and architecture tests pass |
+| 1 | **Masters**: product types, asset classes, providers, frequencies, servicing checks; Masters → Asset masters screen | V39 | masters editable, audited, retire-not-delete |
+| 2 | **Holdings tables**: `product`, `product_price`, `asset`, `asset_terms`, `asset_transaction`, `asset_holder`, `asset_check`, `asset_snapshot`, `client_contact`; new `holding` module | V40 | empty tables, service + API, guardrail and architecture tests pass |
 | 3 | **Backfill holdings**: products from distinct FD companies / bonds / funds; one asset per entry, with `legacy_product` + `legacy_id`; AIF instalments → `asset_transaction` | V41 + one-off job | reconciliation report: count and amount per product per month, old = new to the rupee |
 | 4 | **Reads switch**: client Holdings tab, product lists and Excel exports read `asset`; entry screens write both (dual write) | — | same screens, same exports (compare files), all tests green |
 | 5 | **Revenue**: `revenue` table, backfilled from the entry tables; new ledger lines carry `revenue_id`; attribution and END file read one revenue service | V42 | END file for **every** past month identical before/after (byte compare); locked months untouched |

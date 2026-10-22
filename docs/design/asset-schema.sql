@@ -1,334 +1,253 @@
--- PROPOSAL (design only, not a migration yet): one holdings model for every product.
+-- PROPOSAL (design only, not a migration): one holdings model for every product, built from what the FD, bond, AIF,
+-- loan, GIFT City, P2P, NPS, PMS and equity screens record today. Plan: docs/design/db-rework-plan.md.
 --
--- asset          one row per holding of one client (PAN): what is held, how much, what it is worth, how it has done.
---                Lists, totals and the client's PAN-level holdings read this table alone.
--- asset_fd / asset_bond / asset_insurance
---                1:1 details only those products have, read when one holding is opened.
--- asset_holder / asset_goal
---                joins: joint holders, nominees and guardians by PAN; goals an asset is earmarked for.
--- masters        product_type, asset_category, asset_sub_category, provider, product, product_nav, frequency, arn,
---                depository_participant, policy_type, policy_sub_type, policy_status, business_type, goal.
+-- asset              one row per holding of one client (PAN): what, where, how much, worth, status, who booked it.
+-- asset_terms        1:1 for fixed-income holdings (FD, bond, P2P, loan): rate, payouts, compounding, tenure, maturity.
+-- asset_transaction  what happened to it: purchase, SIP, redemption, AIF drawdown, interest, maturity, loan disbursal.
+-- asset_holder       joint holders, nominees, a minor's guardian, by PAN.
+-- asset_check        the servicing ticks (certificate, on portal, welcome mail…), one row per tick.
+-- asset_snapshot     value per holding per month: AUM by RM / branch / partner over time.
+-- product (+ product_price), and 5 masters: product_type, asset_class, provider, frequency, servicing_check.
+-- revenue            one commission earned, any product; brokerage_line.revenue_id points at it.
+-- client_contact     mobile, e-mail, address once per client instead of on every entry.
 --
--- Reuses what exists: client (one per PAN), partner (sub broker), intermediary (FD / bond platform), upload (the file a
--- row came from), client_external_id (the client's BSE UCC). Money is NUMERIC, never float.
--- Naming follows this repo: each table's key is "id"; asset.id is the "asset_id" of the source layout.
+-- Reuses: client, employee (RM), partner (with its ARN / POSP code), intermediary (platform), upload, exchange_rate.
+-- Money is NUMERIC; amounts are rupees unless the column says _fc (the holding's own currency).
 
 -- ── Masters ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
--- MF, EQUITY, BOND, FD, INSURANCE, AIF, PMS, NPS, P2P, GIFT, ETF, GOLD…
+-- MF, EQUITY, FD, BOND, AIF, PMS, NPS, P2P, GIFT, LOAN… The family decides which details a holding of it has.
 CREATE TABLE product_type (
-    id   SMALLSERIAL PRIMARY KEY,
-    code VARCHAR(20)  NOT NULL UNIQUE,
-    name VARCHAR(100) NOT NULL
-);
-
--- Equity, Debt, Hybrid, Gold, Real estate, Alternative, Protection…
-CREATE TABLE asset_category (
-    id   SMALLSERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL UNIQUE
-);
-
--- Large cap, Liquid, Corporate bond, Term plan… always under one category.
-CREATE TABLE asset_sub_category (
     id          SMALLSERIAL PRIMARY KEY,
-    category_id SMALLINT     NOT NULL REFERENCES asset_category (id),
+    code        VARCHAR(20)  NOT NULL UNIQUE,
     name        VARCHAR(100) NOT NULL,
-    UNIQUE (category_id, name)
+    family      VARCHAR(20)  NOT NULL CHECK (family IN ('MARKET', 'FIXED_INCOME', 'COMMITMENT', 'LIABILITY')),
+    uses_units  BOOLEAN      NOT NULL,      -- MF, equity, PMS, AIF, bonds: yes; FD, P2P, loan: no
+    active      BOOLEAN      NOT NULL DEFAULT TRUE
 );
 
--- Who issues or manages the product: an AMC, an insurer, a bond issuer, an FD company, a PMS / AIF manager.
+-- Equity › Large cap, Debt › Corporate bond, Alternative › Cat II AIF… one table, a sub-class points at its class.
+CREATE TABLE asset_class (
+    id        SMALLSERIAL PRIMARY KEY,
+    parent_id SMALLINT     REFERENCES asset_class (id),
+    name      VARCHAR(100) NOT NULL,
+    active    BOOLEAN      NOT NULL DEFAULT TRUE,
+    UNIQUE (parent_id, name)
+);
+
+-- Whoever issues or manages a product: AMC, FD company, bond issuer, AIF / PMS manager, lender, NPS fund manager.
 CREATE TABLE provider (
-    id                BIGSERIAL PRIMARY KEY,
-    type              VARCHAR(20)  NOT NULL CHECK (type IN ('AMC', 'INSURER', 'ISSUER', 'FD_COMPANY', 'PMS_MANAGER', 'AIF_MANAGER', 'OTHER')),
-    name              VARCHAR(200) NOT NULL,
-    issuer_type       VARCHAR(50),                 -- PSU, NBFC, Bank, Corporate… (bond issuers)
-    industry_category VARCHAR(100),
-    logo_url          VARCHAR(500)
+    id     BIGSERIAL PRIMARY KEY,
+    type   VARCHAR(20)  NOT NULL CHECK (type IN ('AMC', 'FD_COMPANY', 'ISSUER', 'AIF_MANAGER', 'PMS_MANAGER', 'LENDER', 'NPS_MANAGER', 'OTHER')),
+    name   VARCHAR(200) NOT NULL,
+    active BOOLEAN      NOT NULL DEFAULT TRUE
 );
-CREATE UNIQUE INDEX ux_provider_type_name ON provider (type, lower(name));
+CREATE UNIQUE INDEX ux_provider ON provider (type, lower(name));
 
--- Monthly, Quarterly, Half-yearly, Yearly, Cumulative, On maturity… shared by interest, accrual and premium frequencies.
+-- Monthly, Quarterly, Half-yearly, Yearly, On maturity… for payouts, compounding and trail.
 CREATE TABLE frequency (
-    id              SMALLSERIAL PRIMARY KEY,
-    name            VARCHAR(50) NOT NULL UNIQUE,
-    times_per_year  SMALLINT                    -- null for cumulative / on maturity
+    id             SMALLSERIAL PRIMARY KEY,
+    name           VARCHAR(50) NOT NULL UNIQUE,
+    times_per_year SMALLINT    CHECK (times_per_year BETWEEN 1 AND 365)   -- null: on maturity
 );
 
--- The security itself, shared by every client who holds it: scheme, bond, FD scheme, policy plan, stock.
+-- The ticks Ops keeps per holding (today a column each on every screen): certificate, on portal, welcome mail,
+-- investment mail, SOA received, application form. product_type_id null = asked for every product.
+CREATE TABLE servicing_check (
+    id              SMALLSERIAL PRIMARY KEY,
+    code            VARCHAR(30)  NOT NULL UNIQUE,
+    name            VARCHAR(100) NOT NULL,
+    product_type_id SMALLINT     REFERENCES product_type (id),
+    active          BOOLEAN      NOT NULL DEFAULT TRUE
+);
+
+-- ── What can be held ────────────────────────────────────────────────────────────────────────────────────────────────
+
+-- The scheme, FD scheme, bond, fund, strategy or loan product, stored once for every client who holds it.
 CREATE TABLE product (
-    id                  BIGSERIAL PRIMARY KEY,
-    product_type_id     SMALLINT      NOT NULL REFERENCES product_type (id),
-    asset_category_id   SMALLINT      REFERENCES asset_category (id),
-    asset_sub_cat_id    SMALLINT      REFERENCES asset_sub_category (id),
-    provider_id         BIGINT        REFERENCES provider (id),
-    name                VARCHAR(300)  NOT NULL,
-    isin                VARCHAR(12)   UNIQUE,
-    amfi_code           VARCHAR(20)   UNIQUE,
-    scheme_plan         VARCHAR(20)   CHECK (scheme_plan IN ('DIRECT', 'REGULAR')),
-    accord_scheme_code  VARCHAR(30),
-    accord_scheme_name  VARCHAR(300),
-    mfit_scheme_id      VARCHAR(30),
-    finesse_code        VARCHAR(50),
-    finesse_name        VARCHAR(300),
-    -- bond / debt terms (same for every holder)
-    coupon_rate         NUMERIC(7, 4),
-    face_value          NUMERIC(18, 2),
-    issue_date          DATE,
-    maturity_date       DATE,
-    call_date           DATE,
-    interest_freq_id    SMALLINT      REFERENCES frequency (id),
-    credit_rating       VARCHAR(20),
-    bond_type           VARCHAR(50),
-    bond_asset_class    VARCHAR(50),
-    is_taxable          BOOLEAN,
-    is_listed           BOOLEAN,
-    is_secured          BOOLEAN,
-    -- latest price, kept here so lists need no join to product_nav
-    nav                 NUMERIC(18, 6),
-    nav_date            DATE,
-    previous_nav        NUMERIC(18, 6),
-    previous_nav_date   DATE,
-    active              BOOLEAN       NOT NULL DEFAULT TRUE
+    id              BIGSERIAL PRIMARY KEY,
+    product_type_id SMALLINT       NOT NULL REFERENCES product_type (id),
+    asset_class_id  SMALLINT       REFERENCES asset_class (id),
+    provider_id     BIGINT         REFERENCES provider (id),
+    name            VARCHAR(300)   NOT NULL,
+    isin            VARCHAR(12)    UNIQUE,
+    scheme_code     VARCHAR(30),                   -- AMFI code / RTA scheme code
+    finesse_code    VARCHAR(50),
+    currency        CHAR(3)        NOT NULL DEFAULT 'INR',
+    -- set only for a listed bond: the same for every holder
+    face_value      NUMERIC(18, 2),
+    coupon_pct      NUMERIC(7, 4),
+    maturity_date   DATE,
+    active          BOOLEAN        NOT NULL DEFAULT TRUE
 );
 CREATE INDEX ix_product_type ON product (product_type_id);
-CREATE INDEX ix_product_finesse ON product (finesse_code);
+CREATE UNIQUE INDEX ux_product_name ON product (product_type_id, provider_id, lower(name));
 
--- Price history: one NAV / price per product per day. product.nav is the latest row.
-CREATE TABLE product_nav (
+-- NAV / market price by day, for holdings with units.
+CREATE TABLE product_price (
     product_id BIGINT         NOT NULL REFERENCES product (id),
-    nav_date   DATE           NOT NULL,
-    nav        NUMERIC(18, 6) NOT NULL,
-    PRIMARY KEY (product_id, nav_date)
+    price_date DATE           NOT NULL,
+    price      NUMERIC(18, 6) NOT NULL,
+    source     VARCHAR(30)    NOT NULL,            -- AMFI, exchange, platform file, typed
+    PRIMARY KEY (product_id, price_date)
 );
-
--- ARNs business is booked under (the house ARN, a sub broker's own ARN).
-CREATE TABLE arn (
-    id          BIGSERIAL PRIMARY KEY,
-    code        VARCHAR(30)  NOT NULL UNIQUE,   -- ARN-12345
-    holder_name VARCHAR(200) NOT NULL,
-    partner_id  BIGINT       REFERENCES partner (id),   -- null = the house ARN
-    valid_to    DATE
-);
-
-CREATE TABLE depository_participant (
-    id      BIGSERIAL PRIMARY KEY,
-    dp_code VARCHAR(20)  NOT NULL UNIQUE,   -- IN300xxx / 12xxxxxx
-    name    VARCHAR(200) NOT NULL
-);
-
--- Insurance: Life → Term / ULIP / Endowment; Health → Individual / Floater; Motor → Private car / Two-wheeler…
-CREATE TABLE policy_type (
-    id   SMALLSERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL UNIQUE
-);
-
-CREATE TABLE policy_sub_type (
-    id             SMALLSERIAL PRIMARY KEY,
-    policy_type_id SMALLINT     NOT NULL REFERENCES policy_type (id),
-    name           VARCHAR(100) NOT NULL,
-    UNIQUE (policy_type_id, name)
-);
-
--- In force, Lapsed, Paid up, Surrendered, Matured, Claimed…
-CREATE TABLE policy_status (
-    id   SMALLSERIAL PRIMARY KEY,
-    name VARCHAR(50) NOT NULL UNIQUE
-);
-
--- New, Renewal, Portability, Rollover…
-CREATE TABLE business_type (
-    id   SMALLSERIAL PRIMARY KEY,
-    name VARCHAR(50) NOT NULL UNIQUE
-);
-
--- A client's goal (retirement, child's education…), at PAN level.
-CREATE TABLE goal (
-    id            BIGSERIAL PRIMARY KEY,
-    client_id     BIGINT        NOT NULL REFERENCES client (id),
-    name          VARCHAR(200)  NOT NULL,
-    target_amount NUMERIC(18, 2),
-    target_date   DATE
-);
-CREATE INDEX ix_goal_client ON goal (client_id);
 
 -- ── The holding ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 CREATE TABLE asset (
-    id                        BIGSERIAL PRIMARY KEY,
-    client_id                 BIGINT         NOT NULL REFERENCES client (id),   -- the PAN: first holder
-    product_id                BIGINT         NOT NULL REFERENCES product (id),
-    product_type_id           SMALLINT       NOT NULL REFERENCES product_type (id),   -- copy of product's, for fast filters
-    status                    VARCHAR(20)    NOT NULL DEFAULT 'ACTIVE'
-                                             CHECK (status IN ('ACTIVE', 'REDEEMED', 'MATURED', 'SURRENDERED', 'LAPSED', 'CLOSED')),
-    held_away                 BOOLEAN        NOT NULL DEFAULT FALSE,   -- held outside our ARN / platform
-    -- where it is held
-    folio_no                  VARCHAR(50),                             -- MF folio, policy / FD / account number
-    arn_id                    BIGINT         REFERENCES arn (id),
-    sub_broker_id             BIGINT         REFERENCES partner (id),
-    dp_id                     BIGINT         REFERENCES depository_participant (id),
-    platform_id               BIGINT         REFERENCES intermediary (id),   -- FD partner / bond platform
-    -- quantity and cost
-    units                     NUMERIC(20, 6),
-    avg_purchase_price        NUMERIC(18, 6),
-    investment_date           DATE,
-    investment_value          NUMERIC(18, 2) NOT NULL DEFAULT 0,   -- cost of what is still held
-    total_amount              NUMERIC(18, 2),                      -- everything ever invested
-    redeemed_amount           NUMERIC(18, 2),
-    weighted_avg_days         INTEGER,
-    -- value and returns: a daily snapshot, so lists and totals never recompute
-    current_value             NUMERIC(18, 2),
-    current_value_date        DATE,
-    previous_current_value    NUMERIC(18, 2),
-    one_day_change_amount     NUMERIC(18, 2),
-    one_day_change_pct        NUMERIC(9, 4),
-    realized_profit           NUMERIC(18, 2),
-    unrealized_profit         NUMERIC(18, 2),
-    dividend_reinvested       NUMERIC(18, 2),
-    dividend_paid_out         NUMERIC(18, 2),
-    total_returns             NUMERIC(18, 2),
-    abs_return_pct            NUMERIC(9, 4),
-    xirr_pct                  NUMERIC(9, 4),
-    maturity_date             DATE,                                -- FD, bond, policy: for "maturing soon"
-    closed_on                 DATE,                                -- sold out / redeemed / matured
-    replaced_by_asset_id      BIGINT         REFERENCES asset (id),   -- renewal, switch, rollover
-    -- where the row came from
-    upload_id                 BIGINT         REFERENCES upload (id),
-    file_record_no            INTEGER,
-    finesse_request_id        VARCHAR(50),
-    created_by                VARCHAR(50)    NOT NULL,
-    created_at                TIMESTAMPTZ    NOT NULL DEFAULT now(),
-    updated_by                VARCHAR(50),
-    updated_at                TIMESTAMPTZ
+    id                 BIGSERIAL PRIMARY KEY,
+    -- whose and what
+    client_id          BIGINT         NOT NULL REFERENCES client (id),         -- first holder: the PAN it shows under
+    product_id         BIGINT         NOT NULL REFERENCES product (id),
+    product_type_id    SMALLINT       NOT NULL REFERENCES product_type (id),   -- copy of the product's, for fast filters
+    account_ref        VARCHAR(50),                    -- folio, FD no., bond / AIF / PMS account, PRAN, loan account
+    holding_mode       VARCHAR(20)    NOT NULL DEFAULT 'SINGLE' CHECK (holding_mode IN ('SINGLE', 'JOINT', 'ANYONE_OR_SURVIVOR')),
+    -- who brought it and through where
+    rm_id              BIGINT         NOT NULL REFERENCES employee (id),       -- the RM it was booked by
+    partner_id         BIGINT         REFERENCES partner (id),                 -- sub broker / referral / POSP on it
+    platform_id        BIGINT         REFERENCES intermediary (id),            -- GoldenPi, SMC, the FD platform…
+    held_away          BOOLEAN        NOT NULL DEFAULT FALSE,                  -- held outside our code / platform
+    -- life
+    status             VARCHAR(20)    NOT NULL DEFAULT 'ACTIVE'
+                                      CHECK (status IN ('PENDING', 'ACTIVE', 'MATURED', 'REDEEMED', 'CLOSED', 'CANCELLED')),
+    start_date         DATE           NOT NULL,        -- deposit / investment / allotment / agreement / disbursal date
+    maturity_date      DATE,
+    closed_on          DATE,
+    -- how much (rupees; _fc = the product's own currency, for GIFT City)
+    currency           CHAR(3)        NOT NULL DEFAULT 'INR',
+    committed_amount   NUMERIC(18, 2),                 -- AIF commitment, loan sanctioned
+    invested_amount    NUMERIC(18, 2) NOT NULL,        -- cost of what is held: drawn, deposited, utilised
+    invested_amount_fc NUMERIC(18, 2),
+    units              NUMERIC(20, 6),
+    avg_cost           NUMERIC(18, 6),                 -- per unit
+    -- worth (refreshed from prices or files; maturity-value products accrue)
+    current_value      NUMERIC(18, 2),
+    value_as_of        DATE,
+    value_source       VARCHAR(20)    CHECK (value_source IN ('PRICE', 'FILE', 'ACCRUAL', 'TYPED')),
+    -- what Epsilon earns on it, when not the product's / platform's default (e.g. a PMS trail %)
+    commission_pct     NUMERIC(7, 4),
+    commission_freq_id SMALLINT       REFERENCES frequency (id),
+    -- where it came from
+    source             VARCHAR(10)    NOT NULL CHECK (source IN ('SCREEN', 'FILE', 'MIGRATED')),
+    upload_id          BIGINT         REFERENCES upload (id),
+    legacy_product     VARCHAR(20),                    -- FD, BOND… and the old entry's id, while those tables exist
+    legacy_id          BIGINT,
+    remarks            VARCHAR(1000),
+    created_by         VARCHAR(50)    NOT NULL,
+    created_at         TIMESTAMPTZ    NOT NULL DEFAULT now(),
+    updated_by         VARCHAR(50),
+    updated_at         TIMESTAMPTZ,
+    CHECK (closed_on IS NULL OR status IN ('MATURED', 'REDEEMED', 'CLOSED', 'CANCELLED')),
+    CHECK (currency = 'INR' OR invested_amount_fc IS NOT NULL)
 );
 CREATE INDEX ix_asset_client ON asset (client_id, status);
-CREATE INDEX ix_asset_product ON asset (product_id);
+CREATE INDEX ix_asset_rm ON asset (rm_id, status);
 CREATE INDEX ix_asset_type ON asset (product_type_id, status);
-CREATE INDEX ix_asset_maturity ON asset (maturity_date) WHERE status = 'ACTIVE' AND maturity_date IS NOT NULL;
-CREATE UNIQUE INDEX ux_asset_folio ON asset (client_id, product_id, folio_no) WHERE folio_no IS NOT NULL AND status = 'ACTIVE';
+CREATE INDEX ix_asset_product ON asset (product_id);
+CREATE INDEX ix_asset_maturing ON asset (maturity_date) WHERE status = 'ACTIVE';
+CREATE UNIQUE INDEX ux_asset_legacy ON asset (legacy_product, legacy_id) WHERE legacy_id IS NOT NULL;
 
--- ── Details only some products have (1:1, key = asset id) ───────────────────────────────────────────────────────────
-
-CREATE TABLE asset_fd (
-    asset_id                 BIGINT         PRIMARY KEY REFERENCES asset (id) ON DELETE CASCADE,
-    interest_rate            NUMERIC(7, 4)  NOT NULL,
-    interest_payout_freq_id  SMALLINT       REFERENCES frequency (id),
-    accrual_freq_id          SMALLINT       REFERENCES frequency (id),
-    is_cumulative            BOOLEAN        NOT NULL,
-    cumulative_type          VARCHAR(30),
-    tenure_years             SMALLINT       NOT NULL DEFAULT 0,
-    tenure_months            SMALLINT       NOT NULL DEFAULT 0,
-    tenure_days              SMALLINT       NOT NULL DEFAULT 0,
-    maturity_amount          NUMERIC(18, 2),
-    interest_payment_schedule VARCHAR(200),
-    accrued_interest         NUMERIC(18, 2),
-    interest_paid            NUMERIC(18, 2)
+-- Fixed-income terms (FD, bond, P2P, loan): today spread over rate_percent, coupon_percent, roi_percent,
+-- interest_frequency, payout_frequency, compounding, period_months, maturity_value, payment_schedule, ytm_percent.
+CREATE TABLE asset_terms (
+    asset_id            BIGINT         PRIMARY KEY REFERENCES asset (id),
+    rate_pct            NUMERIC(7, 4)  NOT NULL,        -- interest / coupon / ROI / loan rate
+    payout_freq_id      SMALLINT       REFERENCES frequency (id),   -- null: paid at maturity (cumulative)
+    compounding_freq_id SMALLINT       REFERENCES frequency (id),   -- null: simple interest
+    tenure_months       SMALLINT,
+    maturity_amount     NUMERIC(18, 2),
+    ytm_pct             NUMERIC(7, 4),                  -- bonds bought on the market
+    accrued_interest    NUMERIC(18, 2),                 -- paid at purchase (bonds)
+    payout_schedule     VARCHAR(300),
+    next_payout_date    DATE
 );
 
-CREATE TABLE asset_bond (
-    asset_id                 BIGINT         PRIMARY KEY REFERENCES asset (id) ON DELETE CASCADE,
-    ytm_ytc                  NUMERIC(7, 4),
-    next_interest_date       DATE,
-    last_interest_date       DATE,
-    accrued_interest         NUMERIC(18, 2),
-    interest_paid            NUMERIC(18, 2)
+-- Everything that moved money or units: today's AIF instalments, PMS / bond purchases, redemptions, payouts.
+CREATE TABLE asset_transaction (
+    id         BIGSERIAL PRIMARY KEY,
+    asset_id   BIGINT         NOT NULL REFERENCES asset (id),
+    type       VARCHAR(20)    NOT NULL CHECK (type IN ('PURCHASE', 'SIP', 'ADDITIONAL', 'DRAWDOWN', 'REDEMPTION', 'SWITCH_IN',
+                                                      'SWITCH_OUT', 'INTEREST', 'DIVIDEND', 'MATURITY', 'DISBURSAL', 'REPAYMENT')),
+    txn_date   DATE           NOT NULL,
+    units      NUMERIC(20, 6),
+    price      NUMERIC(18, 6),
+    amount     NUMERIC(18, 2) NOT NULL,                 -- rupees
+    amount_fc  NUMERIC(18, 2),
+    fx_rate    NUMERIC(12, 6),                          -- the exchange_rate used, kept as used
+    upload_id  BIGINT         REFERENCES upload (id),
+    created_by VARCHAR(50)    NOT NULL,
+    created_at TIMESTAMPTZ    NOT NULL DEFAULT now()
 );
+CREATE INDEX ix_asset_transaction ON asset_transaction (asset_id, txn_date);
 
-CREATE TABLE asset_insurance (
-    asset_id                 BIGINT         PRIMARY KEY REFERENCES asset (id) ON DELETE CASCADE,
-    policy_number            VARCHAR(50)    NOT NULL,
-    policy_holder_name       VARCHAR(200),
-    policy_type_id           SMALLINT       REFERENCES policy_type (id),
-    policy_sub_type_id       SMALLINT       REFERENCES policy_sub_type (id),
-    policy_status_id         SMALLINT       REFERENCES policy_status (id),
-    business_type_id         SMALLINT       REFERENCES business_type (id),
-    premium                  NUMERIC(18, 2),
-    premium_freq_id          SMALLINT       REFERENCES frequency (id),
-    premium_payment_term     SMALLINT,                             -- years
-    payment_schedule         VARCHAR(200),
-    sum_assured              NUMERIC(18, 2),
-    policy_start_date        DATE,
-    policy_term              SMALLINT,                             -- years
-    renewal_date             DATE,
-    last_renewal_processed   DATE,
-    grace_period_end_date    DATE,
-    vehicle_no               VARCHAR(20),
-    document_id              BIGINT                                -- the policy document in the file store
-);
-CREATE INDEX ix_asset_insurance_renewal ON asset_insurance (renewal_date);
-
--- ── Joins ───────────────────────────────────────────────────────────────────────────────────────────────────────────
-
--- Everyone on a holding, by PAN: the first holder (also asset.client_id), joint holders, nominees, a minor's guardian.
--- This is what puts a joint or minor's holding under every PAN it belongs to.
+-- Joint holders, nominees and a minor's guardian, each a client (PAN): a holding shows under every PAN on it.
 CREATE TABLE asset_holder (
-    asset_id     BIGINT      NOT NULL REFERENCES asset (id) ON DELETE CASCADE,
-    client_id    BIGINT      NOT NULL REFERENCES client (id),
-    role         VARCHAR(20) NOT NULL CHECK (role IN ('FIRST', 'JOINT', 'NOMINEE', 'GUARDIAN')),
-    holder_order SMALLINT    NOT NULL DEFAULT 1,
-    share_pct    NUMERIC(6, 3) CHECK (share_pct > 0 AND share_pct <= 100),   -- nominees
+    asset_id  BIGINT        NOT NULL REFERENCES asset (id),
+    client_id BIGINT        NOT NULL REFERENCES client (id),
+    role      VARCHAR(20)   NOT NULL CHECK (role IN ('JOINT', 'NOMINEE', 'GUARDIAN')),
+    seq       SMALLINT      NOT NULL DEFAULT 1,
+    share_pct NUMERIC(6, 3) CHECK (share_pct > 0 AND share_pct <= 100),
     PRIMARY KEY (asset_id, client_id, role)
 );
 CREATE INDEX ix_asset_holder_client ON asset_holder (client_id);
 
--- An asset can be earmarked for several goals, part of its value each.
-CREATE TABLE asset_goal (
-    asset_id       BIGINT        NOT NULL REFERENCES asset (id) ON DELETE CASCADE,
-    goal_id        BIGINT        NOT NULL REFERENCES goal (id),
-    allocation_pct NUMERIC(6, 3) NOT NULL DEFAULT 100 CHECK (allocation_pct > 0 AND allocation_pct <= 100),
-    PRIMARY KEY (asset_id, goal_id)
+-- One servicing tick on one holding.
+CREATE TABLE asset_check (
+    asset_id BIGINT      NOT NULL REFERENCES asset (id),
+    check_id SMALLINT    NOT NULL REFERENCES servicing_check (id),
+    done_on  DATE        NOT NULL,
+    done_by  VARCHAR(50) NOT NULL,
+    PRIMARY KEY (asset_id, check_id)
 );
 
--- ── Movements and money (plan phases 3 and 5) ───────────────────────────────────────────────────────────────────────
-
--- What happened to a holding over time: purchases, SIPs, redemptions, switches, AIF drawdowns, interest, premiums.
-CREATE TABLE asset_transaction (
-    id          BIGSERIAL PRIMARY KEY,
-    asset_id    BIGINT         NOT NULL REFERENCES asset (id),
-    type        VARCHAR(20)    NOT NULL CHECK (type IN ('PURCHASE', 'ADDITIONAL', 'SIP', 'REDEMPTION', 'SWITCH_IN', 'SWITCH_OUT',
-                                                       'DRAWDOWN', 'DIVIDEND', 'INTEREST', 'PREMIUM', 'MATURITY')),
-    txn_date    DATE           NOT NULL,
-    units       NUMERIC(20, 6),
-    price       NUMERIC(18, 6),
-    amount      NUMERIC(18, 2) NOT NULL,
-    upload_id   BIGINT         REFERENCES upload (id),
-    created_by  VARCHAR(50)    NOT NULL,
-    created_at  TIMESTAMPTZ    NOT NULL DEFAULT now()
+-- Each holding's position at each month end, kept once the month is closed: AUM trends by RM, branch, partner.
+CREATE TABLE asset_snapshot (
+    asset_id        BIGINT         NOT NULL REFERENCES asset (id),
+    month           DATE           NOT NULL CHECK (extract(day FROM month) = 1),
+    invested_amount NUMERIC(18, 2) NOT NULL,
+    current_value   NUMERIC(18, 2) NOT NULL,
+    units           NUMERIC(20, 6),
+    PRIMARY KEY (asset_id, month)
 );
-CREATE INDEX ix_asset_transaction_asset ON asset_transaction (asset_id, txn_date);
+CREATE INDEX ix_asset_snapshot_month ON asset_snapshot (month);
 
--- One commission earned, for any product: what the nine entry tables keep today (gross, TDS, GST, net, invoice,
--- payment). A ledger line points at it with brokerage_line.revenue_id. rm_id / partner_id are joined through their
--- modules' services, like the entry tables do today.
+-- ── Money ───────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+-- One commission earned, for any product (today's gross / TDS / GST / net / invoice / payment columns on nine tables).
+-- Usually for one holding; a provider's payout for a period (today's pms_payout) has no client.
 CREATE TABLE revenue (
     id                   BIGSERIAL PRIMARY KEY,
     month                DATE           NOT NULL CHECK (extract(day FROM month) = 1),
-    client_id            BIGINT         NOT NULL REFERENCES client (id),
     product_type_id      SMALLINT       NOT NULL REFERENCES product_type (id),
     asset_id             BIGINT         REFERENCES asset (id),
     asset_transaction_id BIGINT         REFERENCES asset_transaction (id),
-    rm_id                BIGINT         NOT NULL,
-    partner_id           BIGINT,
-    platform_id          BIGINT         REFERENCES intermediary (id),
+    client_id            BIGINT         REFERENCES client (id),
+    provider_id          BIGINT         REFERENCES provider (id),
+    period_from          DATE,
+    period_to            DATE,
+    basis_amount         NUMERIC(18, 2),                -- what the % applies to
+    rate_pct             NUMERIC(7, 4),
     gross                NUMERIC(18, 2) NOT NULL,
-    tds_applied          BOOLEAN        NOT NULL DEFAULT FALSE,
-    tds_percent          NUMERIC(6, 3),
+    tds_pct              NUMERIC(6, 3),
     tds                  NUMERIC(18, 2) NOT NULL DEFAULT 0,
-    gst_percent          NUMERIC(6, 3),
+    gst_pct              NUMERIC(6, 3),
     gst                  NUMERIC(18, 2) NOT NULL DEFAULT 0,
     net                  NUMERIC(18, 2) NOT NULL,
     invoice              NUMERIC(18, 2) NOT NULL,
     figures_as_given     BOOLEAN        NOT NULL DEFAULT FALSE,
-    invoice_raised       BOOLEAN        NOT NULL DEFAULT FALSE,
+    invoice_no           VARCHAR(50),
+    invoice_date         DATE,
     payment_status       VARCHAR(20)    NOT NULL DEFAULT 'PENDING' CHECK (payment_status IN ('PENDING', 'RECEIVED', 'NOT_DUE')),
     received_on          DATE,
     status               VARCHAR(20)    NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'CANCELLED')),
     remarks              VARCHAR(1000),
-    legacy_product       VARCHAR(20),                          -- FD, BOND, AIF… while the old entry tables exist
+    legacy_product       VARCHAR(20),
     legacy_id            BIGINT,
     created_by           VARCHAR(50)    NOT NULL,
     created_at           TIMESTAMPTZ    NOT NULL DEFAULT now(),
     updated_by           VARCHAR(50),
-    updated_at           TIMESTAMPTZ
+    updated_at           TIMESTAMPTZ,
+    CHECK (client_id IS NOT NULL OR provider_id IS NOT NULL)
 );
 CREATE INDEX ix_revenue_month ON revenue (month, product_type_id);
 CREATE INDEX ix_revenue_client ON revenue (client_id);
@@ -336,3 +255,15 @@ CREATE UNIQUE INDEX ux_revenue_legacy ON revenue (legacy_product, legacy_id) WHE
 
 -- New ledger lines name their revenue; old lines keep their *_entry_id (the ledger is append-only).
 ALTER TABLE brokerage_line ADD COLUMN revenue_id BIGINT;
+
+-- ── Client ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+-- Typed once per client, not on every FD / bond / AIF / NPS… entry. Encrypted like the PAN.
+CREATE TABLE client_contact (
+    client_id         BIGINT       PRIMARY KEY REFERENCES client (id),
+    mobile_encrypted  VARCHAR(500),
+    email_encrypted   VARCHAR(500),
+    address_encrypted VARCHAR(2000),
+    updated_by        VARCHAR(50)  NOT NULL,
+    updated_at        TIMESTAMPTZ  NOT NULL DEFAULT now()
+);

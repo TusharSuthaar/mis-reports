@@ -14,11 +14,15 @@ this too many tables and wants a simpler model, built around one holdings table,
 The proposed schema is [docs/design/asset-schema.sql](../design/asset-schema.sql) (tested on PostgreSQL 16 over V1–V38):
 - `asset`: one row per holding of one client (PAN), with value and returns as a daily snapshot. Lists, totals and the
   PAN view read it alone.
-- `product` (+ `product_nav`): the security, stored once for every holder: codes, bond terms, latest NAV.
-- `asset_fd`, `asset_bond`, `asset_insurance`: 1:1 details only those products have.
-- `asset_holder` (joint holders, nominees, guardian by PAN) and `asset_goal`: the joins.
-- Masters: product type, asset category / sub-category, provider, frequency, ARN, DP, goal, policy type / sub-type /
-  status, business type. Reuses `client`, `partner`, `intermediary`, `upload`.
+- `product` (+ `product_price`): the scheme, FD scheme, bond, fund or strategy, stored once for every holder.
+- `asset_terms` (fixed income: rate, payouts, compounding, tenure, maturity), `asset_transaction` (purchases,
+  drawdowns, redemptions, interest), `asset_holder` (joint holders, nominees, guardian by PAN), `asset_check` (servicing
+  ticks), `asset_snapshot` (month-end value, for AUM trends).
+- Masters: product type, asset class, provider, frequency, servicing check. `revenue` for commission on any product;
+  `client_contact` for mobile / e-mail / address once per client. Reuses `client`, `employee`, `partner`,
+  `intermediary`, `upload`.
+- Designed from the fields today's screens record, not from the 112-column example (2026-10-22: "the example was
+  just an example").
 
 ## Plan of work
 Phases, the two ways to do it (in place vs fresh start), checks and risks: [docs/design/db-rework-plan.md](../design/db-rework-plan.md).
