@@ -6,7 +6,8 @@ import { App } from '../../App';
 import type { Employee, Me, OrgChart, Role } from '../../api/types';
 import { AuthProvider } from '../../app/auth';
 import { fakeApi } from '../../test/fakeApi';
-import { addMonths, fdRevenue, indianDigits, maturityValue, monthsBetween } from './FdPage';
+import { addMonths, fdRevenue, maturityValue, monthsBetween } from './FdPage';
+import { indianDigits } from '../../format';
 
 function me(role: Role): Me {
   return { id: 1, username: role.toLowerCase(), displayName: `A ${role}`, role };

@@ -1,7 +1,6 @@
 import { useLoad } from '../../api/useLoad';
 import { Amount } from '../../components/Amount';
-import { formatMoney } from '../../format';
-import { formatMonth } from '../fd/FdPage';
+import { formatMoney, formatMonth } from '../../format';
 
 export interface PartnerAmount {
   role: string;

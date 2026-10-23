@@ -14,8 +14,7 @@ import { SidePanel } from '../../components/SidePanel';
 import { Tabs, useTab } from '../../components/Tabs';
 import type { AifEntry, BondEntry, FdEntry, GiftEntry, LoanEntry, NpsEntry, P2pEntry, PmsInvestment } from '../../api/types';
 import { Amount } from '../../components/Amount';
-import { formatMonth } from '../fd/FdPage';
-import { formatDate, formatDateTime, todayIso } from '../../format';
+import { formatDate, formatDateTime, todayIso, formatMonth } from '../../format';
 
 const PAGE_SIZE = 50;
 

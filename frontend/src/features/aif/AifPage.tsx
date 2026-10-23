@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { CancelEntry, ClientFieldset, MonthRmFieldset, useClientAndRm } from '../entry/ClientAndRm';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useTableView } from '../../components/useTableView';
 import { api } from '../../api/client';
 import {
@@ -6,16 +7,10 @@ import {
   PAYMENT_LABEL,
   type AifEntry,
   type AifSuggestions,
-  type ClientRow,
-  type Employee,
   type FdCertificate,
   type FdPaymentStatus,
-  type OrgChart,
-  type Page,
-  type Partner,
   type Platform,
   type PlatformTerms,
-  type Share,
   type TaxRate,
 } from '../../api/types';
 import { useLoad } from '../../api/useLoad';
@@ -26,13 +21,11 @@ import { ListFilters, useFilterQuery } from '../../components/ListFilters';
 import { GivenFiguresFields, givenBody, shownFigures, useGiven } from '../../components/GivenFigures';
 import { Modal } from '../../components/Modal';
 import { useEntryPanel } from '../../components/useEntryPanel';
-import { formatMoney, todayIso } from '../../format';
+import { formatMoney, todayIso, formatMonth, indianDigits } from '../../format';
 import { Amount } from '../../components/Amount';
 import { bondRevenue } from '../bonds/BondsPage';
-import { formatMonth, indianDigits, matchClients } from '../fd/FdPage';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-const PAN_FORMAT = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const thisMonth = () => todayIso().slice(0, 7);
 
 /** AIF: one row per commitment, with its drawdowns; revenue on the commitment from the mark-up and the platform's terms. */
@@ -157,17 +150,8 @@ type Drawdown = { amount: string; paidOn: string };
 function AifForm({ month: startMonth, entry, onDone }: { month: string; entry?: AifEntry; onDone: () => void }) {
   const num = (s: string) => Number(s.replace(/,/g, '')) || 0;
   const str = (n: number | null | undefined) => (n == null ? '' : String(n));
-  const [month, setMonth] = useState(entry ? entry.month : startMonth);
-  const [rmId, setRmId] = useState(entry ? String(entry.rmId) : '');
-  const [lookup, setLookup] = useState('');
-  const [looked, setLooked] = useState('');
-  const [client, setClient] = useState<ClientRow | null>(null);
-  const [newName, setNewName] = useState('');
-  const [newPan, setNewPan] = useState('');
-  const [mobile, setMobile] = useState(entry?.mobile ?? '');
-  const [email, setEmail] = useState(entry?.email ?? '');
-  const [address, setAddress] = useState(entry?.address ?? '');
-  const [partnerId, setPartnerId] = useState(entry?.partnerId ? String(entry.partnerId) : '');
+  const party = useClientAndRm(entry, entry ? entry.month : startMonth);
+  const { month, monthDay, partnerId, clientMode } = party;
   const [sharing, setSharing] = useState(str(entry?.sharingPercent));
   const [platformId, setPlatformId] = useState(entry ? String(entry.platformId) : '');
   const [fundName, setFundName] = useState(entry?.fundName ?? '');
@@ -200,31 +184,11 @@ function AifForm({ month: startMonth, entry, onDone }: { month: string; entry?: 
   const [remarks, setRemarks] = useState(entry?.remarks ?? '');
   const { busy, error, run } = useSubmit();
 
-  const monthDay = `${month.slice(0, 7)}-01`;
-  const employees = useLoad<Employee[]>('/api/employees');
-  const partners = useLoad<Partner[]>('/api/partners');
   const platforms = useLoad<Platform[]>('/api/platforms');
   const suggestions = useLoad<AifSuggestions>('/api/aif/suggestions');
-  const chart = useLoad<OrgChart>(`/api/org?date=${monthDay}`);
   const tax = useLoad<TaxRate>(`/api/product-taxes/AIF/on?date=${monthDay}`);
   const terms = useLoad<PlatformTerms>(platformId ? `/api/platforms/${platformId}/terms/on?date=${monthDay}` : null);
-  const found = useLoad<Page<ClientRow>>(!entry && looked ? `/api/clients?q=${encodeURIComponent(looked)}&size=20` : null);
-  const matches = useMemo(() => (looked && found.data ? matchClients(found.data.items, looked) : null), [found.data, looked]);
-  const clientMode: 'lookup' | 'found' | 'pick' | 'new' = entry ? 'found' : !matches ? 'lookup' : matches.length === 0 ? 'new' : client ? 'found' : 'pick';
-  const rmLocked = !entry && !!client?.rmId;
-  const shares = useLoad<Record<string, Share[]>>(client ? `/api/shares?clientIds=${client.id}` : null);
 
-  useEffect(() => {
-    if (matches && matches.length === 1) setClient(matches[0]);
-    if (matches && matches.length === 0 && PAN_FORMAT.test(looked)) setNewPan(looked);
-  }, [matches, looked]);
-  useEffect(() => {
-    if (!client) return;
-    if (client.rmId) setRmId(String(client.rmId));
-    const own = shares.data?.[client.id]?.find((s) => !s.branch);
-    if (own && !partnerId) setPartnerId(String(own.partnerId));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, shares.data]);
   useEffect(() => {
     if (!entry && terms.data) {
       setTdsPct(String(terms.data.tdsPercent));
@@ -235,17 +199,7 @@ function AifForm({ month: startMonth, entry, onDone }: { month: string; entry?: 
   useEffect(() => {
     if (!markupTouched && lastMarkup) setMarkup(String(lastMarkup.markupPercent));
   }, [lastMarkup, markupTouched]);
-  const findClient = () => {
-    setClient(null);
-    setLooked(lookup.trim().toUpperCase());
-  };
 
-  const place = useMemo(() => {
-    for (const r of chart.data?.regions ?? []) {
-      for (const b of r.branches) if (b.people.some((p) => String(p.id) === rmId)) return { region: r.name, rd: r.rd?.name ?? '—', branch: b.name };
-    }
-    return null;
-  }, [chart.data, rmId]);
 
   const sameMonth = entry && entry.month === month.slice(0, 7);
   const share = sameMonth ? entry.ourShare : (terms.data?.ourShare ?? 100);
@@ -256,24 +210,14 @@ function AifForm({ month: startMonth, entry, onDone }: { month: string; entry?: 
   const rev = shownFigures(worked, given);
   const called = round2(drawdowns.reduce((s, d) => s + num(d.amount), 0));
   const partnerShare = partnerId && sharing !== '' ? round2((rev.gross * num(sharing)) / 100) : null;
-  const people = (employees.data ?? []).filter((e) => e.status === 'ACTIVE');
-  const sharePartners = (partners.data ?? []).filter((p) => p.type === 'SUB_BROKER' || p.type === 'REFERRAL');
   const setDrawdown = (i: number, patch: Partial<Drawdown>) => setDrawdowns(drawdowns.map((d, j) => (j === i ? { ...d, ...patch } : d)));
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     const n = (s: string) => (s === '' ? null : num(s));
     const body = {
-      clientId: entry ? entry.clientId : clientMode === 'found' ? client?.id : null,
-      newClientName: clientMode === 'new' ? newName : null,
-      newClientPan: clientMode === 'new' && newPan ? newPan : null,
-      month: monthDay,
-      rmId: Number(rmId),
-      partnerId: partnerId ? Number(partnerId) : null,
+    ...party.body(),
       sharingPercent: partnerId ? n(sharing) : null,
-      mobile,
-      email,
-      address,
       platformId: platformId ? Number(platformId) : null,
       fundName,
       commitment: n(commitment),
@@ -308,123 +252,23 @@ function AifForm({ month: startMonth, entry, onDone }: { month: string; entry?: 
     <form onSubmit={submit} className="fd-form">
       {tax.error && <p className="error">{tax.error}</p>}
       {terms.error && <p className="error">{terms.error}</p>}
-      <fieldset>
-        <legend>Client</legend>
-        {entry ? (
-          <p>
-            {entry.clientName} <span className="mono">{entry.pan}</span> · Client type: {entry.clientType}
-          </p>
-        ) : (
-          <span className="inline-form">
-            <label>
-              Client PAN or client code
-              <input
-                value={lookup}
-                onChange={(e) => setLookup(e.target.value.toUpperCase().replace(/\s/g, ''))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    findClient();
-                  }
-                }}
-                placeholder="ABCDE1234F or EM1234"
-              />
-            </label>
-            <button type="button" className="secondary" disabled={lookup.trim().length < 3} onClick={findClient}>
-              Find
-            </button>
-          </span>
-        )}
-        {clientMode === 'pick' &&
-          (matches ?? []).map((c) => (
-            <label key={c.id} className="check">
-              <input type="radio" name="aif-client" checked={client?.id === c.id} onChange={() => setClient(c)} />
-              {c.name} · <span className="mono">{c.pan ?? 'no PAN'}</span> · {c.iwellCode ?? 'no code'} · {c.rmName ?? 'no RM'}
-            </label>
-          ))}
-        {!entry && client && (
-          <p className="ok">
-            {client.name} · <span className="mono">{client.pan ?? 'no PAN'}</span> · Client type: {client.iwellCode ?? 'OFFLINE'}
-          </p>
-        )}
-        {clientMode === 'new' && (
-          <>
-            <p className="muted">No client has this PAN or code: enter the new client (client type OFFLINE). They are added to Clients with the RM below.</p>
-            <label>
-              Client name
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} required />
-            </label>
-            <label>
-              PAN
-              <input value={newPan} onChange={(e) => setNewPan(e.target.value.toUpperCase().replace(/\s/g, ''))} maxLength={10} placeholder="ABCDE1234F" />
-            </label>
-          </>
-        )}
-        {(clientMode === 'found' || clientMode === 'new') && (
-          <>
-            <label>
-              Mobile
-              <input value={mobile} onChange={(e) => setMobile(e.target.value)} inputMode="tel" />
-            </label>
-            <label>
-              Email
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            </label>
-            <label>
-              Address
-              <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2} />
-            </label>
-          </>
-        )}
-      </fieldset>
+      <ClientFieldset party={party} radioName="aif-client" mobileLabel="Mobile" emailLabel="Email" codeHint="EM1234" showClientType />
 
-      <fieldset>
-        <legend>Month, RM and revenue sharing</legend>
-        <label>
-          Month
-          <input type="month" value={month.slice(0, 7)} onChange={(e) => e.target.value && setMonth(e.target.value)} required />
-        </label>
-        {rmLocked ? (
-          <label>
-            RM
-            <input value={client?.rmName ?? ''} readOnly />
-          </label>
-        ) : (
-          <label>
-            RM
-            <select value={rmId} onChange={(e) => setRmId(e.target.value)} required>
-              <option value="">Choose…</option>
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.branchName ? `${p.name} — ${p.branchName}` : p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label>
-          Referral / sub-broker
-          <select value={partnerId} onChange={(e) => setPartnerId(e.target.value)}>
-            <option value="">None</option>
-            {sharePartners.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.type === 'SUB_BROKER' ? 'sub-broker' : 'referral'})
-              </option>
-            ))}
-          </select>
-        </label>
-        {partnerId && (
-          <label>
-            Revenue sharing % (this deal)
-            <input type="number" min={0} max={100} step="0.01" value={sharing} onChange={(e) => setSharing(e.target.value)} placeholder="partner's AIF %" />
-          </label>
-        )}
-        <p className="muted">
-          {place ? `Region: ${place.region} · RD: ${place.rd} · Branch: ${place.branch}` : 'Region and RD come from the RM.'}
-          {rmLocked && ' · The RM comes from the client: change it on the Clients screen.'}
-          {partnerId && (sharing === '' ? " · Partner's general AIF % applies." : ` · Partner gets ${sharing}% of gross${partnerShare != null ? ` = ${formatMoney(partnerShare)}` : ''}.`)}
-        </p>
-      </fieldset>
+      <MonthRmFieldset
+        party={party}
+        legend="Month, RM and revenue sharing"
+        partnerLabel="Referral / sub-broker"
+        note={
+          partnerId && (sharing === '' ? " · Partner's general AIF % applies." : ` · Partner gets ${sharing}% of gross${partnerShare != null ? ` = ${formatMoney(partnerShare)}` : ''}.`)
+        }
+      >
+          {partnerId && (
+            <label>
+              Revenue sharing % (this deal)
+              <input type="number" min={0} max={100} step="0.01" value={sharing} onChange={(e) => setSharing(e.target.value)} placeholder="partner's AIF %" />
+            </label>
+          )}
+      </MonthRmFieldset>
 
       <fieldset>
         <legend>AIF</legend>
@@ -630,7 +474,7 @@ function AifForm({ month: startMonth, entry, onDone }: { month: string; entry?: 
         <button type="submit" disabled={busy || clientMode === 'lookup' || clientMode === 'pick'}>
           {entry ? 'Save changes' : 'Add AIF'}
         </button>
-        {entry && <CancelAif id={entry.id} onDone={onDone} />}
+        {entry && <CancelEntry url={`/api/aif/${entry.id}/cancel`} question="Why cancel this AIF entry?" label="Cancel this AIF" onDone={onDone} />}
       </span>
     </form>
   );
@@ -640,21 +484,4 @@ function ordinal(n: number): string {
   return n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
 }
 
-function CancelAif({ id, onDone }: { id: number; onDone: () => void }) {
-  const { busy, run } = useSubmit();
-  return (
-    <button
-      type="button"
-      className="link"
-      disabled={busy}
-      onClick={async () => {
-        const reason = window.prompt('Why cancel this AIF entry?');
-        if (reason === null) return;
-        if (await run(() => api(`/api/aif/${id}/cancel`, { method: 'POST', body: { reason } }))) onDone();
-      }}
-    >
-      Cancel this AIF
-    </button>
-  );
-}
 

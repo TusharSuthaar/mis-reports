@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { indianDigits } from '../features/fd/FdPage';
+import { indianDigits } from '../format';
 
 /** The register's own revenue figures, kept as they are instead of being worked out (R-79). Strings as typed. */
 export interface Given {

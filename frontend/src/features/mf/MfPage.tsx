@@ -4,8 +4,7 @@ import { useLoad } from '../../api/useLoad';
 import { Amount } from '../../components/Amount';
 import { ListFilters, useFilterQuery } from '../../components/ListFilters';
 import type { PartnerAmount } from '../clients/MfBrokerage';
-import { formatMoney } from '../../format';
-import { formatMonth } from '../fd/FdPage';
+import { formatMoney, formatMonth } from '../../format';
 
 /** One client's MF brokerage in one month (R-81); no split yet when the month is saved but not processed. */
 export interface MfRow {

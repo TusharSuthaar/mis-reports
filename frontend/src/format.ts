@@ -38,3 +38,18 @@ export function formatAmount(n: number | null | undefined, unit: AmountUnit): st
   if (unit === 'full') return rupees.format(n);
   return `${short.format(n / (unit === 'K' ? 1000 : 100000))} ${unit}`;
 }
+
+/** "1000000" → "10,00,000" while typing an amount (Indian grouping, no decimals shown unless typed). */
+export function indianDigits(text: string): string {
+  const clean = text.replace(/[^0-9.]/g, '');
+  const [whole, ...rest] = clean.split('.');
+  if (!whole) return clean;
+  const grouped = Number(whole).toLocaleString('en-IN');
+  return rest.length ? `${grouped}.${rest.join('').slice(0, 2)}` : grouped;
+}
+
+/** "2026-08" → "Aug-26", as in the registers. */
+export function formatMonth(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  return `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]}-${String(y).slice(2)}`;
+}

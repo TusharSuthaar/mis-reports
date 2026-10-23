@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { CancelEntry, ClientFieldset, MonthRmFieldset, useClientAndRm } from '../entry/ClientAndRm';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useTableView } from '../../components/useTableView';
 import { api } from '../../api/client';
 import {
@@ -6,18 +7,12 @@ import {
   COMPOUNDING_LABEL,
   INTEREST_FREQUENCY_LABEL,
   PAYMENT_LABEL,
-  type ClientRow,
-  type Employee,
   type FdCertificate,
   type FdCompounding,
   type FdEntry,
   type FdSuggestions,
   type FdPaymentStatus,
   type InterestFrequency,
-  type OrgChart,
-  type Page,
-  type Partner,
-  type Share,
   type TaxRate,
 } from '../../api/types';
 import { useLoad } from '../../api/useLoad';
@@ -28,7 +23,7 @@ import { ListFilters, useFilterQuery } from '../../components/ListFilters';
 import { GivenFiguresFields, givenBody, shownFigures, useGiven } from '../../components/GivenFigures';
 import { Modal } from '../../components/Modal';
 import { useEntryPanel } from '../../components/useEntryPanel';
-import { formatDate, formatMoney, todayIso } from '../../format';
+import { formatDate, formatMoney, todayIso, formatMonth, indianDigits } from '../../format';
 import { Amount } from '../../components/Amount';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -75,38 +70,11 @@ export function monthsBetween(from: string, to: string): number {
   return (y2 - y1) * 12 + (m2 - m1) - (d2 < d1 ? 1 : 0);
 }
 
-/** "1000000" → "10,00,000" while typing an amount (Indian grouping, no decimals shown unless typed). */
-export function indianDigits(text: string): string {
-  const clean = text.replace(/[^0-9.]/g, '');
-  const [whole, ...rest] = clean.split('.');
-  if (!whole) return clean;
-  const grouped = Number(whole).toLocaleString('en-IN');
-  return rest.length ? `${grouped}.${rest.join('').slice(0, 2)}` : grouped;
-}
 
 const thisMonth = () => todayIso().slice(0, 7);
 
-/** "2026-08" → "Aug-26", as in the registers. */
-export function formatMonth(ym: string): string {
-  const [y, m] = ym.split('-').map(Number);
-  return `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]}-${String(y).slice(2)}`;
-}
 
-const PAN_FORMAT = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 
-/**
- * Clients that are this PAN or this client code. The search also matches names, so keep only real hits: for a PAN, the
- * PAN (shown in full, or masked ABCDE****F); otherwise the client code.
- */
-export function matchClients(items: ClientRow[], looked: string): ClientRow[] {
-  const q = looked.trim().toUpperCase();
-  if (PAN_FORMAT.test(q)) {
-    return items.filter(
-      (c) => c.pan != null && (c.pan.toUpperCase() === q || (c.pan.includes('*') && c.pan.slice(0, 5) === q.slice(0, 5) && c.pan.slice(-1) === q.slice(-1))),
-    );
-  }
-  return items.filter((c) => c.iwellCode != null && c.iwellCode.toUpperCase() === q);
-}
 
 /** FD: one row per FD booked, entered by hand (Phase 2, entry only). */
 export function FdPage({ embedded = false }: { embedded?: boolean } = {}) {
@@ -246,17 +214,8 @@ function FdFacts({ entry: e }: { entry: FdEntry }) {
 
 /** Add or edit one FD, laid out as in the FD mapping sheet. */
 function FdForm({ month: listMonth, entry, onDone }: { month: string; entry?: FdEntry; onDone: () => void }) {
-  const [month, setMonth] = useState(entry ? entry.month : listMonth);
-  const [rmId, setRmId] = useState(entry ? String(entry.rmId) : '');
-  const [lookup, setLookup] = useState('');
-  const [looked, setLooked] = useState('');
-  const [client, setClient] = useState<ClientRow | null>(null);
-  const [newName, setNewName] = useState('');
-  const [newPan, setNewPan] = useState('');
-  const [mobile, setMobile] = useState(entry?.mobile ?? '');
-  const [email, setEmail] = useState(entry?.email ?? '');
-  const [address, setAddress] = useState(entry?.address ?? '');
-  const [partnerId, setPartnerId] = useState(entry?.partnerId ? String(entry.partnerId) : '');
+  const party = useClientAndRm(entry, entry ? entry.month : listMonth);
+  const { month, monthDay, clientMode } = party;
   const [fdName, setFdName] = useState(entry?.fdName ?? '');
   const [fdNo, setFdNo] = useState(entry?.fdNo ?? '');
   const [frequency, setFrequency] = useState<InterestFrequency | ''>(entry?.interestFrequency ?? '');
@@ -278,18 +237,8 @@ function FdForm({ month: listMonth, entry, onDone }: { month: string; entry?: Fd
   const [remarks, setRemarks] = useState(entry?.remarks ?? '');
   const { busy, error, run } = useSubmit();
 
-  const monthDay = `${month.slice(0, 7)}-01`;
-  const employees = useLoad<Employee[]>('/api/employees');
-  const partners = useLoad<Partner[]>('/api/partners');
-  const chart = useLoad<OrgChart>(`/api/org?date=${monthDay}`);
   const suggestions = useLoad<FdSuggestions>('/api/fd/suggestions');
   const tax = useLoad<TaxRate>(`/api/product-taxes/FD/on?date=${monthDay}`);
-  const found = useLoad<Page<ClientRow>>(!entry && looked ? `/api/clients?q=${encodeURIComponent(looked)}&size=20` : null);
-  const matches = useMemo(() => (looked && found.data ? matchClients(found.data.items, looked) : null), [found.data, looked]);
-  /** After a lookup: the client found, a choice when several match, or the new-client fields when nothing matches. */
-  const clientMode: 'lookup' | 'found' | 'pick' | 'new' = entry ? 'found' : !matches ? 'lookup' : matches.length === 0 ? 'new' : client ? 'found' : 'pick';
-  const rmLocked = !entry && !!client?.rmId;
-  const shares = useLoad<Record<string, Share[]>>(client ? `/api/shares?clientIds=${client.id}` : null);
 
   // A new entry starts with the product's TDS default; a client's own partner and RM are suggested.
   useEffect(() => {
@@ -299,28 +248,7 @@ function FdForm({ month: listMonth, entry, onDone }: { month: string; entry?: Fd
     }
   }, [entry, tax.data]);
   // One match: that is the client. Its RM comes from the Clients screen; its own partner is suggested.
-  useEffect(() => {
-    if (matches && matches.length === 1) setClient(matches[0]);
-    if (matches && matches.length === 0 && PAN_FORMAT.test(looked)) setNewPan(looked);
-  }, [matches, looked]);
-  useEffect(() => {
-    if (!client) return;
-    if (client.rmId) setRmId(String(client.rmId));
-    const own = shares.data?.[client.id]?.find((s) => !s.branch);
-    if (own && !partnerId) setPartnerId(String(own.partnerId));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, shares.data]);
-  const findClient = () => {
-    setClient(null);
-    setLooked(lookup.trim().toUpperCase());
-  };
 
-  const place = useMemo(() => {
-    for (const r of chart.data?.regions ?? []) {
-      for (const b of r.branches) if (b.people.some((p) => String(p.id) === rmId)) return { region: r.name, rd: r.rd?.name ?? '—', branch: b.name };
-    }
-    return null;
-  }, [chart.data, rmId]);
 
   const num = (s: string) => Number(s.replace(/,/g, '')) || 0;
   const gstPct = entry && entry.month === month.slice(0, 7) ? entry.gstPercent : (tax.data?.gstPercent ?? 0);
@@ -348,21 +276,11 @@ function FdForm({ month: listMonth, entry, onDone }: { month: string; entry?: Fd
     const m = monthsBetween(depositDate, d);
     if (m > 0) setMonths(String(m));
   };
-  const people = (employees.data ?? []).filter((e) => e.status === 'ACTIVE');
-  const sharePartners = (partners.data ?? []).filter((p) => p.type === 'SUB_BROKER' || p.type === 'REFERRAL');
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     const body = {
-      clientId: entry ? entry.clientId : clientMode === 'found' ? client?.id : null,
-      newClientName: clientMode === 'new' ? newName : null,
-      newClientPan: clientMode === 'new' && newPan ? newPan : null,
-      month: monthDay,
-      rmId: Number(rmId),
-      partnerId: partnerId ? Number(partnerId) : null,
-      mobile,
-      email,
-      address,
+    ...party.body(),
       fdName,
       fdNo,
       interestFrequency: frequency || null,
@@ -390,116 +308,9 @@ function FdForm({ month: listMonth, entry, onDone }: { month: string; entry?: Fd
   return (
     <form onSubmit={submit} className="fd-form">
       {tax.error && <p className="error">{tax.error}</p>}
-      <fieldset>
-        <legend>Client</legend>
-        {entry ? (
-          <p>
-            {entry.clientName} <span className="mono">{entry.pan}</span>
-          </p>
-        ) : (
-          <span className="inline-form">
-            <label>
-              Client PAN or client code
-              <input
-                value={lookup}
-                onChange={(e) => setLookup(e.target.value.toUpperCase().replace(/\s/g, ''))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    findClient();
-                  }
-                }}
-                placeholder="ABCDE1234F or FC01234"
-              />
-            </label>
-            <button type="button" className="secondary" disabled={lookup.trim().length < 3} onClick={findClient}>
-              Find
-            </button>
-          </span>
-        )}
-        {clientMode === 'pick' &&
-          (matches ?? []).map((c) => (
-            <label key={c.id} className="check">
-              <input type="radio" name="fd-client" checked={client?.id === c.id} onChange={() => setClient(c)} />
-              {c.name} · <span className="mono">{c.pan ?? 'no PAN'}</span> · {c.iwellCode ?? 'no code'} · {c.rmName ?? 'no RM'}
-            </label>
-          ))}
-        {!entry && client && (
-          <p className="ok">
-            {client.name} · <span className="mono">{client.pan ?? 'no PAN'}</span> · Client type: {client.iwellCode ?? 'OFFLINE'}
-          </p>
-        )}
-        {clientMode === 'new' && (
-          <>
-            <p className="muted">No client has this PAN or code: enter the new client (client type OFFLINE). They are added to Clients with the RM below.</p>
-            <label>
-              Client name
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} required />
-            </label>
-            <label>
-              PAN
-              <input value={newPan} onChange={(e) => setNewPan(e.target.value.toUpperCase().replace(/\s/g, ''))} maxLength={10} placeholder="ABCDE1234F" />
-            </label>
-          </>
-        )}
-        {(clientMode === 'found' || clientMode === 'new') && (
-          <>
-            <label>
-              Mobile
-              <input value={mobile} onChange={(e) => setMobile(e.target.value)} inputMode="tel" />
-            </label>
-            <label>
-              Email
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            </label>
-            <label>
-              Address
-              <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2} />
-            </label>
-          </>
-        )}
-      </fieldset>
+      <ClientFieldset party={party} radioName="fd-client" mobileLabel="Mobile" emailLabel="Email" />
 
-      <fieldset>
-        <legend>Month and RM</legend>
-        <label>
-          Month
-          <input type="month" value={month.slice(0, 7)} onChange={(e) => e.target.value && setMonth(e.target.value)} required />
-        </label>
-        {rmLocked ? (
-          <label>
-            RM
-            <input value={client?.rmName ?? ''} readOnly />
-          </label>
-        ) : (
-          <label>
-            RM
-            <select value={rmId} onChange={(e) => setRmId(e.target.value)} required>
-              <option value="">Choose…</option>
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.branchName ? `${p.name} — ${p.branchName}` : p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label>
-          Referral / sub-broker
-          <select value={partnerId} onChange={(e) => setPartnerId(e.target.value)}>
-            <option value="">None</option>
-            {sharePartners.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.type === 'SUB_BROKER' ? 'sub-broker' : 'referral'})
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="muted">
-          {place ? `Region: ${place.region} · RD: ${place.rd} · Branch: ${place.branch}` : 'Region and RD come from the RM.'}
-          {rmLocked && ' · The RM comes from the client: change it on the Clients screen.'}
-        </p>
-      </fieldset>
+      <MonthRmFieldset party={party} partnerLabel="Referral / sub-broker" />
 
       <fieldset>
         <legend>FD</legend>
@@ -662,26 +473,9 @@ function FdForm({ month: listMonth, entry, onDone }: { month: string; entry?: Fd
         <button type="submit" disabled={busy || clientMode === 'lookup' || clientMode === 'pick'}>
           {entry ? 'Save changes' : 'Add FD'}
         </button>
-        {entry && <CancelFd id={entry.id} onDone={onDone} />}
+        {entry && <CancelEntry url={`/api/fd/${entry.id}/cancel`} question="Why cancel this FD entry?" label="Cancel this FD" onDone={onDone} />}
       </span>
     </form>
   );
 }
 
-function CancelFd({ id, onDone }: { id: number; onDone: () => void }) {
-  const { busy, run } = useSubmit();
-  return (
-    <button
-      type="button"
-      className="link"
-      disabled={busy}
-      onClick={async () => {
-        const reason = window.prompt('Why cancel this FD entry?');
-        if (reason === null) return;
-        if (await run(() => api(`/api/fd/${id}/cancel`, { method: 'POST', body: { reason } }))) onDone();
-      }}
-    >
-      Cancel this FD
-    </button>
-  );
-}

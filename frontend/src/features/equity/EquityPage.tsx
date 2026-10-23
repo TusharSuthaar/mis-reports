@@ -9,8 +9,7 @@ import { canEditMasters } from '../../app/permissions';
 import { Amount } from '../../components/Amount';
 import { ListFilters, useFilterQuery } from '../../components/ListFilters';
 import { Modal } from '../../components/Modal';
-import { formatDate, formatDateTime, formatMoney } from '../../format';
-import { formatMonth } from '../fd/FdPage';
+import { formatDate, formatDateTime, formatMoney, formatMonth } from '../../format';
 
 /** One client in one month, from the month's broker report (R-89). clientId null = PAN not in Clients yet. */
 export interface EquityClientMonth {
