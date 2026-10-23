@@ -26,7 +26,7 @@ export function useTableView<T>(rows: readonly T[] | null | undefined, sorters: 
       if (ex || ey) return ex && ey ? 0 : ex ? 1 : -1;
       return dir * compare(x, y);
     });
-    // sorters is a fresh object each render; the key alone picks the column.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sorters is a fresh object each render; the key alone picks the column.
   }, [rows, sort]);
 
   const visible = all ? sorted : sorted.slice(0, PAGE_ROWS);

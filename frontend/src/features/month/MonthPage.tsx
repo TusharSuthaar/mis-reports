@@ -210,7 +210,8 @@ function BrokerageCard({ onStaged }: { onStaged: (uploadId: number, notes: strin
 
   useEffect(() => {
     if (job?.status === 'DONE' && job.result?.uploadId) onStaged(job.result.uploadId, job.result.notes ?? []);
-  }, [job?.status, job?.result?.uploadId]); // onStaged deliberately not a dependency: run once per finished upload
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per finished upload, not when the parent re-renders
+  }, [job?.status, job?.result?.uploadId]);
 
   async function upload() {
     if (!file) return;
@@ -416,7 +417,8 @@ function MonthLine({ m, canEdit, onReview, onChanged }: { m: MonthRow; canEdit: 
 
   useEffect(() => {
     if (job?.status === 'DONE' || job?.status === 'FAILED') onChanged();
-  }, [job?.status]); // onChanged deliberately not a dependency: once per finished run
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per finished run, not when the parent re-renders
+  }, [job?.status]);
 
   const hasFigures = (m.saved?.lines ?? 0) > 0;
   const blocked = hasFigures && m.notInMaster > 0 && m.status !== 'LOCKED';

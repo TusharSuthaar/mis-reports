@@ -73,9 +73,10 @@ export function useLoad<T>(path: string | null) {
   const reload = useCallback(() => load(true), [load]);
   useEffect(() => {
     load(false);
+    const tickets = latest;
     // A screen closed or its filter changed: an answer still on its way is no longer wanted.
     return () => {
-      latest.current++;
+      tickets.current++;
     };
   }, [load]);
   return { data, error, loading, reload };

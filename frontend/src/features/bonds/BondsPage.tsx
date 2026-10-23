@@ -241,7 +241,6 @@ function BondForm({ month: listMonth, entry, onDone }: { month: string; entry?: 
   // Qty × rate → investment amount, until the amount is typed by hand.
   useEffect(() => {
     if (!amountTouched && num(qty) > 0 && num(rate) > 0) setAmount(indianDigits(String(round2(num(qty) * num(rate)))));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qty, rate, amountTouched]);
   // Bond name known → its ISIN; platform + ISIN (or name) known → the mark-up last used.
   useEffect(() => {

@@ -19,7 +19,7 @@ Read [docs/README.md](docs/README.md) first, then [docs/architecture/guardrails.
 
 ## Commands
 - `backend/mvnw-docker.sh verify` — all backend tests (needs Docker)
-- `cd frontend && npm test` — frontend tests
+- `cd frontend && npm test` — frontend tests; `npm run lint` — lint (no warnings allowed)
 - `docker compose up -d --build` — run the app on http://localhost:5180
 
 ## Cloud sessions (Claude Code on the web)
