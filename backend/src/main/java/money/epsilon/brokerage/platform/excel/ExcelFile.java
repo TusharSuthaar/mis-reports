@@ -80,7 +80,7 @@ public final class ExcelFile implements AutoCloseable {
             }
         }
         Columns top = columns(sheet.getRow(sheet.getFirstRowNum()));
-        return Optional.of(new Table(sheet.getSheetName(), title, top, List.of(), required.stream().filter(h -> top.indexOf(h) == null).toList()));
+        return Optional.of(new Table(sheet.getSheetName(), title, top, List.of(), required.stream().filter(h -> top.indexOf(h) == null).toList(), -1));
     }
 
     @Override
@@ -115,7 +115,22 @@ public final class ExcelFile implements AutoCloseable {
             }
             if (any) rows.add(new ExcelRow(r + 1, columns, values));
         }
-        return new Table(sheet.getSheetName(), title, columns, rows, List.of());
+        return new Table(sheet.getSheetName(), title, columns, rows, List.of(), headerRow);
+    }
+
+    /**
+     * The texts of one row of a sheet, column index → text (blank cells left out): for headers that span two rows, e.g. a
+     * vendor's name above each of several "Base Price" columns. {@code rowIndex} is 0-based, as {@link Table#headerRow()}.
+     */
+    public Map<Integer, String> rowTexts(String sheetName, int rowIndex) {
+        Map<Integer, String> result = new java.util.TreeMap<>();
+        Sheet sheet = sheet(sheetName);
+        if (sheet == null || rowIndex < 0 || sheet.getRow(rowIndex) == null) return result;
+        for (Cell cell : sheet.getRow(rowIndex)) {
+            Object v = value(cell);
+            if (v != null && !v.toString().isBlank()) result.put(cell.getColumnIndex(), v instanceof BigDecimal d ? d.toPlainString() : v.toString().trim());
+        }
+        return result;
     }
 
     private Columns columns(Row row) {
@@ -135,13 +150,25 @@ public final class ExcelFile implements AutoCloseable {
 
     private Object value(Cell cell) {
         if (cell == null) return null;
-        CellType type = cell.getCellType() == CellType.FORMULA ? eval.evaluateFormulaCell(cell) : cell.getCellType();
-        if (type == CellType.BLANK || type == CellType._NONE) return null;
+        CellType type = cell.getCellType();
+        boolean cached = false;
+        if (type == CellType.FORMULA) {
+            try {
+                type = eval.evaluateFormulaCell(cell);
+            } catch (RuntimeException e) {
+                // A formula that cannot be worked out here (a link to another workbook, a function such as XLOOKUP): use the
+                // value Excel saved with the file, which is what the user sees.
+                type = cell.getCachedFormulaResultType();
+                cached = true;
+            }
+        }
+        if (type == CellType.BLANK || type == CellType._NONE || (cached && type == CellType.ERROR)) return null;
         if (type == CellType.NUMERIC) {
             if (DateUtil.isCellDateFormatted(cell)) return cell.getLocalDateTimeCellValue().toLocalDate();
             return BigDecimal.valueOf(cell.getNumericCellValue());
         }
-        String text = fmt.formatCellValue(cell, eval).replace(' ', ' ').trim();
+        String text = (cached ? (type == CellType.BOOLEAN ? String.valueOf(cell.getBooleanCellValue()) : cell.getStringCellValue())
+                : fmt.formatCellValue(cell, eval)).replace(' ', ' ').trim();
         return text.isEmpty() ? null : text;
     }
 
@@ -152,6 +179,12 @@ public final class ExcelFile implements AutoCloseable {
         final Map<String, Integer> byKey = new HashMap<>();
         final Map<String, Integer> byCompact = new HashMap<>();
 
+        /** Every column whose header is {@code header} (a header may repeat), left to right. */
+        public List<Integer> indexesOf(String header) {
+            String key = Text.key(header);
+            return labels.entrySet().stream().filter(e -> Text.key(e.getValue()).equals(key)).map(Map.Entry::getKey).toList();
+        }
+
         Integer indexOf(String header) {
             Integer i = byKey.get(Text.key(header));
             if (i != null) return i;
@@ -160,8 +193,8 @@ public final class ExcelFile implements AutoCloseable {
         }
     }
 
-    /** A sheet read below its header row. Blank rows are left out. */
-    public record Table(String sheetName, String title, Columns columns, List<ExcelRow> rows, List<String> missing) {
+    /** A sheet read below its header row. Blank rows are left out. {@code headerRow}: 0-based, −1 when not found. */
+    public record Table(String sheetName, String title, Columns columns, List<ExcelRow> rows, List<String> missing, int headerRow) {
 
         public boolean has(String header) {
             return columns.indexOf(header) != null;

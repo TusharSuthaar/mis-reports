@@ -409,6 +409,44 @@ class MonthLifecycleIT extends IntegrationTestBase {
     }
 
     @Test
+    void theMonthsPreIpoDealsAreSplitAndShownInThePreIpoColumn() throws Exception {
+        long periodId = saveMonth(file(100));   // MF: client 1 net 100, client 2 net 50, no partners
+        long scrip = postJson("/api/preipo/scrips", Map.of("name", "END CO " + tag), admin, 201).get("id").asLong();
+        long vendor = postJson("/api/platforms", Map.of("name", "END VENDOR " + tag), admin, 201).get("id").asLong();
+        Map<String, Object> deal = new java.util.HashMap<>();
+        deal.put("kind", "BUY");
+        deal.put("clientId", client1Id);
+        deal.put("month", month + "-01");
+        deal.put("rmId", rmId);
+        deal.put("partnerId", refId);
+        deal.put("scripId", scrip);
+        deal.put("vendorId", vendor);
+        deal.put("dealDate", month + "-10");
+        deal.put("quantity", 100);
+        deal.put("clientPrice", 110);
+        deal.put("vendorPrice", 100);   // brokerage 1,000 incl. GST → 847.46 without GST
+        postJson("/api/preipo", deal, admin, 201);
+
+        // The referral partner has no Pre-IPO % yet: the pre-check names it.
+        assertThat(getJson("/api/months/" + periodId + "/readiness", admin, 200).get("missingPercent").toString()).contains("REF " + tag + " (Pre-IPO)");
+        postJson("/api/partners/" + refId + "/products", Map.of("product", "PREIPO", "percent", 20, "from", month + "-01"), admin, 204);
+        JsonNode run = process(periodId);
+        assertThat(run.get("net").decimalValue()).isEqualByComparingTo("997.46");     // MF 150 + Pre-IPO 847.46
+        assertThat(run.get("partners").decimalValue()).isEqualByComparingTo("169.49"); // 20% of the Pre-IPO brokerage
+
+        MockHttpServletResponse end = mvc.perform(get("/api/months/" + periodId + "/end-file").session(admin)).andExpect(status().isOk()).andReturn().getResponse();
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(end.getContentAsByteArray()))) {
+            var data = wb.getSheetAt(2);
+            assertThat(data.getRow(0).getCell(14).getStringCellValue()).isEqualTo("Pre-IPO");
+            var row = StreamSupport.stream(data.spliterator(), false)
+                    .filter(r -> r.getCell(29) != null && r.getCell(29).getStringCellValue().startsWith("Pre-IPO buy: END CO " + tag)).findFirst().orElseThrow();
+            assertThat(row.getCell(10).getNumericCellValue()).isEqualTo(11000.0);    // AUM: 100 × 110
+            assertThat(row.getCell(14).getNumericCellValue()).isEqualTo(847.46);     // Pre-IPO column
+            assertThat(row.getCell(23).getNumericCellValue()).isEqualTo(847.46);     // Total Rev
+        }
+    }
+
+    @Test
     void theMonthsLoanPayoutsAreSplitWithTheirPartnersLoansPercentAndShownInTheLoansColumn() throws Exception {
         long periodId = saveMonth(file(100));   // MF: client 1 net 100, client 2 net 50, no partners
         Map<String, Object> loan = new java.util.HashMap<>();

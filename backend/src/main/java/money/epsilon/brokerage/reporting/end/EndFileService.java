@@ -37,6 +37,7 @@ public class EndFileService {
     static final String AIF = "AIF";
     static final String LOAN = "LOAN";
     static final String GIFT = "GIFT";
+    static final String PREIPO = "PREIPO";
     static final String EQUITY = "EQUITY";
     static final String NO_BRANCH = "(no branch)";
 
@@ -51,15 +52,18 @@ public class EndFileService {
     private final money.epsilon.brokerage.aif.service.AifService aifs;
     private final money.epsilon.brokerage.loan.service.LoanService loans;
     private final money.epsilon.brokerage.gift.service.GiftService gifts;
+    private final money.epsilon.brokerage.preipo.service.PreIpoService preIpos;
 
     EndFileService(PeriodService periods, JdbcClient jdbc, PanCipher panCipher, AuditService audit,
                    money.epsilon.brokerage.client.service.ClientService clients, RegionService regions,
                    money.epsilon.brokerage.fd.service.FdService fds, money.epsilon.brokerage.bond.service.BondService bonds,
                    money.epsilon.brokerage.aif.service.AifService aifs, money.epsilon.brokerage.loan.service.LoanService loans,
-                   money.epsilon.brokerage.gift.service.GiftService gifts) {
+                   money.epsilon.brokerage.gift.service.GiftService gifts,
+                   money.epsilon.brokerage.preipo.service.PreIpoService preIpos) {
         this.aifs = aifs;
         this.loans = loans;
         this.gifts = gifts;
+        this.preIpos = preIpos;
         this.fds = fds;
         this.bonds = bonds;
         this.clients = clients;
@@ -83,8 +87,8 @@ public class EndFileService {
         Map<Long, YearMonth> monthOfPeriod = periods.list(MF).stream().collect(Collectors.toMap(PeriodView::id, PeriodView::month));
 
         List<EndRow> rows = jdbc.sql("""
-                        SELECT * FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?)""")
-                .params(periodId, MF, FD, BOND, AIF, LOAN, GIFT, EQUITY)
+                        SELECT * FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?, ?)""")
+                .params(periodId, MF, FD, BOND, AIF, LOAN, GIFT, EQUITY, PREIPO)
                 .query((rs, n) -> {
                     boolean fd = FD.equals(rs.getString("product_type"));
                     boolean bond = BOND.equals(rs.getString("product_type"));
@@ -103,6 +107,13 @@ public class EndFileService {
                         return new EndRow(row.region(), row.rd(), row.branch(), row.rm(), row.subBroker(), row.subBrokerPct(), row.referral(),
                                 row.referralPct(), row.posp(), row.client(), row.pan(), null, null, null, row.subBrokerAmount(),
                                 row.referralAmount(), row.pospAmount(), "AIF#" + rs.getLong("aif_entry_id"), null, null, null, rs.getBigDecimal("net"), null, null, null);
+                    }
+                    if (PREIPO.equals(rs.getString("product_type"))) {
+                        // A Pre-IPO row (R-93): its brokerage excl. GST in the Pre-IPO column, the deal amount as AUM, MF columns empty.
+                        return new EndRow(row.region(), row.rd(), row.branch(), row.rm(), row.subBroker(), row.subBrokerPct(), row.referral(),
+                                row.referralPct(), row.posp(), row.client(), row.pan(), null, null, null, row.subBrokerAmount(),
+                                row.referralAmount(), row.pospAmount(), "PREIPO#" + rs.getLong("preipo_entry_id"), null, null, null, null, null, null,
+                                null, rs.getBigDecimal("net"));
                     }
                     if (EQUITY.equals(rs.getString("product_type"))) {
                         // An equity row (R-89): the client's franchise share in the Equity column, MF columns empty, no remark (as in the END).
@@ -140,15 +151,15 @@ public class EndFileService {
                         .thenComparing(e -> Objects.toString(e.rm(), "")).thenComparing(e -> Objects.toString(e.client(), "")))
                 .toList();
         if (rows.isEmpty()) throw new RuleViolationException(p.month() + " has no split to export");
-        rows = withGiftLabels(withLoanLabels(withAifLabels(withBondLabels(withFdLabels(rows)))));
+        rows = withPreIpoLabels(withGiftLabels(withLoanLabels(withAifLabels(withBondLabels(withFdLabels(rows))))));
 
         PeriodView previous = periods.list(MF).stream()
                 .filter(x -> x.status() == Period.Status.LOCKED && x.month().isBefore(p.month()))
                 .max(Comparator.comparing(PeriodView::month)).orElse(null);
         List<BranchTotal> prev = previous == null ? List.of() : jdbc.sql("""
                         SELECT region, coalesce(branch, ?) AS branch, sum(net) AS gross, sum(epsilon_amount) AS net
-                        FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?) GROUP BY region, coalesce(branch, ?)""")
-                .params(NO_BRANCH, previous.id(), MF, FD, BOND, AIF, LOAN, GIFT, EQUITY, NO_BRANCH)
+                        FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?, ?) GROUP BY region, coalesce(branch, ?)""")
+                .params(NO_BRANCH, previous.id(), MF, FD, BOND, AIF, LOAN, GIFT, EQUITY, PREIPO, NO_BRANCH)
                 .query((rs, n) -> new BranchTotal(rs.getString("region"), rs.getString("branch"), rs.getBigDecimal("gross"), rs.getBigDecimal("net")))
                 .list();
 
@@ -216,6 +227,22 @@ public class EndFileService {
             return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
                     e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(), remark,
                     l == null ? null : l.sanctionedAmount(), null, null, null, e.loans(), null, null);
+        }).toList();
+    }
+
+    /** Pre-IPO rows carry "PREIPO#id" until here: they get buy / buyback, the scrip and ISIN as REMARKS, and the deal amount as AUM. */
+    private List<EndRow> withPreIpoLabels(List<EndRow> rows) {
+        List<Long> ids = rows.stream().map(EndRow::remarks).filter(r -> r != null && r.startsWith("PREIPO#")).map(r -> Long.parseLong(r.substring(7))).toList();
+        if (ids.isEmpty()) return rows;
+        Map<Long, money.epsilon.brokerage.preipo.service.PreIpoService.PreIpoLabel> labels = preIpos.labels(ids);
+        return rows.stream().map(e -> {
+            if (e.remarks() == null || !e.remarks().startsWith("PREIPO#")) return e;
+            var l = labels.get(Long.parseLong(e.remarks().substring(7)));
+            String remark = l == null ? "Pre-IPO" : (l.kind() == money.epsilon.brokerage.preipo.domain.PreIpoEntry.Kind.BUY ? "Pre-IPO buy: " : "Pre-IPO buyback: ")
+                    + l.scripName() + (l.isin() == null ? "" : " " + l.isin());
+            return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
+                    e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(), remark,
+                    l == null ? null : l.amount(), null, null, null, null, null, null, e.preIpo());
         }).toList();
     }
 

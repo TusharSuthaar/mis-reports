@@ -44,18 +44,28 @@ public final class EndWorkbook {
                          BigDecimal mfTrail, BigDecimal gst, BigDecimal mfNet,
                          BigDecimal subBrokerAmount, BigDecimal referralAmount, BigDecimal pospAmount, String remarks,
                          BigDecimal aum, BigDecimal fd, BigDecimal bonds, BigDecimal aif, BigDecimal loans, BigDecimal gift,
-                         BigDecimal equity) {
+                         BigDecimal equity, BigDecimal preIpo) {
+        /** Every product but Pre-IPO (R-93 added it last). */
+        public EndRow(String region, String rd, String branch, String rm, String subBroker, BigDecimal subBrokerPct,
+                      String referral, BigDecimal referralPct, String posp, String client, String pan,
+                      BigDecimal mfTrail, BigDecimal gst, BigDecimal mfNet,
+                      BigDecimal subBrokerAmount, BigDecimal referralAmount, BigDecimal pospAmount, String remarks,
+                      BigDecimal aum, BigDecimal fd, BigDecimal bonds, BigDecimal aif, BigDecimal loans, BigDecimal gift, BigDecimal equity) {
+            this(region, rd, branch, rm, subBroker, subBrokerPct, referral, referralPct, posp, client, pan, mfTrail, gst, mfNet,
+                    subBrokerAmount, referralAmount, pospAmount, remarks, aum, fd, bonds, aif, loans, gift, equity, null);
+        }
+
         public EndRow(String region, String rd, String branch, String rm, String subBroker, BigDecimal subBrokerPct,
                       String referral, BigDecimal referralPct, String posp, String client, String pan,
                       BigDecimal mfTrail, BigDecimal gst, BigDecimal mfNet,
                       BigDecimal subBrokerAmount, BigDecimal referralAmount, BigDecimal pospAmount, String remarks) {
             this(region, rd, branch, rm, subBroker, subBrokerPct, referral, referralPct, posp, client, pan, mfTrail, gst, mfNet,
-                    subBrokerAmount, referralAmount, pospAmount, remarks, null, null, null, null, null, null, null);
+                    subBrokerAmount, referralAmount, pospAmount, remarks, null, null, null, null, null, null, null, null);
         }
 
         /** MF net + the other products: the row's revenue excl. GST. */
         BigDecimal totalRev() {
-            return nz(mfNet).add(nz(fd)).add(nz(bonds)).add(nz(aif)).add(nz(loans)).add(nz(gift)).add(nz(equity));
+            return nz(mfNet).add(nz(preIpo)).add(nz(fd)).add(nz(bonds)).add(nz(aif)).add(nz(loans)).add(nz(gift)).add(nz(equity));
         }
     }
 
@@ -177,6 +187,7 @@ public final class EndWorkbook {
             num(row, MF_TRAIL + 1, e.gst());
             num(row, MF_NET, e.mfNet());
             for (int c = PRE_IPO; c <= GIFT_COL; c++) row.createCell(c).setCellStyle(money); // other products: FD below, the rest not live yet
+            num(row, PRE_IPO, e.preIpo());
             num(row, FD_COL, e.fd());
             num(row, BONDS_COL, e.bonds());
             num(row, LOANS_COL, e.loans());
@@ -242,7 +253,7 @@ public final class EndWorkbook {
             return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), dropSb ? null : e.subBroker(), dropSb ? null : e.subBrokerPct(),
                     dropRef ? null : e.referral(), dropRef ? null : e.referralPct(), dropPosp ? null : e.posp(), e.client(), e.pan(),
                     e.mfTrail(), e.gst(), e.mfNet(), e.subBrokerAmount(), e.referralAmount(), e.pospAmount(), e.remarks(), e.aum(), e.fd(),
-                    e.bonds(), e.aif(), e.loans(), e.gift(), e.equity());
+                    e.bonds(), e.aif(), e.loans(), e.gift(), e.equity(), e.preIpo());
         }).toList();
     }
 
