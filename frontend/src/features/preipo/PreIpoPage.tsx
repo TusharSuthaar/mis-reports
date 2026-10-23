@@ -114,7 +114,22 @@ const SHEET_LABEL: Record<DealSheet, string> = { NA: 'NA', PENDING: 'Signed, pen
 const PAID: BillingStatus[] = ['PAYMENT_RECEIVED', 'PAID_BY_CLIENT'];
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+const r4 = (n: number) => Math.round((n + Number.EPSILON) * 10000) / 10000;
 const PAN_FORMAT = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+
+export type PriceField = 'pct' | 'markup' | 'client';
+
+/**
+ * The deal's prices from the base price and one other field (as in the register: Mark up = client price − base on a buy,
+ * price to us − client price on a buyback; Markup in % = Mark up ÷ base). Null without a base price.
+ */
+export function linkedPrices(kind: PreIpoKind, base: number, from: PriceField, value: number) {
+  if (!base) return null;
+  const sign = kind === 'BUY' ? 1 : -1;
+  const markup = from === 'pct' ? r4((base * value) / 100) : from === 'markup' ? value : r4(sign * (value - base));
+  const clientPrice = from === 'client' ? value : round2(base + sign * markup);
+  return { markup, markupPercent: r4((markup / base) * 100), clientPrice };
+}
 
 /** The revenue as the server works it out (R-93), for the live preview while typing. */
 export function preIpoRevenue(kind: PreIpoKind, qty: number, clientPrice: number, vendorPrice: number, gstPct: number, tdsApplied: boolean, tdsPct: number) {
@@ -128,27 +143,30 @@ export function preIpoRevenue(kind: PreIpoKind, qty: number, clientPrice: number
 
 /** Pre-IPO (unlisted shares): the deals (buys and buybacks) and the vendors' price list. */
 export function PreIpoPage({ embedded = false }: { embedded?: boolean } = {}) {
-  const [view, setView] = useState<'DEALS' | 'PRICES'>('DEALS');
+  const [view, setView] = useState<PreIpoKind | 'PRICES'>('BUY');
+  const views: [PreIpoKind | 'PRICES', string][] = [['BUY', 'Buy'], ['BUYBACK', 'Buyback'], ['PRICES', 'Available IPOs']];
   return (
     <section>
       {!embedded && <h1>Pre-IPO</h1>}
       <div className="tabs" role="tablist" aria-label="Pre-IPO">
-        <button type="button" role="tab" aria-selected={view === 'DEALS'} className={view === 'DEALS' ? 'tab active' : 'tab'} onClick={() => setView('DEALS')}>
-          Deals (buy and buyback)
-        </button>
-        <button type="button" role="tab" aria-selected={view === 'PRICES'} className={view === 'PRICES' ? 'tab active' : 'tab'} onClick={() => setView('PRICES')}>
-          Available IPOs
-        </button>
+        {views.map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={view === k} className={view === k ? 'tab active' : 'tab'} onClick={() => setView(k)}>
+            {label}
+          </button>
+        ))}
       </div>
-      {view === 'DEALS' ? <Deals /> : <AvailableIpos />}
+      {view === 'PRICES' ? <AvailableIpos /> : <Deals key={view} kind={view} />}
     </section>
   );
 }
 
-function Deals() {
+/** One kind of deal: the register keeps buys and buybacks on separate sheets, and so does this screen. */
+function Deals({ kind }: { kind: PreIpoKind }) {
   const { user } = useAuth();
   const canEdit = canEditMasters(user?.role);
-  const query = useFilterQuery();
+  const filters = useFilterQuery();
+  const query = `${filters ? `${filters}&` : '?'}kind=${kind}`;
+  const buy = kind === 'BUY';
   const list = useLoad<PreIpoDeal[]>(`/api/preipo${query}`);
   const platforms = useLoad<Platform[]>('/api/platforms');
   const [panel, setPanel] = useEntryPanel();
@@ -160,8 +178,9 @@ function Deals() {
     list.reload();
   };
   const view = useTableView(list.data, {
-    month: (e) => e.month, kind: (e) => e.kind, date: (e) => e.dealDate, client: (e) => e.clientName, scrip: (e) => e.scripName,
-    vendor: (e) => e.vendorName, rm: (e) => e.rmName, qty: (e) => e.quantity, amount: (e) => e.amount, brokerage: (e) => e.brokerage,
+    month: (e) => e.month, date: (e) => e.dealDate, client: (e) => e.clientName, scrip: (e) => e.scripName,
+    vendor: (e) => e.vendorName, rm: (e) => e.rmName, qty: (e) => e.quantity, client_price: (e) => e.clientPrice, vendor_price: (e) => e.vendorPrice, markup: (e) => e.markupPerShare, markup_pct: (e) => e.markupPercent,
+    amount: (e) => e.amount, brokerage: (e) => e.brokerage,
     gross: (e) => e.gross, net: (e) => e.net, billing: (e) => e.billingStatus,
   });
   return (
@@ -173,7 +192,7 @@ function Deals() {
               Download Excel
             </a>
             <button type="button" onClick={() => setPanel('new')}>
-              Add Pre-IPO deal
+              {buy ? 'Add buy' : 'Add buyback'}
             </button>
           </div>
         )}
@@ -186,7 +205,7 @@ function Deals() {
         payments={BILLING_LABEL}
       />
       {list.error && <p className="error">{list.error}</p>}
-      {list.data && list.data.length === 0 && <p className="muted">No Pre-IPO deals match.</p>}
+      {list.data && list.data.length === 0 && <p className="muted">{buy ? 'No buys match.' : 'No buybacks match.'}</p>}
       {list.data && list.data.length > 0 && (
         <>
           <div className="table-scroll">
@@ -195,14 +214,17 @@ function Deals() {
                 <tr>
                   <th className="num">SR.NO</th>
                   {view.th('month', 'Month')}
-                  {view.th('kind', 'Type')}
-                  {view.th('date', 'Deal date')}
+                  {view.th('date', buy ? 'Invt date' : 'Transaction date')}
                   {view.th('client', 'Client')}
                   {view.th('scrip', 'Pre-IPO')}
                   {view.th('vendor', 'Vendor')}
                   {view.th('rm', 'RM')}
                   {view.th('qty', 'Qty', 'num')}
-                  {view.th('amount', 'Amount', 'num')}
+                  {buy ? view.th('vendor_price', 'Base price', 'num') : view.th('client_price', 'Client price', 'num')}
+                  {buy ? view.th('client_price', 'Price to client', 'num') : view.th('vendor_price', 'Price to us', 'num')}
+                  {view.th('markup', 'Mark up', 'num')}
+                  {view.th('markup_pct', 'Mark up %', 'num')}
+                  {view.th('amount', 'Investment amount', 'num')}
                   {view.th('brokerage', 'Gross Brk', 'num')}
                   {view.th('gross', 'Without GST', 'num')}
                   {view.th('net', 'Net revenue', 'num')}
@@ -213,11 +235,8 @@ function Deals() {
                 {view.rows.map((e, i) => (
                   <tr key={e.id} className={e.status === 'CANCELLED' ? 'muted' : undefined}>
                     <td className="num">{i + 1}</td>
-                    <td>{formatMonth(e.month)}</td>
-                    <td>
-                      <span className="badge">{KIND_LABEL[e.kind]}</span>
-                    </td>
-                    <td>{formatDate(e.dealDate)}</td>
+                    <td className="nowrap">{formatMonth(e.month)}</td>
+                    <td className="nowrap">{formatDate(e.dealDate)}</td>
                     <td>
                       <button type="button" className="cell-link" onClick={() => setPanel(e.id)}>
                         {e.clientName}
@@ -232,6 +251,10 @@ function Deals() {
                     <td>{e.vendorName}</td>
                     <td>{e.rmName}</td>
                     <td className="num">{e.quantity.toLocaleString('en-IN')}</td>
+                    <td className="num">{formatMoney(buy ? e.vendorPrice : e.clientPrice)}</td>
+                    <td className="num">{formatMoney(buy ? e.clientPrice : e.vendorPrice)}</td>
+                    <td className="num">{formatMoney(e.markupPerShare)}</td>
+                    <td className="num">{e.markupPercent.toFixed(2)}%</td>
                     <td className="num"><Amount value={e.amount} /></td>
                     <td className="num"><Amount value={e.brokerage} /></td>
                     <td className="num"><Amount value={e.gross} /></td>
@@ -240,7 +263,7 @@ function Deals() {
                   </tr>
                 ))}
                 <tr className="total">
-                  <td colSpan={9}>Total ({active.length} deals)</td>
+                  <td colSpan={12}>Total ({active.length} {buy ? 'buys' : 'buybacks'})</td>
                   <td className="num"><Amount value={total('amount')} /></td>
                   <td className="num"><Amount value={total('brokerage')} /></td>
                   <td className="num"><Amount value={total('gross')} /></td>
@@ -254,14 +277,14 @@ function Deals() {
         </>
       )}
       {panel === 'new' && (
-        <Modal title="Add Pre-IPO deal" onClose={() => setPanel(null)}>
-          <DealForm onDone={done} />
+        <Modal title={buy ? 'Add Pre-IPO buy' : 'Add Pre-IPO buyback'} onClose={() => setPanel(null)}>
+          <DealForm kind={kind} onDone={done} />
         </Modal>
       )}
       {editing && (
         <Modal title={`${editing.clientName} — ${KIND_LABEL[editing.kind]} ${editing.scripName}`} onClose={() => setPanel(null)}>
           {canEdit && editing.status === 'ACTIVE' ? (
-            <DealForm entry={editing} onDone={done} />
+            <DealForm kind={editing.kind} entry={editing} onDone={done} />
           ) : (
             <p>
               {KIND_LABEL[editing.kind]} · {editing.scripName} · {formatMoney(editing.amount)} · {editing.status === 'CANCELLED' ? 'Cancelled' : BILLING_LABEL[editing.billingStatus]}
@@ -274,10 +297,9 @@ function Deals() {
 }
 
 /** Add or edit one deal, laid out as in the Pre-IPO register. Scrip + vendor + date → prices from the price list. */
-function DealForm({ entry, onDone }: { entry?: PreIpoDeal; onDone: () => void }) {
+function DealForm({ kind, entry, onDone }: { kind: PreIpoKind; entry?: PreIpoDeal; onDone: () => void }) {
   const num = (s: string) => Number(s.replace(/,/g, '')) || 0;
   const str = (n: number | null | undefined) => (n == null ? '' : String(n));
-  const [kind, setKind] = useState<PreIpoKind>(entry?.kind ?? 'BUY');
   const [month, setMonth] = useState(entry ? entry.month : todayIso().slice(0, 7));
   const [rmId, setRmId] = useState(entry ? String(entry.rmId) : '');
   const [lookup, setLookup] = useState('');
@@ -298,6 +320,8 @@ function DealForm({ entry, onDone }: { entry?: PreIpoDeal; onDone: () => void })
   const [qty, setQty] = useState(str(entry?.quantity));
   const [clientPrice, setClientPrice] = useState(str(entry?.clientPrice));
   const [vendorPrice, setVendorPrice] = useState(str(entry?.vendorPrice));
+  const [markup, setMarkup] = useState(str(entry?.markupPerShare));
+  const [markupPct, setMarkupPct] = useState(entry ? String(entry.markupPercent) : '');
   const [pricesTouched, setPricesTouched] = useState(!!entry);
   const [tdsApplied, setTdsApplied] = useState(entry?.tdsApplied ?? true);
   const [tdsPct, setTdsPct] = useState(str(entry?.tdsPercent));
@@ -344,8 +368,32 @@ function DealForm({ entry, onDone }: { entry?: PreIpoDeal; onDone: () => void })
   useEffect(() => {
     if (pricesTouched || !listed) return;
     setVendorPrice(String(listed.basePrice));
-    setClientPrice(String(kind === 'BUY' ? listed.clientPrice : round2((listed.basePrice * (100 - listed.markupPercent)) / 100)));
+    setMarkupPct(String(listed.markupPercent));
+    fill(listed.basePrice, 'pct', listed.markupPercent);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listed, kind, pricesTouched]);
+  /**
+   * Base price, mark-up per share, mark-up % and client price fill each other: a buy adds the mark-up to the base price,
+   * a buyback takes it off. {@code from} is the field just typed; the base price keeps the mark-up % (or the client price).
+   */
+  function fill(base: number, from: PriceField, value: number) {
+    const p = linkedPrices(kind, base, from, value);
+    if (!p) return;
+    if (from !== 'markup') setMarkup(String(p.markup));
+    if (from !== 'pct') setMarkupPct(String(p.markupPercent));
+    if (from !== 'client') setClientPrice(String(p.clientPrice));
+  }
+  const typed = (setter: (v: string) => void, from: PriceField) => (v: string) => {
+    setPricesTouched(true);
+    setter(v);
+    if (v !== '') fill(num(vendorPrice), from, num(v));
+  };
+  const typedBase = (v: string) => {
+    setPricesTouched(true);
+    setVendorPrice(v);
+    if (markupPct !== '') fill(num(v), 'pct', num(markupPct));
+    else if (clientPrice !== '') fill(num(v), 'client', num(clientPrice));
+  };
   const findClient = () => {
     setClient(null);
     setLooked(lookup.trim().toUpperCase());
@@ -399,18 +447,9 @@ function DealForm({ entry, onDone }: { entry?: PreIpoDeal; onDone: () => void })
   return (
     <form onSubmit={submit} className="fd-form">
       {tax.error && <p className="error">{tax.error}</p>}
-      <fieldset>
-        <legend>Deal</legend>
-        <span className="inline-form">
-          {(['BUY', 'BUYBACK'] as const).map((k) => (
-            <label key={k} className="check">
-              <input type="radio" name="preipo-kind" checked={kind === k} onChange={() => setKind(k)} />
-              {k === 'BUY' ? 'Buy (client buys: mark-up added)' : 'Buyback (client sells: mark-up taken off)'}
-            </label>
-          ))}
-        </span>
-      </fieldset>
-
+      <p className="muted" style={{ marginTop: 0 }}>
+        {kind === 'BUY' ? 'Client buys: our mark-up is added to the vendor base price.' : 'Client sells back: our mark-up is taken off the price the vendor pays.'}
+      </p>
       <fieldset>
         <legend>Client</legend>
         {entry ? (
@@ -418,7 +457,7 @@ function DealForm({ entry, onDone }: { entry?: PreIpoDeal; onDone: () => void })
             {entry.clientName} <span className="mono">{entry.pan}</span> · Client type: {entry.clientType}
           </p>
         ) : (
-          <span className="inline-form">
+          <>
             <label>
               Client PAN or client code
               <input
@@ -433,10 +472,10 @@ function DealForm({ entry, onDone }: { entry?: PreIpoDeal; onDone: () => void })
                 placeholder="ABCDE1234F or EM1234"
               />
             </label>
-            <button type="button" className="secondary" disabled={lookup.trim().length < 3} onClick={findClient}>
-              Find
+            <button type="button" className="secondary field-button" disabled={lookup.trim().length < 3} onClick={findClient}>
+              Find client
             </button>
-          </span>
+          </>
         )}
         {clientMode === 'pick' &&
           (matches ?? []).map((c) => (
@@ -570,12 +609,20 @@ function DealForm({ entry, onDone }: { entry?: PreIpoDeal; onDone: () => void })
           <input type="number" min={0} step="any" value={qty} onChange={(e) => setQty(e.target.value)} required />
         </label>
         <label>
-          {kind === 'BUY' ? 'Vendor base price (₹)' : 'Price the vendor pays (₹)'}
-          <input type="number" min={0} step="any" value={vendorPrice} onChange={(e) => { setPricesTouched(true); setVendorPrice(e.target.value); }} required />
+          {kind === 'BUY' ? 'Base price (₹)' : 'Price to us (₹)'}
+          <input type="number" min={0} step="any" value={vendorPrice} onChange={(e) => typedBase(e.target.value)} required />
+        </label>
+        <label>
+          Mark up (₹ per share)
+          <input type="number" min={0} step="any" value={markup} onChange={(e) => typed(setMarkup, 'markup')(e.target.value)} />
+        </label>
+        <label>
+          Mark up %
+          <input type="number" min={0} max={100} step="any" value={markupPct} onChange={(e) => typed(setMarkupPct, 'pct')(e.target.value)} />
         </label>
         <label>
           {kind === 'BUY' ? 'Price offered to client (₹)' : 'Client price (₹)'}
-          <input type="number" min={0} step="any" value={clientPrice} onChange={(e) => { setPricesTouched(true); setClientPrice(e.target.value); }} required />
+          <input type="number" min={0} step="any" value={clientPrice} onChange={(e) => typed(setClientPrice, 'client')(e.target.value)} required />
         </label>
         <p className="muted">
           {scrip?.lotSize ? `Minimum lot ${scrip.lotSize}. ` : ''}
@@ -587,41 +634,43 @@ function DealForm({ entry, onDone }: { entry?: PreIpoDeal; onDone: () => void })
 
       <fieldset>
         <legend>Brokerage</legend>
-        <span className="inline-form">
-          <label className="check">
-            <input type="checkbox" checked={tdsApplied} onChange={(e) => setTdsApplied(e.target.checked)} />
-            TDS
-          </label>
-          {tdsApplied && (
-            <label>
-              TDS %
-              <input type="number" min={0} max={100} step="0.01" value={tdsPct} onChange={(e) => setTdsPct(e.target.value)} aria-label="TDS %" required />
-            </label>
-          )}
-        </span>
+        <label>
+          TDS
+          <select value={tdsApplied ? 'YES' : 'NO'} onChange={(e) => setTdsApplied(e.target.value === 'YES')}>
+            <option value="YES">Deducted by the vendor</option>
+            <option value="NO">Not deducted</option>
+          </select>
+        </label>
+        <label>
+          TDS % (on Gross Brk)
+          <input type="number" min={0} max={100} step="0.01" value={tdsApplied ? tdsPct : '0'} disabled={!tdsApplied} onChange={(e) => setTdsPct(e.target.value)} required />
+        </label>
+        <label>
+          GST %
+          <input value={gstPct} readOnly />
+        </label>
         {rev.markup < 0 && (
           <p className="error">{kind === 'BUY' ? 'The client price is below the vendor base price.' : 'The client price is above what the vendor pays.'}</p>
         )}
-        <dl className="facts">
-          <dt>Mark-up per share</dt>
-          <dd>{formatMoney(rev.markup)}</dd>
-          <dt>Investment amount</dt>
-          <dd>{formatMoney(rev.amount)}</dd>
-          <dt>Gross Brk (incl. GST)</dt>
-          <dd>{formatMoney(rev.brokerage)}</dd>
-          <dt>Without GST</dt>
-          <dd>{formatMoney(rev.gross)}</dd>
-          <dt>GST ({gstPct}%)</dt>
-          <dd>{formatMoney(rev.gst)}</dd>
-          <dt>TDS</dt>
-          <dd>{formatMoney(rev.tds)}</dd>
-          <dt>Net revenue</dt>
-          <dd>
-            <strong>{formatMoney(rev.net)}</strong>
-          </dd>
-          <dt>Invoice amount</dt>
-          <dd>{formatMoney(rev.invoice)}</dd>
-        </dl>
+        <div className="figures">
+          {(
+            [
+              ['Mark-up per share', rev.markup],
+              ['Investment amount', rev.amount],
+              ['Gross Brk (incl. GST)', rev.brokerage],
+              ['Without GST', rev.gross],
+              [`GST (${gstPct}%)`, rev.gst],
+              ['TDS', rev.tds],
+              ['Invoice amount', rev.invoice],
+              ['Net revenue', rev.net],
+            ] as const
+          ).map(([label, value]) => (
+            <div key={label} className={label === 'Net revenue' ? 'figure key' : 'figure'}>
+              <span>{label}</span>
+              <b>{formatMoney(value)}</b>
+            </div>
+          ))}
+        </div>
       </fieldset>
 
       <fieldset>
@@ -665,7 +714,7 @@ function DealForm({ entry, onDone }: { entry?: PreIpoDeal; onDone: () => void })
       {error && <p className="error">{error}</p>}
       <span className="inline-form">
         <button type="submit" disabled={busy || clientMode === 'lookup' || clientMode === 'pick' || rev.markup < 0}>
-          {entry ? 'Save changes' : 'Add deal'}
+          {entry ? 'Save changes' : kind === 'BUY' ? 'Add buy' : 'Add buyback'}
         </button>
         {entry && <CancelDeal id={entry.id} onDone={onDone} />}
       </span>

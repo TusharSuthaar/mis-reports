@@ -400,3 +400,13 @@ th[aria-sort='ascending'] .sort-mark, th[aria-sort='descending'] .sort-mark { op
 .precheck li.ok .mark { background: #ecfdf3; color: #067647; }
 .precheck li.blocker .mark { background: #fef3f2; color: #b42318; }
 .precheck li.info .mark { background: var(--accent-bg); color: var(--primary); }
+
+/* Entry forms: a button on the field row (lined up with the inputs), and revenue figures as an even grid */
+.fd-form .field-button { align-self: end; justify-self: start; }
+.nowrap { white-space: nowrap; }
+.fd-form fieldset > .figures { grid-column: 1 / -1; }
+.figures { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.figure { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; display: grid; gap: 2px; background: var(--surface); }
+.figure span { color: var(--muted); font-size: 12px; }
+.figure b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.figure.key { border-color: var(--primary); background: var(--accent-bg); }
