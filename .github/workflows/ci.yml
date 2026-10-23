@@ -1,4 +1,5 @@
-# Every push and pull request: backend (unit + integration + guardrail tests) and frontend (types + tests).
+# Every push and pull request: backend (unit + integration + guardrail tests) and frontend (types, lint, tests,
+# production build, no high/critical vulnerabilities in shipped packages).
 # main only moves with both green (guardrail G-13). Integration tests start Postgres with Testcontainers.
 name: CI
 
@@ -40,3 +41,9 @@ jobs:
       - name: Tests
         working-directory: frontend
         run: npm test
+      - name: Production build
+        working-directory: frontend
+        run: npx vite build
+      - name: No high or critical vulnerabilities in what ships
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high

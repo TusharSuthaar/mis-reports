@@ -1,0 +1,22 @@
+# Weekly pull requests for dependency updates; CI must pass before any is merged (G-13).
+# Minor and patch updates come grouped, one PR per ecosystem; a major version gets its own PR.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    groups:
+      frontend-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: maven
+    directory: /backend
+    schedule:
+      interval: weekly
+    groups:
+      backend-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

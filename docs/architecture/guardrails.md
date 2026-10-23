@@ -28,6 +28,7 @@ checklist asks for it.
 | G-21 | No full PAN in logs or error records (the formatter masks PAN-shaped text as a safety net); query strings are never logged. | `JsonLogFormatterTest`, `ActivityIT`, review |
 | G-22 | Unexpected errors show only "something went wrong + reference"; every job type has a plain-words title for the Activity screen. | `ActivityIT`, `JobHandler.title()` (compiler) |
 | G-23 | The frontend passes ESLint with no warnings (TypeScript rules, React hooks rules). A deliberate exception says why: `// eslint-disable-next-line <rule> -- reason`; a disable comment that suppresses nothing fails. | CI `npm run lint` |
+| G-24 | CI builds the frontend for production and fails on a high or critical vulnerability in a shipped package; Dependabot proposes dependency updates weekly. | CI, `.github/dependabot.yml` |
 
 ## Before you commit
 1. `backend/mvnw-docker.sh verify` and `cd frontend && npm test` are green.
