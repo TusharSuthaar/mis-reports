@@ -332,30 +332,35 @@ class MonthLifecycleIT extends IntegrationTestBase {
         try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(end.getContentAsByteArray()))) {
             var data = wb.getSheetAt(2);
             var row = StreamSupport.stream(data.spliterator(), false)
-                    .filter(r -> r.getCell(29) != null && r.getCell(29).getStringCellValue().startsWith("FD: FD CO " + tag)).findFirst().orElseThrow();
+                    .filter(r -> r.getCell(31) != null && r.getCell(31).getStringCellValue().startsWith("FD: FD CO " + tag)).findFirst().orElseThrow();
             assertThat(row.getCell(8).getStringCellValue()).isEqualTo("ONE " + tag);
             assertThat(row.getCell(10).getNumericCellValue()).isEqualTo(100000.0);   // AUM / amount invested
             assertThat(row.getCell(15).getNumericCellValue()).isEqualTo(1000.0);     // FD column
-            assertThat(row.getCell(23).getNumericCellValue()).isEqualTo(1000.0);     // Total Rev
-            assertThat(row.getCell(27).getNumericCellValue()).isEqualTo(500.0);      // Net Revenue
+            assertThat(row.getCell(25).getNumericCellValue()).isEqualTo(1000.0);     // Total Rev
+            assertThat(row.getCell(29).getNumericCellValue()).isEqualTo(500.0);      // Net Revenue
             assertThat(row.getCell(5).getStringCellValue()).isEqualTo("REF " + tag);
         }
     }
 
     @Test
-    void theMonthsEquityBrokerageIsSplitWithTheClientsOwnPercentAndShownInTheEquityColumn() throws Exception {
+    void theMonthsEquityBrokerageIsSplitAtThePartnersEquityPercentAndShownInTheEquityColumn() throws Exception {
         long periodId = saveMonth(file(100));   // MF: client 1 net 100, client 2 net 50
+        // Client 1: sub-broker at 50% for this client, no Equity % on its rate card: equity follows the client's 50%.
         postJson("/api/clients/" + client1Id + "/partner", Map.of("partnerId", sbId, "percent", 50, "from", month + "-01"), admin, 204);
+        // Client 2: referral at 0% for MF, but the referral's rate card has Equity 40%: equity is still shared at 40%.
+        postJson("/api/clients/" + client2Id + "/partner", Map.of("partnerId", refId, "percent", 0, "from", month + "-01"), admin, 204);
+        postJson("/api/partners/" + refId + "/products", Map.of("product", "EQUITY", "percent", 40, "from", month + "-01"), admin, 204);
         byte[] report = new money.epsilon.brokerage.equity.EquityFiles()
                 .trade("P" + tag, pan1(), "ONE " + tag, month.atDay(5), "N", 250, 200)
-                .trade("P" + tag, pan1(), "ONE " + tag, month.atDay(20), "B", 125, 100).bytes();
+                .trade("P" + tag, pan1(), "ONE " + tag, month.atDay(20), "B", 125, 100)
+                .trade("Q" + tag, pan2(), "TWO " + tag, month.atDay(7), "N", 200, 100).bytes();
         mvc.perform(withCsrf(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/equity/upload")
                         .file(new org.springframework.mock.web.MockMultipartFile("file", "Equity Source.xlsx", null, report))).session(admin))
                 .andExpect(status().isOk());
 
         JsonNode run = process(periodId);
-        assertThat(run.get("net").decimalValue()).isEqualByComparingTo("450");      // MF 150 + equity 300
-        assertThat(run.get("partners").decimalValue()).isEqualByComparingTo("200");  // 50% of client 1's MF 100 and equity 300
+        assertThat(run.get("net").decimalValue()).isEqualByComparingTo("550");      // MF 150 + equity 300 + 100
+        assertThat(run.get("partners").decimalValue()).isEqualByComparingTo("240");  // 50% of client 1's MF 100 and equity 300; 40% of client 2's equity 100
 
         MockHttpServletResponse end = mvc.perform(get("/api/months/" + periodId + "/end-file").session(admin)).andExpect(status().isOk()).andReturn().getResponse();
         try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(end.getContentAsByteArray()))) {
@@ -366,8 +371,8 @@ class MonthLifecycleIT extends IntegrationTestBase {
             assertThat(row.getCell(8).getStringCellValue()).isEqualTo("ONE " + tag);
             assertThat(row.getCell(13) == null || row.getCell(13).getCellType() != org.apache.poi.ss.usermodel.CellType.NUMERIC
                     || row.getCell(13).getNumericCellValue() == 0).as("no MF on the equity row").isTrue();
-            assertThat(row.getCell(23).getNumericCellValue()).isEqualTo(300.0);   // Total Rev
-            assertThat(row.getCell(27).getNumericCellValue()).isEqualTo(150.0);   // Net Revenue after 50% sharing
+            assertThat(row.getCell(25).getNumericCellValue()).isEqualTo(300.0);   // Total Rev
+            assertThat(row.getCell(29).getNumericCellValue()).isEqualTo(150.0);   // Net Revenue after 50% sharing
         }
     }
 
@@ -398,13 +403,13 @@ class MonthLifecycleIT extends IntegrationTestBase {
         try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(end.getContentAsByteArray()))) {
             var data = wb.getSheetAt(2);
             assertThat(data.getRow(0).getCell(22).getStringCellValue()).isEqualTo("GIFT CITY");
-            assertThat(data.getRow(0).getCell(23).getStringCellValue()).isEqualTo("Total Rev");
+            assertThat(data.getRow(0).getCell(25).getStringCellValue()).isEqualTo("Total Rev");
             var row = StreamSupport.stream(data.spliterator(), false)
-                    .filter(r -> r.getCell(29) != null && r.getCell(29).getStringCellValue().startsWith("GIFT City: GIFT FUND " + tag)).findFirst().orElseThrow();
+                    .filter(r -> r.getCell(31) != null && r.getCell(31).getStringCellValue().startsWith("GIFT City: GIFT FUND " + tag)).findFirst().orElseThrow();
             assertThat(row.getCell(10).getNumericCellValue()).isEqualTo(900000.0);   // AUM: USD 10,000 × 90
             assertThat(row.getCell(22).getNumericCellValue()).isEqualTo(3000.0);     // GIFT CITY column
-            assertThat(row.getCell(23).getNumericCellValue()).isEqualTo(3000.0);     // Total Rev
-            assertThat(row.getCell(27).getNumericCellValue()).isEqualTo(2700.0);     // Net Revenue
+            assertThat(row.getCell(25).getNumericCellValue()).isEqualTo(3000.0);     // Total Rev
+            assertThat(row.getCell(29).getNumericCellValue()).isEqualTo(2700.0);     // Net Revenue
         }
     }
 
@@ -439,10 +444,79 @@ class MonthLifecycleIT extends IntegrationTestBase {
             var data = wb.getSheetAt(2);
             assertThat(data.getRow(0).getCell(14).getStringCellValue()).isEqualTo("Pre-IPO");
             var row = StreamSupport.stream(data.spliterator(), false)
-                    .filter(r -> r.getCell(29) != null && r.getCell(29).getStringCellValue().startsWith("Pre-IPO buy: END CO " + tag)).findFirst().orElseThrow();
+                    .filter(r -> r.getCell(31) != null && r.getCell(31).getStringCellValue().startsWith("Pre-IPO buy: END CO " + tag)).findFirst().orElseThrow();
             assertThat(row.getCell(10).getNumericCellValue()).isEqualTo(11000.0);    // AUM: 100 × 110
             assertThat(row.getCell(14).getNumericCellValue()).isEqualTo(847.46);     // Pre-IPO column
-            assertThat(row.getCell(23).getNumericCellValue()).isEqualTo(847.46);     // Total Rev
+            assertThat(row.getCell(25).getNumericCellValue()).isEqualTo(847.46);     // Total Rev
+        }
+    }
+
+    @Test
+    void theMonthsPmsNpsAndP2pRevenueIsSplitAndShownInTheirOwnEndColumns() throws Exception {
+        long periodId = saveMonth(file(100));   // MF: client 1 net 100, client 2 net 50, no partners
+        Map<String, Object> pms = new java.util.HashMap<>();
+        pms.put("clientId", client1Id);
+        pms.put("month", month.minusMonths(2) + "-01");
+        pms.put("rmId", rmId);
+        pms.put("partnerId", refId);
+        pms.put("amc", "PMS AMC " + tag);
+        pms.put("strategy", "MULTICAP");
+        pms.put("amount", 5000000);
+        pms.put("investmentDate", month.minusMonths(2) + "-10");
+        long investment = postJson("/api/pms", pms, admin, 201).get("id").asLong();
+        // The AMC's payout received this month: this client's share as typed.
+        postJson("/api/pms/fees", Map.of("investmentId", investment, "month", month + "-01", "amount", 3000), admin, 201);
+
+        Map<String, Object> nps = new java.util.HashMap<>();
+        nps.put("clientId", client1Id);
+        nps.put("month", month + "-01");
+        nps.put("rmId", rmId);
+        nps.put("partnerId", refId);
+        nps.put("pop", "NPS POP " + tag);
+        nps.put("investmentDate", month + "-05");
+        nps.put("amount", 200000);
+        nps.put("revenue", 1000);
+        postJson("/api/nps", nps, admin, 201);
+
+        Map<String, Object> p2p = new java.util.HashMap<>();
+        p2p.put("clientId", client1Id);
+        p2p.put("month", month + "-01");
+        p2p.put("rmId", rmId);
+        p2p.put("partnerId", refId);
+        p2p.put("platform", "P2P PLATFORM " + tag);
+        p2p.put("scheme", "YEARLY");
+        p2p.put("roiPercent", 12);
+        p2p.put("amount", 300000);
+        p2p.put("brokerage", 2000);
+        postJson("/api/p2p", p2p, admin, 201);
+
+        assertThat(getJson("/api/months/" + periodId + "/readiness", admin, 200).get("missingPercent").toString())
+                .contains("REF " + tag + " (PMS)").contains("REF " + tag + " (NPS)").contains("REF " + tag + " (P2P)");
+        postJson("/api/partners/" + refId + "/products", Map.of("product", "PMS", "percent", 75, "from", month.minusMonths(2) + "-01"), admin, 204);
+        postJson("/api/partners/" + refId + "/products", Map.of("product", "NPS", "percent", 10, "from", month + "-01"), admin, 204);
+        postJson("/api/partners/" + refId + "/products", Map.of("product", "P2P", "percent", 20, "from", month + "-01"), admin, 204);
+        JsonNode run = process(periodId);
+        assertThat(run.get("net").decimalValue()).isEqualByComparingTo("6150");      // MF 150 + PMS 3,000 + NPS 1,000 + P2P 2,000
+        assertThat(run.get("partners").decimalValue()).isEqualByComparingTo("2750");  // 75% of 3,000 + 10% of 1,000 + 20% of 2,000
+
+        MockHttpServletResponse end = mvc.perform(get("/api/months/" + periodId + "/end-file").session(admin)).andExpect(status().isOk()).andReturn().getResponse();
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(end.getContentAsByteArray()))) {
+            var data = wb.getSheetAt(2);
+            assertThat(data.getRow(0).getCell(20).getStringCellValue()).isEqualTo("PMS");
+            assertThat(data.getRow(0).getCell(23).getStringCellValue()).isEqualTo("NPS");
+            assertThat(data.getRow(0).getCell(24).getStringCellValue()).isEqualTo("P2P");
+            assertThat(data.getRow(0).getCell(25).getStringCellValue()).isEqualTo("Total Rev");
+            java.util.function.Function<String, org.apache.poi.ss.usermodel.Row> byRemark = prefix -> StreamSupport.stream(data.spliterator(), false)
+                    .filter(r -> r.getCell(31) != null && r.getCell(31).getStringCellValue().startsWith(prefix)).findFirst().orElseThrow();
+            var pmsRow = byRemark.apply("PMS: PMS AMC " + tag);
+            assertThat(pmsRow.getCell(20).getNumericCellValue()).isEqualTo(3000.0);
+            assertThat(pmsRow.getCell(29).getNumericCellValue()).isEqualTo(750.0);     // Net Revenue after the partner's 75%
+            var npsRow = byRemark.apply("NPS: NPS POP " + tag);
+            assertThat(npsRow.getCell(23).getNumericCellValue()).isEqualTo(1000.0);
+            assertThat(npsRow.getCell(10).getNumericCellValue()).isEqualTo(200000.0);  // AUM: amount invested
+            var p2pRow = byRemark.apply("P2P: P2P PLATFORM " + tag);
+            assertThat(p2pRow.getCell(24).getNumericCellValue()).isEqualTo(2000.0);
+            assertThat(p2pRow.getCell(25).getNumericCellValue()).isEqualTo(2000.0);   // Total Rev
         }
     }
 
@@ -476,11 +550,11 @@ class MonthLifecycleIT extends IntegrationTestBase {
         try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(end.getContentAsByteArray()))) {
             var data = wb.getSheetAt(2);
             var row = StreamSupport.stream(data.spliterator(), false)
-                    .filter(r -> r.getCell(29) != null && r.getCell(29).getStringCellValue().startsWith("Loan: LENDER " + tag)).findFirst().orElseThrow();
+                    .filter(r -> r.getCell(31) != null && r.getCell(31).getStringCellValue().startsWith("Loan: LENDER " + tag)).findFirst().orElseThrow();
             assertThat(row.getCell(10).getNumericCellValue()).isEqualTo(200000.0);   // AUM / sanctioned amount
             assertThat(row.getCell(17).getNumericCellValue()).isEqualTo(2000.0);     // Loans column
-            assertThat(row.getCell(23).getNumericCellValue()).isEqualTo(2000.0);     // Total Rev
-            assertThat(row.getCell(27).getNumericCellValue()).isEqualTo(1500.0);     // Net Revenue
+            assertThat(row.getCell(25).getNumericCellValue()).isEqualTo(2000.0);     // Total Rev
+            assertThat(row.getCell(29).getNumericCellValue()).isEqualTo(1500.0);     // Net Revenue
         }
     }
 
@@ -512,11 +586,11 @@ class MonthLifecycleIT extends IntegrationTestBase {
         MockHttpServletResponse end = mvc.perform(get("/api/months/" + periodId + "/end-file").session(admin)).andExpect(status().isOk()).andReturn().getResponse();
         try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(end.getContentAsByteArray()))) {
             var row = StreamSupport.stream(wb.getSheetAt(2).spliterator(), false)
-                    .filter(r -> r.getCell(29) != null && r.getCell(29).getStringCellValue().startsWith("Bond: BOND CO " + tag)).findFirst().orElseThrow();
+                    .filter(r -> r.getCell(31) != null && r.getCell(31).getStringCellValue().startsWith("Bond: BOND CO " + tag)).findFirst().orElseThrow();
             assertThat(row.getCell(8).getStringCellValue()).isEqualTo("TWO " + tag);
             assertThat(row.getCell(10).getNumericCellValue()).isEqualTo(401000.0);   // AUM = consideration
             assertThat(row.getCell(16).getNumericCellValue()).isEqualTo(2000.0);     // Bonds column
-            assertThat(row.getCell(27).getNumericCellValue()).isEqualTo(1200.0);     // Net Revenue
+            assertThat(row.getCell(29).getNumericCellValue()).isEqualTo(1200.0);     // Net Revenue
         }
     }
 
@@ -546,10 +620,10 @@ class MonthLifecycleIT extends IntegrationTestBase {
         MockHttpServletResponse end = mvc.perform(get("/api/months/" + periodId + "/end-file").session(admin)).andExpect(status().isOk()).andReturn().getResponse();
         try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(end.getContentAsByteArray()))) {
             var row = StreamSupport.stream(wb.getSheetAt(2).spliterator(), false)
-                    .filter(r -> r.getCell(29) != null && ("AIF: FUND " + tag).equals(r.getCell(29).getStringCellValue())).findFirst().orElseThrow();
+                    .filter(r -> r.getCell(31) != null && ("AIF: FUND " + tag).equals(r.getCell(31).getStringCellValue())).findFirst().orElseThrow();
             assertThat(row.getCell(10).getNumericCellValue()).isEqualTo(1000000.0);   // AUM = commitment
             assertThat(row.getCell(21).getNumericCellValue()).isEqualTo(10000.0);     // AIF column
-            assertThat(row.getCell(27).getNumericCellValue()).isEqualTo(5000.0);      // Net Revenue
+            assertThat(row.getCell(29).getNumericCellValue()).isEqualTo(5000.0);      // Net Revenue
         }
     }
 

@@ -233,4 +233,27 @@ public class NpsService {
                           BigDecimal invoice, LocalDate receivedOn, String remarks, NpsEntry.Status status, String createdBy, Instant createdAt,
                           String updatedBy, Instant updatedAt) {
     }
+
+    /** The month's active NPS entries with revenue, as processing needs them (R-86): gross = invoice, gst, net = revenue excl. GST. */
+    @Transactional(readOnly = true)
+    public List<NpsForLedger> forLedger(YearMonth month) {
+        return entries.findByMonthOrderByIdAsc(month.atDay(1)).stream()
+                .filter(e -> e.getStatus() == NpsEntry.Status.ACTIVE && e.getRevenue() != null && e.getRevenue().signum() != 0)
+                .map(e -> new NpsForLedger(e.getId(), e.getClientId(), e.getPartnerId(), e.getInvoice(), e.getGst(), e.getRevenue()))
+                .toList();
+    }
+
+    public record NpsForLedger(long npsEntryId, long clientId, Long partnerId, BigDecimal gross, BigDecimal gst, BigDecimal net) {
+    }
+
+    /** What the END shows for each NPS line: the POP, and the amount invested as AUM. */
+    @Transactional(readOnly = true)
+    public Map<Long, NpsLabel> labels(java.util.Collection<Long> ids) {
+        Map<Long, NpsLabel> result = new HashMap<>();
+        entries.findAllById(ids).forEach(e -> result.put(e.getId(), new NpsLabel(e.getPop(), e.getAmount())));
+        return result;
+    }
+
+    public record NpsLabel(String pop, BigDecimal amount) {
+    }
 }

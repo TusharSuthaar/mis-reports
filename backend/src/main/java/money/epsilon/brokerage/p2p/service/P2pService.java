@@ -244,4 +244,27 @@ public class P2pService {
                           BigDecimal net, BigDecimal invoice, String paymentNote, LocalDate receivedOn, String revSharingStatus, String remarks,
                           P2pEntry.Status status, String createdBy, Instant createdAt, String updatedBy, Instant updatedAt) {
     }
+
+    /** The month's active P2P entries with brokerage, as processing needs them (R-87): gross = invoice, gst, net = brokerage excl. GST. */
+    @Transactional(readOnly = true)
+    public List<P2pForLedger> forLedger(YearMonth month) {
+        return entries.findByMonthOrderByIdAsc(month.atDay(1)).stream()
+                .filter(e -> e.getStatus() == P2pEntry.Status.ACTIVE && e.getGross() != null && e.getGross().signum() != 0)
+                .map(e -> new P2pForLedger(e.getId(), e.getClientId(), e.getPartnerId(), e.getInvoice(), e.getGst(), e.getGross()))
+                .toList();
+    }
+
+    public record P2pForLedger(long p2pEntryId, long clientId, Long partnerId, BigDecimal gross, BigDecimal gst, BigDecimal net) {
+    }
+
+    /** What the END shows for each P2P line: platform and scheme, and the amount invested as AUM. */
+    @Transactional(readOnly = true)
+    public Map<Long, P2pLabel> labels(java.util.Collection<Long> ids) {
+        Map<Long, P2pLabel> result = new HashMap<>();
+        entries.findAllById(ids).forEach(e -> result.put(e.getId(), new P2pLabel(e.getPlatform() + (e.getScheme() == null ? "" : " · " + e.getScheme()), e.getAmount())));
+        return result;
+    }
+
+    public record P2pLabel(String item, BigDecimal amount) {
+    }
 }

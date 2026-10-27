@@ -28,7 +28,7 @@ const PAN_FORMAT = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const thisMonth = () => todayIso().slice(0, 7);
 const PAYMENTS = { PENDING: 'Revenue not received', RECEIVED: 'Received' };
 
-/** NPS: one row per investment, as in the NPS register, with its revenue when there is one (entry only for now). */
+/** NPS: one row per investment, as in the NPS register, with its revenue when there is one (R-86). */
 export function NpsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { user } = useAuth();
   const canEdit = canEditMasters(user?.role);
@@ -59,7 +59,7 @@ export function NpsPage({ embedded = false }: { embedded?: boolean } = {}) {
           </div>
         )}
       </div>
-      <p className="muted">NPS is entry only for now: its revenue is kept here but not yet in month processing or the END file.</p>
+      <p className="muted">An entry with revenue counts in its month: the END shows it in the NPS column, shared at the partner's NPS %.</p>
       <ListFilters
         searchHint="Client, PAN, code or POP"
         platformKey="pop"

@@ -41,9 +41,9 @@ const CERTIFICATE: Record<PmsCertificate, string> = { PENDING: 'Pending', RECEIV
 const PAN_FORMAT = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const thisMonth = () => todayIso().slice(0, 7);
 
-/** PMS (R-85), entry only for now: client investments, and the AMC payouts per invoice period. */
+/** PMS (R-85): client investments, the AMC payouts per invoice period, and each client's revenue per month (the END's PMS). */
 export function PmsPage({ embedded = false }: { embedded?: boolean } = {}) {
-  const [view, setView] = useState<'investments' | 'payouts'>('investments');
+  const [view, setView] = useState<'investments' | 'payouts' | 'revenue'>('investments');
   return (
     <section>
       {!embedded && <h1>PMS</h1>}
@@ -54,9 +54,15 @@ export function PmsPage({ embedded = false }: { embedded?: boolean } = {}) {
         <button type="button" aria-pressed={view === 'payouts'} className={view === 'payouts' ? 'on' : undefined} onClick={() => setView('payouts')}>
           AMC payouts
         </button>
+        <button type="button" aria-pressed={view === 'revenue'} className={view === 'revenue' ? 'on' : undefined} onClick={() => setView('revenue')}>
+          Monthly revenue (END)
+        </button>
       </div>
-      <p className="muted">PMS is entry only for now: how AMC payouts reach each client and the END file is decided later.</p>
-      {view === 'investments' ? <Investments /> : <Payouts />}
+      <p className="muted">
+        Each client's PMS revenue is typed for the month the AMC's payout is received: that month's END shows it in the PMS column, shared at the
+        partner's PMS %.
+      </p>
+      {view === 'investments' ? <Investments /> : view === 'payouts' ? <Payouts /> : <Revenue />}
     </section>
   );
 }
@@ -723,5 +729,160 @@ function CancelButton({ path, what, onDone }: { path: string; what: string; onDo
     >
       Cancel this {what}
     </button>
+  );
+}
+
+
+interface PmsFee {
+  id: number;
+  investmentId: number;
+  month: string;
+  clientId: number;
+  clientName: string;
+  pan: string | null;
+  rmName: string;
+  partnerName: string | null;
+  amc: string;
+  strategy: string | null;
+  amount: number;
+  remarks: string | null;
+  status: 'ACTIVE' | 'CANCELLED';
+}
+
+/** Each client's PMS revenue per month received (R-85): the month's PMS lines and the END's PMS column. */
+function Revenue() {
+  const { user } = useAuth();
+  const canEdit = canEditMasters(user?.role);
+  const list = useLoad<PmsFee[]>('/api/pms/fees');
+  const [open, setOpen] = useState<PmsFee | 'new' | null>(null);
+  const active = (list.data ?? []).filter((f) => f.status === 'ACTIVE');
+  const view = useTableView(list.data, {
+    month: (f) => f.month, client: (f) => f.clientName, amc: (f) => f.amc, rm: (f) => f.rmName, partner: (f) => f.partnerName, amount: (f) => f.amount,
+  });
+  const done = () => {
+    setOpen(null);
+    list.reload();
+  };
+  return (
+    <>
+      {canEdit && (
+        <div className="actions" style={{ justifyContent: 'flex-end', marginBottom: 12 }}>
+          <button type="button" onClick={() => setOpen('new')}>
+            Add month's revenue
+          </button>
+        </div>
+      )}
+      {list.error && <p className="error">{list.error}</p>}
+      {list.data && list.data.length === 0 && <div className="empty">No PMS revenue typed yet. Add each client's share when the AMC's payout is received.</div>}
+      {list.data && list.data.length > 0 && (
+        <>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  {view.th('month', 'Month received')}
+                  {view.th('client', 'Client')}
+                  {view.th('amc', 'AMC · strategy')}
+                  {view.th('rm', 'RM')}
+                  {view.th('partner', 'Referral / sub-broker')}
+                  {view.th('amount', 'Revenue (END)', 'num')}
+                  <th>Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {view.rows.map((f) => (
+                  <tr key={f.id} className={f.status === 'CANCELLED' ? 'muted' : undefined}>
+                    <td className="nowrap">{formatMonth(f.month)}</td>
+                    <td>
+                      <button type="button" className="cell-link" onClick={() => setOpen(f)}>
+                        {f.clientName}
+                      </button>
+                      {f.status === 'CANCELLED' && <span className="badge">cancelled</span>}
+                    </td>
+                    <td>
+                      {f.amc}
+                      {f.strategy ? <span className="muted"> · {f.strategy}</span> : null}
+                    </td>
+                    <td>{f.rmName}</td>
+                    <td>{f.partnerName ?? <span className="muted">—</span>}</td>
+                    <td className="num"><Amount value={f.amount} /></td>
+                    <td>{f.remarks}</td>
+                  </tr>
+                ))}
+                <tr className="total">
+                  <td colSpan={5}>Total ({active.length})</td>
+                  <td className="num"><Amount value={active.reduce((sum, f) => sum + f.amount, 0)} /></td>
+                  <td />
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          {view.more}
+        </>
+      )}
+      {open && (
+        <Modal title={open === 'new' ? "Add a client's PMS revenue" : `${open.clientName} — ${formatMonth(open.month)}`} onClose={() => setOpen(null)}>
+          {canEdit && (open === 'new' || open.status === 'ACTIVE') ? (
+            <FeeForm fee={open === 'new' ? undefined : open} onDone={done} />
+          ) : (
+            <p>{open !== 'new' && `${open.amc} · ${formatMoney(open.amount)} · cancelled`}</p>
+          )}
+        </Modal>
+      )}
+    </>
+  );
+}
+
+function FeeForm({ fee, onDone }: { fee?: PmsFee; onDone: () => void }) {
+  const investments = useLoad<PmsInvestment[]>('/api/pms');
+  const [investmentId, setInvestmentId] = useState(fee ? String(fee.investmentId) : '');
+  const [month, setMonth] = useState(fee ? fee.month : thisMonth());
+  const [amount, setAmount] = useState(fee ? indianDigits(String(fee.amount)) : '');
+  const [remarks, setRemarks] = useState(fee?.remarks ?? '');
+  const { busy, error, run } = useSubmit();
+  const options = (investments.data ?? []).filter((i) => i.status === 'ACTIVE' || String(i.id) === investmentId);
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const body = { investmentId: Number(investmentId), month: `${month.slice(0, 7)}-01`, amount: Number(amount.replace(/,/g, '')), remarks };
+    const ok = await run(() => (fee ? api(`/api/pms/fees/${fee.id}`, { method: 'PUT', body }) : api('/api/pms/fees', { method: 'POST', body })));
+    if (ok) onDone();
+  }
+  return (
+    <form onSubmit={submit} className="fd-form">
+      <fieldset>
+        <legend>Revenue</legend>
+        <label style={{ gridColumn: '1 / -1' }}>
+          Client's PMS investment
+          <select value={investmentId} onChange={(e) => setInvestmentId(e.target.value)} required disabled={!!fee}>
+            <option value="">Choose…</option>
+            {options.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.clientName} — {i.amc}
+                {i.strategy ? ` · ${i.strategy}` : ''} ({formatMoney(i.amount)}){i.holdingStatus === 'REDEEMED' ? ' · redeemed' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Month the payout was received
+          <input type="month" value={month.slice(0, 7)} onChange={(e) => e.target.value && setMonth(e.target.value)} required />
+        </label>
+        <label>
+          Revenue for the END (₹, excl. GST)
+          <input value={amount} onChange={(e) => setAmount(indianDigits(e.target.value))} inputMode="decimal" required />
+        </label>
+        <label style={{ gridColumn: '1 / -1' }}>
+          Remarks
+          <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={2} />
+        </label>
+      </fieldset>
+      {error && <p className="error">{error}</p>}
+      <span className="inline-form">
+        <button type="submit" disabled={busy}>
+          {fee ? 'Save changes' : 'Add revenue'}
+        </button>
+        {fee && <CancelButton path={`/api/pms/fees/${fee.id}/cancel`} what="revenue entry" onDone={onDone} />}
+      </span>
+    </form>
   );
 }

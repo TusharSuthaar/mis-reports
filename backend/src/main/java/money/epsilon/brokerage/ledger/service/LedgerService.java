@@ -54,7 +54,36 @@ public class LedgerService {
      * {@code fdEntryId} on a line that comes from an FD entry (R-74).
      */
     public record ActiveLine(long id, long clientId, BigDecimal gross, BigDecimal gst, BigDecimal net, Long adjustsPeriodId, Long fdEntryId,
-                             Long bondEntryId, Long aifEntryId, Long loanEntryId, Long giftEntryId, Long preIpoEntryId) {
+                             Long bondEntryId, Long aifEntryId, Long loanEntryId, Long giftEntryId, Long preIpoEntryId, Long pmsFeeId,
+                             Long npsEntryId, Long p2pEntryId) {
+    }
+
+    /** One line of the month from PMS (a client's typed revenue, no GST), NPS or P2P (R-85..R-87). */
+    public record OtherLineInput(long sourceId, long clientId, BigDecimal gross, BigDecimal gst, BigDecimal net) {
+    }
+
+    /** The month's PMS lines become exactly {@code lines}, like FD lines. */
+    @Transactional
+    public int replacePmsLines(long periodId, List<OtherLineInput> lines) {
+        return replaceOther(periodId, "PMS", "pms_fee_id", lines);
+    }
+
+    @Transactional
+    public int replaceNpsLines(long periodId, List<OtherLineInput> lines) {
+        return replaceOther(periodId, "NPS", "nps_entry_id", lines);
+    }
+
+    @Transactional
+    public int replaceP2pLines(long periodId, List<OtherLineInput> lines) {
+        return replaceOther(periodId, "P2P", "p2p_entry_id", lines);
+    }
+
+    private int replaceOther(long periodId, String product, String sourceColumn, List<OtherLineInput> lines) {
+        jdbc.sql("UPDATE brokerage_line SET voided = TRUE, voided_at = now() WHERE period_id = ? AND product_type = ? AND NOT voided AND adjusts_period_id IS NULL")
+                .params(periodId, product).update();
+        batch("INSERT INTO brokerage_line (period_id, client_id, product_type, gross, gst, net, " + sourceColumn + ") VALUES (?, ?, ?, ?, ?, ?, ?)",
+                lines, l -> new Object[]{periodId, l.clientId(), product, l.gross(), l.gst(), l.net(), l.sourceId()});
+        return lines.size();
     }
 
     /** One Pre-IPO deal of the month: gross = invoice (incl. GST), gst, net = brokerage excl. GST (R-93). */
@@ -184,13 +213,14 @@ public class LedgerService {
     @Transactional(readOnly = true)
     public List<ActiveLine> activeLines(long periodId, String productType) {
         return jdbc.sql("""
-                        SELECT id, client_id, gross, gst, net, adjusts_period_id, fd_entry_id, bond_entry_id, aif_entry_id, loan_entry_id, gift_entry_id, preipo_entry_id FROM brokerage_line
+                        SELECT id, client_id, gross, gst, net, adjusts_period_id, fd_entry_id, bond_entry_id, aif_entry_id, loan_entry_id, gift_entry_id, preipo_entry_id, pms_fee_id, nps_entry_id, p2p_entry_id FROM brokerage_line
                         WHERE period_id = ? AND product_type = ? AND NOT voided ORDER BY id""")
                 .params(periodId, productType)
                 .query((rs, n) -> new ActiveLine(rs.getLong("id"), rs.getLong("client_id"), rs.getBigDecimal("gross"), rs.getBigDecimal("gst"),
                         rs.getBigDecimal("net"), (Long) rs.getObject("adjusts_period_id"), (Long) rs.getObject("fd_entry_id"),
                         (Long) rs.getObject("bond_entry_id"), (Long) rs.getObject("aif_entry_id"), (Long) rs.getObject("loan_entry_id"),
-                        (Long) rs.getObject("gift_entry_id"), (Long) rs.getObject("preipo_entry_id")))
+                        (Long) rs.getObject("gift_entry_id"), (Long) rs.getObject("preipo_entry_id"),
+                        (Long) rs.getObject("pms_fee_id"), (Long) rs.getObject("nps_entry_id"), (Long) rs.getObject("p2p_entry_id")))
                 .list();
     }
 

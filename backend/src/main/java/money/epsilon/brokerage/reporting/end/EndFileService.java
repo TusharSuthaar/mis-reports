@@ -38,6 +38,9 @@ public class EndFileService {
     static final String LOAN = "LOAN";
     static final String GIFT = "GIFT";
     static final String PREIPO = "PREIPO";
+    static final String PMS = "PMS";
+    static final String NPS = "NPS";
+    static final String P2P = "P2P";
     static final String EQUITY = "EQUITY";
     static final String NO_BRANCH = "(no branch)";
 
@@ -53,17 +56,25 @@ public class EndFileService {
     private final money.epsilon.brokerage.loan.service.LoanService loans;
     private final money.epsilon.brokerage.gift.service.GiftService gifts;
     private final money.epsilon.brokerage.preipo.service.PreIpoService preIpos;
+    private final money.epsilon.brokerage.pms.service.PmsFeeService pmsFees;
+    private final money.epsilon.brokerage.nps.service.NpsService npses;
+    private final money.epsilon.brokerage.p2p.service.P2pService p2ps;
 
     EndFileService(PeriodService periods, JdbcClient jdbc, PanCipher panCipher, AuditService audit,
                    money.epsilon.brokerage.client.service.ClientService clients, RegionService regions,
                    money.epsilon.brokerage.fd.service.FdService fds, money.epsilon.brokerage.bond.service.BondService bonds,
                    money.epsilon.brokerage.aif.service.AifService aifs, money.epsilon.brokerage.loan.service.LoanService loans,
                    money.epsilon.brokerage.gift.service.GiftService gifts,
-                   money.epsilon.brokerage.preipo.service.PreIpoService preIpos) {
+                   money.epsilon.brokerage.preipo.service.PreIpoService preIpos,
+                   money.epsilon.brokerage.pms.service.PmsFeeService pmsFees, money.epsilon.brokerage.nps.service.NpsService npses,
+                   money.epsilon.brokerage.p2p.service.P2pService p2ps) {
         this.aifs = aifs;
         this.loans = loans;
         this.gifts = gifts;
         this.preIpos = preIpos;
+        this.pmsFees = pmsFees;
+        this.npses = npses;
+        this.p2ps = p2ps;
         this.fds = fds;
         this.bonds = bonds;
         this.clients = clients;
@@ -87,8 +98,8 @@ public class EndFileService {
         Map<Long, YearMonth> monthOfPeriod = periods.list(MF).stream().collect(Collectors.toMap(PeriodView::id, PeriodView::month));
 
         List<EndRow> rows = jdbc.sql("""
-                        SELECT * FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?, ?)""")
-                .params(periodId, MF, FD, BOND, AIF, LOAN, GIFT, EQUITY, PREIPO)
+                        SELECT * FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""")
+                .params(periodId, MF, FD, BOND, AIF, LOAN, GIFT, EQUITY, PREIPO, PMS, NPS, P2P)
                 .query((rs, n) -> {
                     boolean fd = FD.equals(rs.getString("product_type"));
                     boolean bond = BOND.equals(rs.getString("product_type"));
@@ -107,6 +118,17 @@ public class EndFileService {
                         return new EndRow(row.region(), row.rd(), row.branch(), row.rm(), row.subBroker(), row.subBrokerPct(), row.referral(),
                                 row.referralPct(), row.posp(), row.client(), row.pan(), null, null, null, row.subBrokerAmount(),
                                 row.referralAmount(), row.pospAmount(), "AIF#" + rs.getLong("aif_entry_id"), null, null, null, rs.getBigDecimal("net"), null, null, null);
+                    }
+                    String type = rs.getString("product_type");
+                    if (PMS.equals(type) || NPS.equals(type) || P2P.equals(type)) {
+                        // A PMS / NPS / P2P row (R-85..R-87): its revenue excl. GST in its own column, MF columns empty; labelled below.
+                        java.math.BigDecimal v = rs.getBigDecimal("net");
+                        String tag = PMS.equals(type) ? "PMS#" + rs.getLong("pms_fee_id") : NPS.equals(type) ? "NPS#" + rs.getLong("nps_entry_id")
+                                : "P2P#" + rs.getLong("p2p_entry_id");
+                        return new EndRow(row.region(), row.rd(), row.branch(), row.rm(), row.subBroker(), row.subBrokerPct(), row.referral(),
+                                row.referralPct(), row.posp(), row.client(), row.pan(), null, null, null, row.subBrokerAmount(),
+                                row.referralAmount(), row.pospAmount(), tag, null, null, null, null, null, null, null, null,
+                                PMS.equals(type) ? v : null, NPS.equals(type) ? v : null, P2P.equals(type) ? v : null);
                     }
                     if (PREIPO.equals(rs.getString("product_type"))) {
                         // A Pre-IPO row (R-93): its brokerage excl. GST in the Pre-IPO column, the deal amount as AUM, MF columns empty.
@@ -151,15 +173,15 @@ public class EndFileService {
                         .thenComparing(e -> Objects.toString(e.rm(), "")).thenComparing(e -> Objects.toString(e.client(), "")))
                 .toList();
         if (rows.isEmpty()) throw new RuleViolationException(p.month() + " has no split to export");
-        rows = withPreIpoLabels(withGiftLabels(withLoanLabels(withAifLabels(withBondLabels(withFdLabels(rows))))));
+        rows = withOtherLabels(withPreIpoLabels(withGiftLabels(withLoanLabels(withAifLabels(withBondLabels(withFdLabels(rows)))))));
 
         PeriodView previous = periods.list(MF).stream()
                 .filter(x -> x.status() == Period.Status.LOCKED && x.month().isBefore(p.month()))
                 .max(Comparator.comparing(PeriodView::month)).orElse(null);
         List<BranchTotal> prev = previous == null ? List.of() : jdbc.sql("""
                         SELECT region, coalesce(branch, ?) AS branch, sum(net) AS gross, sum(epsilon_amount) AS net
-                        FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?, ?) GROUP BY region, coalesce(branch, ?)""")
-                .params(NO_BRANCH, previous.id(), MF, FD, BOND, AIF, LOAN, GIFT, EQUITY, PREIPO, NO_BRANCH)
+                        FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) GROUP BY region, coalesce(branch, ?)""")
+                .params(NO_BRANCH, previous.id(), MF, FD, BOND, AIF, LOAN, GIFT, EQUITY, PREIPO, PMS, NPS, P2P, NO_BRANCH)
                 .query((rs, n) -> new BranchTotal(rs.getString("region"), rs.getString("branch"), rs.getBigDecimal("gross"), rs.getBigDecimal("net")))
                 .list();
 
@@ -227,6 +249,42 @@ public class EndFileService {
             return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
                     e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(), remark,
                     l == null ? null : l.sanctionedAmount(), null, null, null, e.loans(), null, null);
+        }).toList();
+    }
+
+    /**
+     * PMS, NPS and P2P rows carry "PMS#id" / "NPS#id" / "P2P#id" until here: they get the AMC and strategy, the POP, or the
+     * platform and scheme as REMARKS; NPS and P2P rows also the amount invested as AUM (PMS rows have none, as in the END).
+     */
+    private List<EndRow> withOtherLabels(List<EndRow> rows) {
+        java.util.function.Function<String, List<Long>> ids = prefix -> rows.stream().map(EndRow::remarks)
+                .filter(r -> r != null && r.startsWith(prefix)).map(r -> Long.parseLong(r.substring(prefix.length()))).toList();
+        List<Long> pmsIds = ids.apply("PMS#"), npsIds = ids.apply("NPS#"), p2pIds = ids.apply("P2P#");
+        if (pmsIds.isEmpty() && npsIds.isEmpty() && p2pIds.isEmpty()) return rows;
+        Map<Long, String> pmsLabels = pmsIds.isEmpty() ? Map.of() : pmsFees.labels(pmsIds);
+        var npsLabels = npsIds.isEmpty() ? Map.<Long, money.epsilon.brokerage.nps.service.NpsService.NpsLabel>of() : npses.labels(npsIds);
+        var p2pLabels = p2pIds.isEmpty() ? Map.<Long, money.epsilon.brokerage.p2p.service.P2pService.P2pLabel>of() : p2ps.labels(p2pIds);
+        return rows.stream().map(e -> {
+            String rem = e.remarks();
+            if (rem == null) return e;
+            String remark;
+            java.math.BigDecimal aum = null;
+            if (rem.startsWith("PMS#")) {
+                remark = pmsLabels.getOrDefault(Long.parseLong(rem.substring(4)), "PMS");
+            } else if (rem.startsWith("NPS#")) {
+                var l = npsLabels.get(Long.parseLong(rem.substring(4)));
+                remark = l == null ? "NPS" : "NPS: " + l.pop();
+                aum = l == null ? null : l.amount();
+            } else if (rem.startsWith("P2P#")) {
+                var l = p2pLabels.get(Long.parseLong(rem.substring(4)));
+                remark = l == null ? "P2P" : "P2P: " + l.item();
+                aum = l == null ? null : l.amount();
+            } else {
+                return e;
+            }
+            return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
+                    e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(), remark,
+                    aum, null, null, null, null, null, null, null, e.pms(), e.nps(), e.p2p());
         }).toList();
     }
 
