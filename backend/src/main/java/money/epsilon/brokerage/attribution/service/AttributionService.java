@@ -68,6 +68,7 @@ public class AttributionService {
     static final String PMS = "PMS";
     static final String NPS = "NPS";
     static final String P2P = "P2P";
+    static final String INS = "INS";
 
     private final PeriodService periods;
     private final LedgerService ledger;
@@ -91,6 +92,7 @@ public class AttributionService {
     private final money.epsilon.brokerage.pms.service.PmsFeeService pmsFees;
     private final money.epsilon.brokerage.nps.service.NpsService npses;
     private final money.epsilon.brokerage.p2p.service.P2pService p2ps;
+    private final money.epsilon.brokerage.insurance.service.InsuranceService insurance;
 
     AttributionService(PeriodService periods, LedgerService ledger, ClientService clients, OrgChartService org, EmployeeService employees,
                        ShareService shares, FdService fds, BondService bonds, AifService aifs,
@@ -99,6 +101,7 @@ public class AttributionService {
                        money.epsilon.brokerage.preipo.service.PreIpoService preIpos,
                        money.epsilon.brokerage.pms.service.PmsFeeService pmsFees, money.epsilon.brokerage.nps.service.NpsService npses,
                        money.epsilon.brokerage.p2p.service.P2pService p2ps,
+                       money.epsilon.brokerage.insurance.service.InsuranceService insurance,
                        AuditService audit, JdbcClient jdbc, JdbcTemplate jdbcTemplate, ObjectMapper mapper,
                        @Value("${mis.sharing.order}") String order, @Value("${mis.sharing.negative-net:SAME_PERCENT}") NegativeNet negativeNet) {
         this.periods = periods;
@@ -117,6 +120,7 @@ public class AttributionService {
         this.pmsFees = pmsFees;
         this.npses = npses;
         this.p2ps = p2ps;
+        this.insurance = insurance;
         this.audit = audit;
         this.jdbc = jdbc;
         this.jdbcTemplate = jdbcTemplate;
@@ -204,6 +208,13 @@ public class AttributionService {
         Map<Long, Long> p2pPartner = new HashMap<>();
         p2pEntries.forEach(x -> { if (x.partnerId() != null) p2pPartner.put(x.p2pEntryId(), x.partnerId()); });
         lines.addAll(ledger.activeLines(periodId, P2P));
+        // Insurance policies (R-95): the expected commission, shared only with the policy's POSP, at the POSP's commission.
+        var insEntries = insurance.forLedger(period.month());
+        ledger.replaceInsuranceLines(periodId, insEntries.stream()
+                .map(x -> new LedgerService.OtherLineInput(x.policyId(), x.clientId(), x.expectedComm(), java.math.BigDecimal.ZERO, x.expectedComm())).toList());
+        Map<Long, money.epsilon.brokerage.insurance.service.InsuranceService.InsuranceForLedger> insById = new HashMap<>();
+        insEntries.forEach(x -> insById.put(x.policyId(), x));
+        lines.addAll(ledger.activeLines(periodId, INS));
         List<Long> own = lines.stream().filter(l -> l.adjustsPeriodId() == null).map(ActiveLine::clientId).distinct().toList();
         long notInMaster = own.size() - clients.rmsOn(own, period.toDate()).size();
         if (notInMaster > 0) {
@@ -242,7 +253,13 @@ public class AttributionService {
             java.util.Set<String> noFdPercent = new java.util.TreeSet<>();
             for (ActiveLine l : e.getValue()) {
                 List<Share> lineShares;
-                if (l.pmsFeeId() != null || l.npsEntryId() != null || l.p2pEntryId() != null) {
+                if (l.insurancePolicyId() != null) {
+                    var x = insById.get(l.insurancePolicyId());
+                    lineShares = x == null || x.pospId() == null || x.pospComm().signum() == 0 ? List.of()
+                            : List.of(new Share(PartnerType.POSP, x.pospId(),
+                                    x.pospName(),
+                                    x.pospComm().divide(x.expectedComm(), 12, java.math.RoundingMode.HALF_UP)));
+                } else if (l.pmsFeeId() != null || l.npsEntryId() != null || l.p2pEntryId() != null) {
                     Long partnerId = l.pmsFeeId() != null ? pmsPartner.get(l.pmsFeeId())
                             : l.npsEntryId() != null ? npsPartner.get(l.npsEntryId()) : p2pPartner.get(l.p2pEntryId());
                     Product product = l.pmsFeeId() != null ? Product.PMS : l.npsEntryId() != null ? Product.NPS : Product.P2P;
@@ -375,6 +392,7 @@ public class AttributionService {
         var pmsEntries = pmsFees.forLedger(month);
         var npsEntries = npses.forLedger(month);
         var p2pEntries = p2ps.forLedger(month);
+        var insEntries = insurance.forLedger(month);
 
         // Clients split with their own partners (MF and equity) and every client with business this month.
         java.util.Set<Long> splitByShares = new java.util.LinkedHashSet<>(mfClients);
@@ -389,6 +407,7 @@ public class AttributionService {
         pmsEntries.forEach(x -> all.add(x.clientId()));
         npsEntries.forEach(x -> all.add(x.clientId()));
         p2pEntries.forEach(x -> all.add(x.clientId()));
+        insEntries.forEach(x -> all.add(x.clientId()));
         long notInMaster = all.size() - clients.rmsOn(List.copyOf(all), day).size();
 
         java.util.Set<String> missing = new java.util.TreeSet<>();
@@ -421,6 +440,7 @@ public class AttributionService {
         entries.put(PMS, pmsEntries.size());
         entries.put(NPS, npsEntries.size());
         entries.put(P2P, p2pEntries.size());
+        entries.put(INS, insEntries.size());
         boolean ready = period.status() != Period.Status.LOCKED && !mfClients.isEmpty() && notInMaster == 0 && missing.isEmpty()
                 && eq.notInClients() == 0;
         return new Readiness(periodId, month, period.status().name(), !mfClients.isEmpty(), mfClients.size(), eq.uploaded(),

@@ -44,8 +44,19 @@ public final class EndWorkbook {
                          BigDecimal mfTrail, BigDecimal gst, BigDecimal mfNet,
                          BigDecimal subBrokerAmount, BigDecimal referralAmount, BigDecimal pospAmount, String remarks,
                          BigDecimal aum, BigDecimal fd, BigDecimal bonds, BigDecimal aif, BigDecimal loans, BigDecimal gift,
-                         BigDecimal equity, BigDecimal preIpo, BigDecimal pms, BigDecimal nps, BigDecimal p2p) {
-        /** Every product up to Pre-IPO (PMS, NPS and P2P none). */
+                         BigDecimal equity, BigDecimal preIpo, BigDecimal pms, BigDecimal nps, BigDecimal p2p, BigDecimal insurance) {
+        /** Every product but insurance. */
+        public EndRow(String region, String rd, String branch, String rm, String subBroker, BigDecimal subBrokerPct,
+                      String referral, BigDecimal referralPct, String posp, String client, String pan,
+                      BigDecimal mfTrail, BigDecimal gst, BigDecimal mfNet,
+                      BigDecimal subBrokerAmount, BigDecimal referralAmount, BigDecimal pospAmount, String remarks,
+                      BigDecimal aum, BigDecimal fd, BigDecimal bonds, BigDecimal aif, BigDecimal loans, BigDecimal gift,
+                      BigDecimal equity, BigDecimal preIpo, BigDecimal pms, BigDecimal nps, BigDecimal p2p) {
+            this(region, rd, branch, rm, subBroker, subBrokerPct, referral, referralPct, posp, client, pan, mfTrail, gst, mfNet,
+                    subBrokerAmount, referralAmount, pospAmount, remarks, aum, fd, bonds, aif, loans, gift, equity, preIpo, pms, nps, p2p, null);
+        }
+
+        /** Every product up to Pre-IPO (PMS, NPS, P2P and insurance none). */
         public EndRow(String region, String rd, String branch, String rm, String subBroker, BigDecimal subBrokerPct,
                       String referral, BigDecimal referralPct, String posp, String client, String pan,
                       BigDecimal mfTrail, BigDecimal gst, BigDecimal mfNet,
@@ -77,7 +88,7 @@ public final class EndWorkbook {
         /** MF net + the other products: the row's revenue excl. GST. */
         BigDecimal totalRev() {
             return nz(mfNet).add(nz(preIpo)).add(nz(fd)).add(nz(bonds)).add(nz(aif)).add(nz(loans)).add(nz(gift)).add(nz(equity))
-                    .add(nz(pms)).add(nz(nps)).add(nz(p2p));
+                    .add(nz(pms)).add(nz(nps)).add(nz(p2p)).add(nz(insurance));
         }
     }
 
@@ -108,6 +119,7 @@ public final class EndWorkbook {
 
     // DATA column positions (0-based)
     static final int FD_COL = 15, BONDS_COL = 16, LOANS_COL = 17, GIFT_COL = 22, EQUITY_COL = 19, PMS_COL = 20, NPS_COL = 23, P2P_COL = 24,
+            INSURANCE_COL = 18,
             BROKER_TYPE = 30, REMARKS = 31;
     static final int REGION = 0, BRANCH = 2, RM = 3, SUB_BROKER = 4, REFERRAL = 5, POSP = 7, AUM = 10, MF_TRAIL = 11,
             MF_NET = 13, PRE_IPO = 14, AIF = 21, TOTAL_REV = 25, REF_SHARING = 26, POSP_SHARING = 27, TOTAL_SHARING = 28,
@@ -210,6 +222,7 @@ public final class EndWorkbook {
             num(row, PMS_COL, e.pms());
             num(row, NPS_COL, e.nps());
             num(row, P2P_COL, e.p2p());
+            num(row, INSURANCE_COL, e.insurance());
             BigDecimal refSharing = nz(e.subBrokerAmount()).add(nz(e.referralAmount()));
             BigDecimal totalSharing = refSharing.add(nz(e.pospAmount()));
             num(row, TOTAL_REV, e.totalRev());
@@ -269,7 +282,7 @@ public final class EndWorkbook {
             return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), dropSb ? null : e.subBroker(), dropSb ? null : e.subBrokerPct(),
                     dropRef ? null : e.referral(), dropRef ? null : e.referralPct(), dropPosp ? null : e.posp(), e.client(), e.pan(),
                     e.mfTrail(), e.gst(), e.mfNet(), e.subBrokerAmount(), e.referralAmount(), e.pospAmount(), e.remarks(), e.aum(), e.fd(),
-                    e.bonds(), e.aif(), e.loans(), e.gift(), e.equity(), e.preIpo(), e.pms(), e.nps(), e.p2p());
+                    e.bonds(), e.aif(), e.loans(), e.gift(), e.equity(), e.preIpo(), e.pms(), e.nps(), e.p2p(), e.insurance());
         }).toList();
     }
 

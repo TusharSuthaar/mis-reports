@@ -12,7 +12,7 @@ import { DatedChangeForm } from '../../components/DatedChangeForm';
 import { HistoryTable } from '../../components/HistoryTable';
 import { SidePanel } from '../../components/SidePanel';
 import { Tabs, useTab } from '../../components/Tabs';
-import type { AifEntry, BondEntry, FdEntry, GiftEntry, LoanEntry, NpsEntry, P2pEntry, PmsInvestment } from '../../api/types';
+import type { AifEntry, BondEntry, FdEntry, GiftEntry, InsurancePolicy, LoanEntry, NpsEntry, P2pEntry, PmsInvestment } from '../../api/types';
 import { Amount } from '../../components/Amount';
 import { formatMonth } from '../fd/FdPage';
 import { formatDate, formatDateTime, todayIso } from '../../format';
@@ -469,6 +469,7 @@ function Holdings({ clientId, name }: { clientId: number; name: string }) {
   const pms = useLoad<PmsInvestment[]>(`/api/pms${q}`);
   const nps = useLoad<NpsEntry[]>(`/api/nps${q}`);
   const p2p = useLoad<P2pEntry[]>(`/api/p2p${q}`);
+  const ins = useLoad<InsurancePolicy[]>(`/api/insurance${q}`);
   const rows = [
     ...(fd.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `FD-${e.id}`, product: 'FD', tab: 'FD', id: e.id, month: e.month, item: e.fdName, amount: e.amount, gross: e.gross })),
     ...(bonds.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `B-${e.id}`, product: 'Bond', tab: 'BOND', id: e.id, month: e.month, item: e.bondName, amount: e.consideration, gross: e.gross })),
@@ -478,9 +479,10 @@ function Holdings({ clientId, name }: { clientId: number; name: string }) {
     ...(pms.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `P-${e.id}`, product: 'PMS', tab: 'PMS', id: e.id, month: e.month, item: `${e.amc} · ${e.strategy}`, amount: e.amount, gross: 0 })),
     ...(nps.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `N-${e.id}`, product: 'NPS', tab: 'NPS', id: e.id, month: e.month, item: e.pop, amount: e.amount, gross: e.revenue })),
     ...(p2p.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `Q-${e.id}`, product: 'P2P', tab: 'P2P', id: e.id, month: e.month, item: `${e.platform} · ${e.scheme}`, amount: e.amount ?? 0, gross: e.gross })),
+    ...(ins.data ?? []).filter((e) => e.clientId === clientId).map((e) => ({ k: `I-${e.id}`, product: 'Insurance', tab: 'INS', id: e.id, month: e.month, item: `${e.insurer} · ${e.productName} · ${e.policyNo}`, amount: e.netPremium, gross: e.expectedComm })),
   ].sort((a, b) => b.month.localeCompare(a.month));
-  if (!fd.data || !bonds.data || !aif.data || !loans.data || !gifts.data || !pms.data || !nps.data || !p2p.data) return <p className="muted">Loading…</p>;
-  if (rows.length === 0) return <div className="empty">No FD, bond, AIF, loan, GIFT City, PMS, NPS or P2P entries for this client.</div>;
+  if (!fd.data || !bonds.data || !aif.data || !loans.data || !gifts.data || !pms.data || !nps.data || !p2p.data || !ins.data) return <p className="muted">Loading…</p>;
+  if (rows.length === 0) return <div className="empty">No FD, bond, AIF, loan, GIFT City, PMS, NPS, P2P or insurance entries for this client.</div>;
   return (
     <table>
       <thead>

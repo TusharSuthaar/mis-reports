@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { PAYMENT_LABEL, type AifEntry, type BondEntry, type FdEntry, type FdPaymentStatus, type GiftEntry, type LoanEntry, type NpsEntry, type P2pEntry, type PmsInvestment } from '../../api/types';
+import { PAYMENT_LABEL, type AifEntry, type BondEntry, type FdEntry, type FdPaymentStatus, type GiftEntry, type InsurancePolicy, type LoanEntry, type NpsEntry, type P2pEntry, type PmsInvestment } from '../../api/types';
 import { useLoad } from '../../api/useLoad';
 import { useAuth } from '../../app/auth';
 import { canEditMasters } from '../../app/permissions';
@@ -12,6 +12,7 @@ import { AifPage } from '../aif/AifPage';
 import { BondsPage } from '../bonds/BondsPage';
 import { FdPage, formatMonth } from '../fd/FdPage';
 import { GiftPage } from '../gift/GiftPage';
+import { InsurancePage } from '../insurance/InsurancePage';
 import { LoansPage } from '../loans/LoansPage';
 import { MfPage } from '../mf/MfPage';
 import { NpsPage } from '../nps/NpsPage';
@@ -32,9 +33,10 @@ const TABS = [
   { key: 'PMS', label: 'PMS' },
   { key: 'NPS', label: 'NPS' },
   { key: 'P2P', label: 'P2P' },
+  { key: 'INS', label: 'Insurance' },
   { key: 'EQUITY', label: 'Equity' },
 ];
-const PRODUCT_NAME: Record<string, string> = { PREIPO: 'Pre-IPO', FD: 'FD', BOND: 'Bond', AIF: 'AIF', LOAN: 'Loan', GIFT: 'GIFT City', PMS: 'PMS', NPS: 'NPS', P2P: 'P2P' };
+const PRODUCT_NAME: Record<string, string> = { PREIPO: 'Pre-IPO', FD: 'FD', BOND: 'Bond', AIF: 'AIF', LOAN: 'Loan', GIFT: 'GIFT City', PMS: 'PMS', NPS: 'NPS', P2P: 'P2P', INS: 'Insurance' };
 
 /** Product entries: every product booked by hand on one page — all together, or one product with its own columns. */
 export function ProductsPage() {
@@ -53,7 +55,7 @@ export function ProductsPage() {
         <div>
           <h1>Product entries</h1>
           <p className="muted" style={{ margin: 0 }}>
-            MF and equity brokerage from the monthly uploads, and Pre-IPO, FD, bonds, AIF, loans, GIFT City, PMS, NPS and P2P booked by hand. Filters apply across months.
+            MF and equity brokerage from the monthly uploads, and Pre-IPO, FD, bonds, AIF, loans, GIFT City, PMS, NPS, P2P and insurance booked by hand. Filters apply across months.
           </p>
         </div>
         <NewEntryMenu onPick={(p) => {
@@ -81,6 +83,7 @@ export function ProductsPage() {
       {tab === 'PMS' && <PmsPage embedded />}
       {tab === 'NPS' && <NpsPage embedded />}
       {tab === 'P2P' && <P2pPage embedded />}
+      {tab === 'INS' && <InsurancePage embedded />}
       {tab === 'EQUITY' && <EquityPage />}
     </section>
   );
@@ -105,7 +108,7 @@ function NewEntryMenu({ onPick }: { onPick: (product: string) => void }) {
       </button>
       {open && (
         <div className="menu" role="menu">
-          {(['PREIPO', 'FD', 'BOND', 'AIF', 'LOAN', 'GIFT', 'PMS', 'NPS', 'P2P'] as const).map((p) => (
+          {(['PREIPO', 'FD', 'BOND', 'AIF', 'LOAN', 'GIFT', 'PMS', 'NPS', 'P2P', 'INS'] as const).map((p) => (
             <button key={p} type="button" role="menuitem" onClick={() => { setOpen(false); onPick(p); }}>
               New {PRODUCT_NAME[p]}
             </button>
@@ -117,7 +120,7 @@ function NewEntryMenu({ onPick }: { onPick: (product: string) => void }) {
 }
 
 interface Row {
-  product: 'PREIPO' | 'FD' | 'BOND' | 'AIF' | 'LOAN' | 'GIFT' | 'PMS' | 'NPS' | 'P2P';
+  product: 'PREIPO' | 'FD' | 'BOND' | 'AIF' | 'LOAN' | 'GIFT' | 'PMS' | 'NPS' | 'P2P' | 'INS';
   id: number;
   month: string;
   client: string;
@@ -143,6 +146,7 @@ function AllProducts({ onOpen }: { onOpen: (product: string, id: number) => void
   const nps = useLoad<NpsEntry[]>(`/api/nps${query}`);
   const p2p = useLoad<P2pEntry[]>(`/api/p2p${query}`);
   const preIpo = useLoad<PreIpoDeal[]>(`/api/preipo${query}`);
+  const ins = useLoad<InsurancePolicy[]>(`/api/insurance${query}`);
   const rows: Row[] = [
     ...(preIpo.data ?? []).map((e): Row => ({ product: 'PREIPO', id: e.id, month: e.month, client: e.clientName, item: `${KIND_LABEL[e.kind]} · ${e.scripName}`, rm: e.rmName, amount: e.amount, gross: e.gross, invoice: e.invoice, payment: e.billingStatus === 'PAYMENT_RECEIVED' || e.billingStatus === 'PAID_BY_CLIENT' ? 'RECEIVED' : 'PENDING', cancelled: e.status === 'CANCELLED' })),
     ...(fd.data ?? []).map((e): Row => ({ product: 'FD', id: e.id, month: e.month, client: e.clientName, item: `${e.fdName}${e.fdNo ? ` #${e.fdNo}` : ''}`, rm: e.rmName, amount: e.amount, gross: e.gross, invoice: e.invoice, payment: e.paymentStatus, cancelled: e.status === 'CANCELLED' })),
@@ -153,14 +157,15 @@ function AllProducts({ onOpen }: { onOpen: (product: string, id: number) => void
     ...(pms.data ?? []).map((e): Row => ({ product: 'PMS', id: e.id, month: e.month, client: e.clientName, item: `${e.amc} · ${e.strategy}${e.holdingStatus === 'REDEEMED' ? ' (redeemed)' : ''}`, rm: e.rmName, amount: e.amount, gross: 0, invoice: 0, payment: null, cancelled: e.status === 'CANCELLED' })),
     ...(nps.data ?? []).map((e): Row => ({ product: 'NPS', id: e.id, month: e.month, client: e.clientName, item: e.pop, rm: e.rmName, amount: e.amount, gross: e.revenue, invoice: e.invoice, payment: e.revenue > 0 ? (e.receivedOn ? 'RECEIVED' : 'PENDING') : null, cancelled: e.status === 'CANCELLED' })),
     ...(p2p.data ?? []).map((e): Row => ({ product: 'P2P', id: e.id, month: e.month, client: e.clientName, item: `${e.platform} · ${e.scheme}`, rm: e.rmName, amount: e.amount ?? 0, gross: e.gross, invoice: e.invoice, payment: e.gross > 0 ? (e.receivedOn ? 'RECEIVED' : 'PENDING') : null, cancelled: e.status === 'CANCELLED' })),
+    ...(ins.data ?? []).map((e): Row => ({ product: 'INS', id: e.id, month: e.month, client: e.clientName, item: `${e.insurer} · ${e.productName}`, rm: e.rmName, amount: e.netPremium, gross: e.expectedComm, invoice: e.expectedComm, payment: null, cancelled: e.status === 'CANCELLED' })),
   ].sort((a, b) => b.month.localeCompare(a.month) || a.client.localeCompare(b.client));
   const active = rows.filter((r) => !r.cancelled);
   const byProduct = (p: string) => active.filter((r) => r.product === p).reduce((s, r) => s + r.gross, 0);
-  const loading = !fd.data || !bonds.data || !aif.data || !loans.data || !gifts.data || !pms.data || !nps.data || !p2p.data || !preIpo.data;
+  const loading = !fd.data || !bonds.data || !aif.data || !loans.data || !gifts.data || !pms.data || !nps.data || !p2p.data || !preIpo.data || !ins.data;
 
   return (
     <>
-      <ListFilters searchHint="Client, PAN, code, Pre-IPO scrip, FD / bond / fund name, ISIN, lender, GIFT City fund, PMS AMC or strategy, NPS POP, P2P platform" />
+      <ListFilters searchHint="Client, PAN, code, Pre-IPO scrip, FD / bond / fund name, ISIN, lender, GIFT City fund, PMS AMC or strategy, NPS POP, P2P platform, insurer or policy no." />
       {!loading && (
         <div className="cards">
           {(['PREIPO', 'FD', 'BOND', 'AIF', 'LOAN', 'GIFT'] as const).map((p) => (
@@ -172,7 +177,7 @@ function AllProducts({ onOpen }: { onOpen: (product: string, id: number) => void
           ))}
         </div>
       )}
-      {(fd.error || bonds.error || aif.error || loans.error || gifts.error || pms.error || nps.error || p2p.error || preIpo.error) && <p className="error">{fd.error ?? bonds.error ?? aif.error ?? loans.error ?? gifts.error ?? pms.error ?? nps.error ?? p2p.error ?? preIpo.error}</p>}
+      {(fd.error || bonds.error || aif.error || loans.error || gifts.error || pms.error || nps.error || p2p.error || preIpo.error || ins.error) && <p className="error">{fd.error ?? bonds.error ?? aif.error ?? loans.error ?? gifts.error ?? pms.error ?? nps.error ?? p2p.error ?? preIpo.error ?? ins.error}</p>}
       {!loading && rows.length === 0 && <div className="empty">No entries match. Use “New entry” to add one.</div>}
       {rows.length > 0 && (
         <table>

@@ -41,6 +41,7 @@ public class EndFileService {
     static final String PMS = "PMS";
     static final String NPS = "NPS";
     static final String P2P = "P2P";
+    static final String INS = "INS";
     static final String EQUITY = "EQUITY";
     static final String NO_BRANCH = "(no branch)";
 
@@ -59,6 +60,7 @@ public class EndFileService {
     private final money.epsilon.brokerage.pms.service.PmsFeeService pmsFees;
     private final money.epsilon.brokerage.nps.service.NpsService npses;
     private final money.epsilon.brokerage.p2p.service.P2pService p2ps;
+    private final money.epsilon.brokerage.insurance.service.InsuranceService insurance;
 
     EndFileService(PeriodService periods, JdbcClient jdbc, PanCipher panCipher, AuditService audit,
                    money.epsilon.brokerage.client.service.ClientService clients, RegionService regions,
@@ -67,7 +69,9 @@ public class EndFileService {
                    money.epsilon.brokerage.gift.service.GiftService gifts,
                    money.epsilon.brokerage.preipo.service.PreIpoService preIpos,
                    money.epsilon.brokerage.pms.service.PmsFeeService pmsFees, money.epsilon.brokerage.nps.service.NpsService npses,
-                   money.epsilon.brokerage.p2p.service.P2pService p2ps) {
+                   money.epsilon.brokerage.p2p.service.P2pService p2ps,
+                   money.epsilon.brokerage.insurance.service.InsuranceService insurance) {
+        this.insurance = insurance;
         this.aifs = aifs;
         this.loans = loans;
         this.gifts = gifts;
@@ -98,8 +102,8 @@ public class EndFileService {
         Map<Long, YearMonth> monthOfPeriod = periods.list(MF).stream().collect(Collectors.toMap(PeriodView::id, PeriodView::month));
 
         List<EndRow> rows = jdbc.sql("""
-                        SELECT * FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""")
-                .params(periodId, MF, FD, BOND, AIF, LOAN, GIFT, EQUITY, PREIPO, PMS, NPS, P2P)
+                        SELECT * FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""")
+                .params(periodId, MF, FD, BOND, AIF, LOAN, GIFT, EQUITY, PREIPO, PMS, NPS, P2P, INS)
                 .query((rs, n) -> {
                     boolean fd = FD.equals(rs.getString("product_type"));
                     boolean bond = BOND.equals(rs.getString("product_type"));
@@ -120,6 +124,14 @@ public class EndFileService {
                                 row.referralAmount(), row.pospAmount(), "AIF#" + rs.getLong("aif_entry_id"), null, null, null, rs.getBigDecimal("net"), null, null, null);
                     }
                     String type = rs.getString("product_type");
+                    if (INS.equals(type)) {
+                        // An insurance row (R-95): the expected commission in the Insurance column, the POSP's commission as POSP
+                        // Sharing, MF columns empty; labelled below.
+                        return new EndRow(row.region(), row.rd(), row.branch(), row.rm(), row.subBroker(), row.subBrokerPct(), row.referral(),
+                                row.referralPct(), row.posp(), row.client(), row.pan(), null, null, null, row.subBrokerAmount(),
+                                row.referralAmount(), row.pospAmount(), "INS#" + rs.getLong("insurance_policy_id"), null, null, null, null, null,
+                                null, null, null, null, null, null, rs.getBigDecimal("net"));
+                    }
                     if (PMS.equals(type) || NPS.equals(type) || P2P.equals(type)) {
                         // A PMS / NPS / P2P row (R-85..R-87): its revenue excl. GST in its own column, MF columns empty; labelled below.
                         java.math.BigDecimal v = rs.getBigDecimal("net");
@@ -173,15 +185,15 @@ public class EndFileService {
                         .thenComparing(e -> Objects.toString(e.rm(), "")).thenComparing(e -> Objects.toString(e.client(), "")))
                 .toList();
         if (rows.isEmpty()) throw new RuleViolationException(p.month() + " has no split to export");
-        rows = withOtherLabels(withPreIpoLabels(withGiftLabels(withLoanLabels(withAifLabels(withBondLabels(withFdLabels(rows)))))));
+        rows = withInsuranceLabels(withOtherLabels(withPreIpoLabels(withGiftLabels(withLoanLabels(withAifLabels(withBondLabels(withFdLabels(rows))))))));
 
         PeriodView previous = periods.list(MF).stream()
                 .filter(x -> x.status() == Period.Status.LOCKED && x.month().isBefore(p.month()))
                 .max(Comparator.comparing(PeriodView::month)).orElse(null);
         List<BranchTotal> prev = previous == null ? List.of() : jdbc.sql("""
                         SELECT region, coalesce(branch, ?) AS branch, sum(net) AS gross, sum(epsilon_amount) AS net
-                        FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) GROUP BY region, coalesce(branch, ?)""")
-                .params(NO_BRANCH, previous.id(), MF, FD, BOND, AIF, LOAN, GIFT, EQUITY, PREIPO, PMS, NPS, P2P, NO_BRANCH)
+                        FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) GROUP BY region, coalesce(branch, ?)""")
+                .params(NO_BRANCH, previous.id(), MF, FD, BOND, AIF, LOAN, GIFT, EQUITY, PREIPO, PMS, NPS, P2P, INS, NO_BRANCH)
                 .query((rs, n) -> new BranchTotal(rs.getString("region"), rs.getString("branch"), rs.getBigDecimal("gross"), rs.getBigDecimal("net")))
                 .list();
 
@@ -285,6 +297,20 @@ public class EndFileService {
             return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
                     e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(), remark,
                     aum, null, null, null, null, null, null, null, e.pms(), e.nps(), e.p2p());
+        }).toList();
+    }
+
+    /** Insurance rows carry "INS#id" until here: they get the insurer and product as REMARKS. */
+    private List<EndRow> withInsuranceLabels(List<EndRow> rows) {
+        List<Long> ids = rows.stream().map(EndRow::remarks).filter(r -> r != null && r.startsWith("INS#")).map(r -> Long.parseLong(r.substring(4))).toList();
+        if (ids.isEmpty()) return rows;
+        Map<Long, String> labels = insurance.labels(ids);
+        return rows.stream().map(e -> {
+            if (e.remarks() == null || !e.remarks().startsWith("INS#")) return e;
+            return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
+                    e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(),
+                    labels.getOrDefault(Long.parseLong(e.remarks().substring(4)), "Insurance"), null, null, null, null, null, null, null, null,
+                    null, null, null, e.insurance());
         }).toList();
     }
 

@@ -521,6 +521,49 @@ class MonthLifecycleIT extends IntegrationTestBase {
     }
 
     @Test
+    void theMonthsInsurancePoliciesShowTheExpectedCommissionAndPayThePospOnly() throws Exception {
+        long periodId = saveMonth(file(100));   // MF: client 1 net 100, client 2 net 50, no partners
+        Map<String, Object> policy = new java.util.HashMap<>();
+        policy.put("clientId", client1Id);
+        policy.put("month", month + "-01");
+        policy.put("insurer", "INSURER " + tag);
+        policy.put("category", "LIFE");
+        policy.put("productName", "TERM PLAN");
+        policy.put("subType", "Term");
+        policy.put("sumAssured", 10000000);
+        policy.put("ppt", "10");
+        policy.put("policyTerm", 30);
+        policy.put("policyNo", "POL-" + tag);
+        policy.put("businessType", "NEW");
+        policy.put("totalPremium", 10000);
+        policy.put("netPremium", 10000);
+        policy.put("expectedPercent", 15);
+        policy.put("newPospName", "POSP " + tag);
+        policy.put("pospShare", 50);
+        postJson("/api/insurance", policy, admin, 201);
+        assertThat(getJson("/api/months/" + periodId + "/readiness", admin, 200).get("entries").get("INS").asInt()).isEqualTo(1);
+
+        JsonNode run = process(periodId);
+        assertThat(run.get("net").decimalValue()).isEqualByComparingTo("1650");      // MF 150 + expected commission 1,500
+        assertThat(run.get("partners").decimalValue()).isEqualByComparingTo("750");  // the POSP's 15% × 50% of 10,000
+
+        MockHttpServletResponse end = mvc.perform(get("/api/months/" + periodId + "/end-file").session(admin)).andExpect(status().isOk()).andReturn().getResponse();
+        try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(end.getContentAsByteArray()))) {
+            var data = wb.getSheetAt(2);
+            assertThat(data.getRow(0).getCell(18).getStringCellValue()).isEqualTo("Insurance");
+            var row = StreamSupport.stream(data.spliterator(), false)
+                    .filter(r -> r.getCell(31) != null && r.getCell(31).getStringCellValue().equals("Insurance: INSURER " + tag + " · TERM PLAN"))
+                    .findFirst().orElseThrow();
+            assertThat(row.getCell(7).getStringCellValue()).isEqualTo("POSP " + tag);
+            assertThat(row.getCell(18).getNumericCellValue()).isEqualTo(1500.0);   // Insurance column
+            assertThat(row.getCell(25).getNumericCellValue()).isEqualTo(1500.0);   // Total Rev
+            assertThat(row.getCell(26).getNumericCellValue()).isEqualTo(0.0);      // no Ref Sharing on insurance
+            assertThat(row.getCell(27).getNumericCellValue()).isEqualTo(750.0);    // POSP Sharing
+            assertThat(row.getCell(29).getNumericCellValue()).isEqualTo(750.0);    // Net Revenue
+        }
+    }
+
+    @Test
     void theMonthsLoanPayoutsAreSplitWithTheirPartnersLoansPercentAndShownInTheLoansColumn() throws Exception {
         long periodId = saveMonth(file(100));   // MF: client 1 net 100, client 2 net 50, no partners
         Map<String, Object> loan = new java.util.HashMap<>();

@@ -30,6 +30,7 @@ reads or writes those tables with SQL — it calls the owner's public service.
 | `p2p` | `p2p_entry` | P2P investments (platform, scheme, ROI, dates) with a typed brokerage; entries with brokerage are the month's P2P lines | `P2pService` |
 | `nps` | `nps_entry` | NPS investments with their revenue (POP charges × sharing %, or typed; CGST + SGST); entries with revenue are the month's NPS lines | `NpsService` |
 | `pms` | `pms_investment`, `pms_payout`, `pms_fee` | PMS client investments, AMC payouts per invoice period, and each client's PMS revenue per month received (the month's PMS lines) | `PmsService`, `PmsFeeService` |
+| `insurance` | `insurance_policy` | Insurance policies typed on the Insurance screen or uploaded as the month's policy sheet, mapped to clients by PAN, with expected and POSP commission; policies are the month's Insurance lines | `InsuranceService` |
 | `gift` | `gift_entry` | GIFT City investments entered on the GIFT CITY screen (USD / ₹ amount, fund, transaction status) with a typed brokerage (TDS, GST, net, invoice) | `GiftService` |
 | `loan` | `loan_entry` | Loan payouts entered on the Loans screen (disbursal and LAS trail payouts), with their revenue (gross, TDS, GST, net, invoice) | `LoanService` |
 | `fd` | `fd_entry` | FD bookings entered on the FD screen, with their commission (gross, TDS, GST, net, invoice) | `FdService` |
