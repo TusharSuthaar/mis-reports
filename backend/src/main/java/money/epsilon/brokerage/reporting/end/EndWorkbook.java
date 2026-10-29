@@ -92,7 +92,7 @@ public final class EndWorkbook {
         }
     }
 
-    /** A branch total from the previous locked month (Total Rev excl. GST and Net Revenue). */
+    /** A branch total from the previous month (Total Rev excl. GST and Net Revenue). */
     public record BranchTotal(String region, String branch, BigDecimal gross, BigDecimal net) {
     }
 
@@ -101,7 +101,13 @@ public final class EndWorkbook {
      * found in the data but not listed come after, by name.
      */
     public record Input(YearMonth month, boolean draft, List<EndRow> rows, YearMonth previousMonth, List<BranchTotal> previous,
-                        List<RegionLayout> regions) {
+                        List<RegionLayout> regions, boolean previousDraft) {
+        /** {@code previousDraft}: the previous month is processed but not locked yet (its figures may still change). */
+        public Input(YearMonth month, boolean draft, List<EndRow> rows, YearMonth previousMonth, List<BranchTotal> previous,
+                     List<RegionLayout> regions) {
+            this(month, draft, rows, previousMonth, previous, regions, false);
+        }
+
         public Input(YearMonth month, boolean draft, List<EndRow> rows, YearMonth previousMonth, List<BranchTotal> previous) {
             this(month, draft, rows, previousMonth, previous, List.of());
         }
@@ -137,7 +143,7 @@ public final class EndWorkbook {
     private int dataFirst, dataLast, dataTotal; // 1-based Excel rows
 
     private EndWorkbook(Input in) {
-        this.in = new Input(in.month(), in.draft(), withoutZeroPartners(in.rows()), in.previousMonth(), in.previous(), in.regions());
+        this.in = new Input(in.month(), in.draft(), withoutZeroPartners(in.rows()), in.previousMonth(), in.previous(), in.regions(), in.previousDraft());
         Font arial = font(false, false);
         Font arialBold = font(true, false);
         header = style(font(true, true), null, IndexedColors.DARK_BLUE, true);
@@ -387,7 +393,7 @@ public final class EndWorkbook {
         formula(nr, 9, "J" + grossRow + "-J" + totalRow, boldMoney);
         formula(nr, 10, "K" + grossRow + "-K" + totalRow, boldMoney);
 
-        // M–T: Region MOM in lakhs (previous locked month as values, this month as formulas)
+        // M–T: Region MOM in lakhs (the previous processed month as values, this month as formulas)
         String prev = in.previousMonth() == null ? "Previous" : monYY(in.previousMonth());
         Row mh = row(s, 0);
         cell(mh, 12, "Region", header);
@@ -445,6 +451,7 @@ public final class EndWorkbook {
         formula(mt, 19, mom("R", "P", m), percent);
         cell(row(s, m + 1), 12, "MOM figures in lakhs", text);
         if (in.draft()) cell(row(s, m + 2), 12, "DRAFT — " + cur + " is not locked yet", bold);
+        if (in.previousDraft()) cell(row(s, m + 3), 12, prev + " is not locked yet: its figures may still change", text);
     }
 
     /** O–T of one region-section row: previous month as values (blank if none), this month as formulas, MOM %. */

@@ -91,8 +91,15 @@ describe('upload Master MIS', () => {
     await userEvent.click(
       screen.getByRole('button', { name: 'Apply from 2026-08-01: 3021 new clients, 1 RM changes, 651 share changes, 1188 partner %s' }),
     );
-    expect(await screen.findByText(/3021 clients added, 1 RMs changed, 651 shares set/)).toBeInTheDocument();
+    // Loaded: the page says so, with the counts and the next step; the check and its Apply button are gone.
+    expect(await screen.findByRole('heading', { name: /Master MIS loaded/ })).toBeInTheDocument();
+    expect(screen.getByText('Clients added').nextElementSibling).toHaveTextContent('3,021');
+    expect(screen.getByText('Shares set').nextElementSibling).toHaveTextContent('651');
+    expect(screen.queryByRole('button', { name: /^Apply from/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Back to Month close' })).toHaveAttribute('href', '/month');
     expect(sent).toEqual({ token: 'share-loads/x.xlsx', fileName: 'Master_MIS.xlsx', from: '2026-08-01' });
+    await userEvent.click(screen.getByRole('button', { name: 'Upload another file' }));
+    expect(screen.getByRole('button', { name: 'Check file' })).toBeInTheDocument();
   });
 });
 

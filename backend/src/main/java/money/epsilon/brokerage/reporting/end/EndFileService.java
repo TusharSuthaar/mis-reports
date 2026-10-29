@@ -187,18 +187,20 @@ public class EndFileService {
         if (rows.isEmpty()) throw new RuleViolationException(p.month() + " has no split to export");
         rows = withInsuranceLabels(withOtherLabels(withPreIpoLabels(withGiftLabels(withLoanLabels(withAifLabels(withBondLabels(withFdLabels(rows))))))));
 
+        // The month before for MOM: the latest earlier month with a split (processed or locked), flagged when not locked yet.
         PeriodView previous = periods.list(MF).stream()
-                .filter(x -> x.status() == Period.Status.LOCKED && x.month().isBefore(p.month()))
+                .filter(x -> x.status() != Period.Status.OPEN && x.month().isBefore(p.month()))
                 .max(Comparator.comparing(PeriodView::month)).orElse(null);
         List<BranchTotal> prev = previous == null ? List.of() : jdbc.sql("""
                         SELECT region, coalesce(branch, ?) AS branch, sum(net) AS gross, sum(epsilon_amount) AS net
-                        FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) GROUP BY region, coalesce(branch, ?)""")
-                .params(NO_BRANCH, previous.id(), MF, FD, BOND, AIF, LOAN, GIFT, EQUITY, PREIPO, PMS, NPS, P2P, INS, NO_BRANCH)
+                        FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) GROUP BY 1, 2""")
+                .params(NO_BRANCH, previous.id(), MF, FD, BOND, AIF, LOAN, GIFT, EQUITY, PREIPO, PMS, NPS, P2P, INS)
                 .query((rs, n) -> new BranchTotal(rs.getString("region"), rs.getString("branch"), rs.getBigDecimal("gross"), rs.getBigDecimal("net")))
                 .list();
 
         List<RegionLayout> layout = regions.list().stream().map(r -> new RegionLayout(r.name(), r.endBranchRows())).toList();
-        byte[] content = EndWorkbook.build(new EndWorkbook.Input(p.month(), draft, rows, previous == null ? null : previous.month(), prev, layout));
+        byte[] content = EndWorkbook.build(new EndWorkbook.Input(p.month(), draft, rows, previous == null ? null : previous.month(), prev, layout,
+                previous != null && previous.status() != Period.Status.LOCKED));
         String name = (draft ? "DRAFT_" : "") + EndWorkbook.fileName(p.month());
         BigDecimal net = rows.stream().map(EndRow::totalRev).reduce(BigDecimal.ZERO, BigDecimal::add);
         audit.record("END_FILE", periodId, "EXPORT", null, new ExportAudit(p.month(), draft, rows.size(), net, fullPan));

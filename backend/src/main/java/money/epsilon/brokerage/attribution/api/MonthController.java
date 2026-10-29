@@ -53,8 +53,9 @@ class MonthController {
         return attribution.readiness(id);
     }
 
+    /** FINANCE locks; for now ADMIN can too (user, 28 Oct 2026), R-42. */
     @PostMapping("/api/months/{id}/lock")
-    @PreAuthorize("hasRole('FINANCE')")
+    @PreAuthorize("hasAnyRole('FINANCE','ADMIN')")
     PeriodView lock(@PathVariable long id) {
         return periods.lock(id, CurrentUser.username());
     }

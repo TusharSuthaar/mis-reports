@@ -368,7 +368,7 @@ public class AttributionService {
      */
     public record Readiness(long periodId, YearMonth month, String status, boolean mfSaved, int mfClients, boolean equityUploaded,
                             int equityClients, int equityNotInClients, Map<String, Integer> entries, long notInMaster,
-                            List<String> missingPercent, boolean ready) {
+                            List<String> missingPercent, boolean ready, List<money.epsilon.brokerage.equity.service.EquityService.Missing> equityMissing) {
     }
 
     private static final Map<Product, String> PRODUCT_LABEL = Map.of(Product.FD, "FD", Product.BOND, "Bonds", Product.AIF, "AIF",
@@ -444,7 +444,7 @@ public class AttributionService {
         boolean ready = period.status() != Period.Status.LOCKED && !mfClients.isEmpty() && notInMaster == 0 && missing.isEmpty()
                 && eq.notInClients() == 0;
         return new Readiness(periodId, month, period.status().name(), !mfClients.isEmpty(), mfClients.size(), eq.uploaded(),
-                eq.clientIds().size(), eq.notInClients(), entries, notInMaster, List.copyOf(missing), ready);
+                eq.clientIds().size(), eq.notInClients(), entries, notInMaster, List.copyOf(missing), ready, eq.missing());
     }
 
     /** Voids the month's current split (its figures changed or it is being re-run). */

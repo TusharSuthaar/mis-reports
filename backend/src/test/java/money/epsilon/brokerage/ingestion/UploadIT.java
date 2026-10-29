@@ -142,6 +142,31 @@ class UploadIT extends IntegrationTestBase {
     }
 
     @Test
+    void aMinorWithItsOwnMasterMisRowIsBookedThereNotUnderTheGuardian() throws Exception {
+        long minor = masterClient("OWN ROW MINOR " + tag, null, rmA, "2026-01-01");   // the minor's own Master MIS row, no PAN
+        String code = "T" + tag + "M";
+        uploadClientMaster(new FinesseFiles.ClientMaster().client(code, "OWN ROW MINOR " + tag, null, FinesseFiles.pan(Long.parseLong(tag) * 10 + 1)).bytes(), admin);   // guardian ONE
+        long uploadId = stage(new FinesseFiles.Brokerage().row(code, "x", start, end, 7).total(7).bytes());
+        JsonNode review = getJson("/api/uploads/" + uploadId + "/review", admin, 200);
+        assertThat(review.get("byName").asInt()).isEqualTo(1);
+        assertThat(review.get("byGuardianPan").asInt()).isZero();
+        postJson("/api/uploads/" + uploadId + "/commit", Map.of(), admin, 200);
+        assertThat(jdbc.sql("SELECT net FROM brokerage_line WHERE upload_id = ? AND client_id = ? AND NOT voided").params(uploadId, minor)
+                .query(java.math.BigDecimal.class).single()).isEqualByComparingTo("7");
+    }
+
+    @Test
+    void aCodeWithNeitherPanNorGuardianPanIsMatchedByName() throws Exception {
+        String code = "T" + tag + "N";
+        uploadClientMaster(new FinesseFiles.ClientMaster().client(code, "Two  " + tag, null, null).bytes(), admin);   // TWO's name, no PANs
+        long uploadId = stage(new FinesseFiles.Brokerage().row(code, "x", start, end, 9).total(9).bytes());
+        assertThat(getJson("/api/uploads/" + uploadId + "/review", admin, 200).get("byName").asInt()).isEqualTo(1);
+        postJson("/api/uploads/" + uploadId + "/commit", Map.of(), admin, 200);
+        assertThat(jdbc.sql("SELECT net FROM brokerage_line WHERE upload_id = ? AND client_id = ? AND NOT voided").params(uploadId, two)
+                .query(java.math.BigDecimal.class).single()).isEqualByComparingTo("9");
+    }
+
+    @Test
     void theNotInMasterListDownloadsAsExcel() throws Exception {
         long uploadId = stage(file(0));
         byte[] xlsx = mvc.perform(get("/api/uploads/" + uploadId + "/not-in-master.xlsx").session(admin))

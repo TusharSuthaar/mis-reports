@@ -134,6 +134,16 @@ class EndWorkbookTest {
     }
 
     @Test
+    void aPreviousMonthNotLockedYetStillFillsTheMomColumnsAndIsFlagged() throws Exception {
+        List<BranchTotal> previous = List.of(new BranchTotal("BIHAR & EUP", "PATNA", new BigDecimal("80"), new BigDecimal("50")));
+        try (XSSFWorkbook wb = open(EndWorkbook.build(new EndWorkbook.Input(SEP, true, rows(), YearMonth.of(2026, 8), previous, List.of(), true)))) {
+            Sheet summary = wb.getSheet("Summary");
+            assertThat(summary.getRow(0).getCell(14).getStringCellValue()).isEqualTo("Aug'26");
+            assertThat(findInColumn(summary, 12, "Aug'26 is not locked yet: its figures may still change")).isNotNull();
+        }
+    }
+
+    @Test
     void everyFormulaWorksAndTheTotalsAgree() throws Exception {
         List<BranchTotal> previous = List.of(new BranchTotal("BIHAR & EUP", "PATNA", new BigDecimal("80"), new BigDecimal("50")));
         try (XSSFWorkbook wb = open(EndWorkbook.build(new EndWorkbook.Input(SEP, true, rows(), YearMonth.of(2026, 8), previous)))) {

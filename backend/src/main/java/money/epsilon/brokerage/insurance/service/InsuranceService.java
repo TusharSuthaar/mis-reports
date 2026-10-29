@@ -318,7 +318,11 @@ public class InsuranceService {
         LocalDate lastDay = month.plusMonths(1).minusDays(1);
         List<Unmapped> notSaved = new ArrayList<>();
         Map<String, Long> byPanHash = new HashMap<>();
-        for (ClientKey k : clients.keys()) if (k.panHash() != null) byPanHash.putIfAbsent(k.panHash(), k.id());
+        Map<String, List<Long>> byName = new HashMap<>();
+        for (ClientKey k : clients.keys()) {
+            if (k.panHash() != null) byPanHash.putIfAbsent(k.panHash(), k.id());
+            byName.computeIfAbsent(Text.nameKey(k.nameKey()), x -> new ArrayList<>()).add(k.id());
+        }
         clients.formerPans().forEach(byPanHash::putIfAbsent);
         Map<String, Long> posps = pospsByName();
         int pospsBefore = posps.size();
@@ -357,6 +361,14 @@ public class InsuranceService {
                 if (rowMonth != null && !rowMonth.equals(YearMonth.from(month))) {
                     notSaved.add(new Unmapped(r.rowNumber(), name, mask(pan), "Business month is " + rowMonth + ", not " + YearMonth.from(month)));
                     continue;
+                }
+                if (pan == null && Text.clean(r.text(H_PAN)) == null && name != null) {
+                    // No PAN in the sheet (taken to be on a guardian's PAN for now): the one client with exactly this name.
+                    List<Long> same = byName.getOrDefault(Text.nameKey(name), List.of());
+                    if (same.size() == 1) {
+                        ok.add(new Row(r, same.get(0), name, null));
+                        continue;
+                    }
                 }
                 if (pan == null) {
                     notSaved.add(new Unmapped(r.rowNumber(), name, null, Text.clean(r.text(H_PAN)) == null ? "No PAN: add it to the sheet, or type this policy on the screen and pick the client"

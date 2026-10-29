@@ -49,7 +49,8 @@ import org.springframework.transaction.annotation.Transactional;
  * The monthly MF brokerage upload (Finesse): read and check the file (a job), review, then save the month to the
  * ledger. The file gives only client codes and amounts. Each code is matched through the Finesse client master to a
  * PAN, then to that PAN's client in Master MIS (the client with an RM). A client without a PAN of its own is matched by
- * its guardian's PAN, else by its exact name among Master MIS clients that have no PAN either. A code that finds no
+ * its exact name among Master MIS clients that have no PAN either, else by its guardian's PAN, else by its exact name
+ * among all Master MIS clients. A code that finds no
  * Master MIS client is kept as a client without an RM and shown as "not in Master MIS": the month can be saved, but
  * not processed until every such client has an RM. Several codes of one person add up into one line.
  */
@@ -200,8 +201,9 @@ public class UploadService {
         /**
          * A client with its own PAN is mapped by that PAN only: if it is not in Master MIS the client is highlighted,
          * even when its guardian's PAN or its name is (the reason then says the name matches, so the PAN can be checked).
-         * A client without a PAN is mapped by its guardian's PAN, else by its exact name among Master MIS clients that
-         * have no PAN (one such client only).
+         * A client without a PAN (a minor) is mapped to its own Master MIS row when there is one — its exact name among
+         * Master MIS clients that have no PAN (one such client only), as the END shows it on its own row — else by its
+         * guardian's PAN, else by its exact name among all Master MIS clients (one such client only) (R-03).
          */
         Match match(Code fc) {
             if (fc == null) return new Match(null, MatchKind.NOT_IN_MASTER, "Code not in the Finesse client master");
@@ -215,10 +217,13 @@ public class UploadService {
                         : "PAN not in Master MIS";
                 return new Match(known.isEmpty() ? null : known.get(0), MatchKind.NOT_IN_MASTER, note);
             }
-            Long guardian = inMaster(fc.guardianPanHash());
-            if (guardian != null) return new Match(guardian, MatchKind.GUARDIAN_PAN, null);
             List<Long> sameName = inMasterNoPanByName.getOrDefault(name, List.of());
             if (sameName.size() == 1) return new Match(sameName.get(0), MatchKind.NAME, null);
+            Long guardian = inMaster(fc.guardianPanHash());
+            if (guardian != null) return new Match(guardian, MatchKind.GUARDIAN_PAN, null);
+            // Neither PAN nor guardian PAN finds anyone: the one Master MIS client with exactly this name, PAN or not (R-03).
+            List<Long> anyName = inMasterByName.getOrDefault(name, List.of());
+            if (sameName.isEmpty() && anyName.size() == 1) return new Match(anyName.get(0), MatchKind.NAME, null);
             if (sameName.size() > 1) return new Match(null, MatchKind.NOT_IN_MASTER, "No PAN; " + sameName.size() + " Master MIS clients without a PAN have this name");
             return new Match(null, MatchKind.NOT_IN_MASTER, fc.guardianPanHash() == null ? "No PAN or guardian PAN, and the name is not in Master MIS"
                     : "No PAN; guardian PAN and name not in Master MIS");

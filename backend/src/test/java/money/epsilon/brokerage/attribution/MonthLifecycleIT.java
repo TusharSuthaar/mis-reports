@@ -156,8 +156,8 @@ class MonthLifecycleIT extends IntegrationTestBase {
         postJson("/api/months/" + periodId + "/lock", Map.of(), finance, 409);
         process(periodId);
 
-        // Only FINANCE locks.
-        postJson("/api/months/" + periodId + "/lock", Map.of(), admin, 403);
+        // FINANCE locks (and, for now, ADMIN: user, 28 Oct); HO cannot.
+        postJson("/api/months/" + periodId + "/lock", Map.of(), loginAs("HO"), 403);
         postJson("/api/months/" + periodId + "/lock", Map.of(), finance, 200);
         assertThat(monthRow(periodId).get("status").asText()).isEqualTo("LOCKED");
 

@@ -121,19 +121,20 @@ class InsuranceIT extends IntegrationTestBase {
                 new Object[]{"Aug'26", "S2-" + tag, "NA", "INSURER " + tag, "Life", "SHEET CLIENT", pan, 5000, 5000, "Renewal", 0.1, 777, "-", 0},
                 new Object[]{"Aug'26", "S3-" + tag, "NA", "INSURER " + tag, "Health", "No PAN", null, 2000, 2000, "New", 0.1, 200, "-", 0},
                 new Object[]{"Aug'26", "S4-" + tag, "NA", "INSURER " + tag, "Health", "Unknown", unknownPan, 2000, 2000, "New", 0.1, 200, "-", 0},
+                new Object[]{"Aug'26", "S6-" + tag, "NA", "INSURER " + tag, "General", "SHEET CLIENT " + tag, null, 1180, 1000, "New", 0.1, 100, "-", 0},  // no PAN: by name
                 new Object[]{"Jul'26", "S5-" + tag, "NA", "INSURER " + tag, "Health", "Old month", pan, 2000, 2000, "New", 0.1, 200, "-", 0},
                 new Object[]{null, null, null, null, null, null, null, 12000, 11900, null, null, 1377, null, 90}));   // the total row
         JsonNode up = upload(sheet);
-        assertThat(up.get("rows").asInt()).isEqualTo(5);
-        assertThat(up.get("saved").asInt()).isEqualTo(2);
+        assertThat(up.get("rows").asInt()).isEqualTo(6);
+        assertThat(up.get("saved").asInt()).isEqualTo(3);
         assertThat(up.get("newPosps").asInt()).isEqualTo(1);
-        assertThat(up.get("expectedTotal").decimalValue()).isEqualByComparingTo("957");   // 180 + 777 (typed, not 500)
+        assertThat(up.get("expectedTotal").decimalValue()).isEqualByComparingTo("1057");   // 180 + 777 (typed, not 500) + 100 (no PAN, found by name)
         assertThat(up.get("pospTotal").decimalValue()).isEqualByComparingTo("90");
         assertThat(up.get("notSaved")).hasSize(3);
         assertThat(up.get("notSaved").toString()).contains("No PAN").contains("PAN not in Clients").contains("Business month is 2026-07");
 
         JsonNode list = getJson("/api/insurance?q=" + tag, admin, 200);
-        assertThat(list).hasSize(2);
+        assertThat(list).hasSize(3);
         assertThat(list.toString()).contains("SHEET CLIENT " + tag).contains("INRM " + tag);   // the client master's name and RM
         JsonNode motor = java.util.stream.StreamSupport.stream(list.spliterator(), false).filter(x -> x.get("category").asText().equals("MOTOR")).findFirst().orElseThrow();
         assertThat(motor.get("expectedPercent").decimalValue()).isEqualByComparingTo("20");
@@ -141,8 +142,8 @@ class InsuranceIT extends IntegrationTestBase {
 
         // Uploading again replaces the month's uploaded policies; nothing is counted twice.
         JsonNode again = upload(sheet);
-        assertThat(again.get("replaced").asInt()).isEqualTo(2);
-        assertThat(getJson("/api/insurance?q=" + tag, admin, 200)).hasSize(2);
+        assertThat(again.get("replaced").asInt()).isEqualTo(3);
+        assertThat(getJson("/api/insurance?q=" + tag, admin, 200)).hasSize(3);
 
         byte[] xlsx = mvc.perform(get("/api/insurance/export.xlsx?q=" + tag).session(admin)).andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsByteArray();

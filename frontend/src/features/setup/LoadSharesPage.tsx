@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { Employee } from '../../api/types';
 import { useLoad } from '../../api/useLoad';
 import { api, errorText } from '../../api/client';
@@ -52,6 +53,58 @@ export function LoadSharesPage() {
   }
 
   const p = preview;
+  const done = job?.status === 'DONE' && job.result ? job.result : null;
+  const reset = () => {
+    setPreview(null);
+    setJobId(null);
+    setFile(null);
+    setError(null);
+  };
+  // Once loaded, the page says so and offers the next step, instead of leaving the check and its Apply button on screen.
+  if (done) {
+    const leftOut = (p?.unknownRms ?? []).reduce((s, u) => s + u.clients, 0);
+    return (
+      <section>
+        <h1>Upload Master MIS</h1>
+        <div className="card-block" role="status">
+          <h2 className="ok" style={{ marginTop: 0 }}>✓ Master MIS loaded{p ? `: ${p.fileName}` : ''}</h2>
+          <p>Changes count from {p?.from ?? from}.</p>
+          <div className="figures">
+            {(
+              [
+                ['Clients added', done.clientsCreated],
+                ['RMs changed', done.rmChanged],
+                ['Shares set', done.sharesSet],
+                ['Shares ended', done.sharesEnded],
+                ['Partners created', done.partnersCreated],
+                ['Partner product %s set', done.productPercentsSet],
+                ['Clients with their own %', done.clientExceptions],
+              ] as const
+            ).map(([label, n]) => (
+              <div key={label} className="figure">
+                <span>{label}</span>
+                <b>{n.toLocaleString('en-IN')}</b>
+              </div>
+            ))}
+          </div>
+          {leftOut > 0 && (
+            <p className="warn-note">
+              {leftOut} client(s) were left unchanged because their RM name in Master MIS is not known ({(p?.unknownRms ?? []).map((u) => u.spelling).join(', ')}).
+              Map those names (or add the RM on the Organisation screen), then upload the file again: only the differences are applied.
+            </p>
+          )}
+          <div className="actions" style={{ marginTop: 12 }}>
+            <Link className="button-link" to="/month">
+              Back to Month close
+            </Link>
+            <button type="button" className="secondary" onClick={reset}>
+              Upload another file
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
   return (
     <section>
       <h1>Upload Master MIS</h1>
