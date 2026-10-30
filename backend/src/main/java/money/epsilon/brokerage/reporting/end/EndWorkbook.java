@@ -410,7 +410,7 @@ public final class EndWorkbook {
         for (BranchTotal b : in.previous()) {
             String region = Objects.toString(b.region(), "");
             add(prevByRegion.computeIfAbsent(region, k -> zeros()), b);
-            add(prevByBranch.computeIfAbsent(region + " " + b.branch(), k -> zeros()), b);
+            add(prevByBranch.computeIfAbsent(region + "\0" + b.branch(), k -> zeros()), b);
         }
         Map<String, Set<String>> branchesOf = new TreeMap<>();
         for (EndRow e : in.rows()) branchesOf.computeIfAbsent(Objects.toString(e.region(), ""), k -> new java.util.TreeSet<>()).add(e.branch());
@@ -429,7 +429,7 @@ public final class EndWorkbook {
                     Row br = row(s, m++);
                     cell(br, 12, branch, rmLabel);
                     String byBranch = "," + dataRange(REGION) + "," + quoted(name) + "," + dataRange(BRANCH) + ",M" + m + ")/(10^5)";
-                    momRow(br, m, prevByBranch.get(name + " " + branch),
+                    momRow(br, m, prevByBranch.get(name + "\0" + branch),
                             "SUMIFS(" + dataRange(TOTAL_REV) + byBranch, "SUMIFS(" + dataRange(NET_REVENUE) + byBranch);
                 }
             }
