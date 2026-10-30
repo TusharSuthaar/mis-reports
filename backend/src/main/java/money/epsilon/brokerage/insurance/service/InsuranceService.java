@@ -395,7 +395,7 @@ public class InsuranceService {
                 Category cat = InsuranceSheetText.category(r.text(H_CAT));
                 BusinessType type = InsuranceSheetText.businessType(r.text(H_TYPE));
                 if (cat == null || type == null) {
-                    notSaved.add(new Unmapped(r.rowNumber(), x.clientName(), x.pan(), cat == null ? "CAT '" + r.text(H_CAT) + "' is not Life, Health, Motor or General"
+                    notSaved.add(new Unmapped(r.rowNumber(), x.clientName(), x.pan(), cat == null ? "CAT '" + r.text(H_CAT) + "' is not Life, Health, Motor, General or SME"
                             : "Business Type '" + r.text(H_TYPE) + "' is not New, Renewal, Port, Endorsement or FYCI"));
                     continue;
                 }
@@ -449,10 +449,16 @@ public class InsuranceService {
         BigDecimal exp = number(r, List.of(H_EXP));
         BigDecimal pospComm = pospId == null ? null : number(r, List.of(H_POSP_COMM));
         if (net == null) net = total;
+        // CAT "SME": General with sub type SME; the sheet's own sub type (e.g. "Fire - Corporate") is kept in the remarks.
+        String subType = Text.clean(r.text(H_SUB)), remarks = remarks(r);
+        if (InsuranceSheetText.isSme(r.text(H_CAT))) {
+            remarks = subType == null ? remarks : "SME: " + subType + (remarks == null ? "" : " · " + remarks);
+            subType = InsuranceCategoryRules.SME;
+        }
         InsurancePolicy.Details calc = new InsurancePolicy.Details(month, rmId, pospId, Text.clean(r.text(H_INSURER)), cat,
-                Text.clean(r.text(H_SUB)), Text.clean(r.text(H_PRODUCT)), Text.clean(r.text(H_POLICY)), type, Text.clean(r.text(H_PPT)),
+                subType, Text.clean(r.text(H_PRODUCT)), Text.clean(r.text(H_POLICY)), type, Text.clean(r.text(H_PPT)),
                 integer(number(r, List.of(H_PT))), number(r, List.of(H_SA)), number(r, List.of(H_OD)), number(r, List.of(H_TP)), total, net,
-                expPct, null, actPct, actPct == null ? number(r, List.of(H_ACT)) : null, agreed, null, remarks(r));
+                expPct, null, actPct, actPct == null ? number(r, List.of(H_ACT)) : null, agreed, null, remarks);
         InsurancePolicy.Figures f = InsurancePolicy.figures(calc);
         BigDecimal expGiven = exp != null && (expPct == null || differs(exp, f.expectedComm())) ? exp : null;
         BigDecimal pospGiven = pospComm != null && pospId != null && (agreed == null || differs(pospComm, f.pospComm())) ? pospComm : null;

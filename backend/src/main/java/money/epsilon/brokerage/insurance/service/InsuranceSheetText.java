@@ -12,6 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import money.epsilon.brokerage.insurance.domain.InsurancePolicy.BusinessType;
 import money.epsilon.brokerage.insurance.domain.InsurancePolicy.Category;
+import money.epsilon.brokerage.insurance.domain.InsuranceCategoryRules;
 import money.epsilon.brokerage.platform.text.Text;
 
 /** How the insurance policy sheet writes percentages, months, categories and business types (R-94). */
@@ -31,10 +32,16 @@ public final class InsuranceSheetText {
         return p.setScale(6, RoundingMode.HALF_UP).stripTrailingZeros();
     }
 
+    /** The sheet's CAT; "SME" (business fire, burglary, … covers) is General insurance with sub type SME. */
     public static Category category(String text) {
         String k = Text.key(text);
+        if (isSme(text)) return Category.GENERAL;
         for (Category c : Category.values()) if (k.startsWith(c.name())) return c;
         return null;
+    }
+
+    public static boolean isSme(String text) {
+        return Text.key(text).equals(InsuranceCategoryRules.SME);
     }
 
     public static BusinessType businessType(String text) {

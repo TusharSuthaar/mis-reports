@@ -103,6 +103,10 @@ class InsuranceIT extends IntegrationTestBase {
         assertThat(cats).hasSize(4);
         assertThat(cats.get(2).get("category").asText()).isEqualTo("MOTOR");
         assertThat(cats.get(2).get("premium").asText()).isEqualTo("OD_TP");
+        // Each kind lists its insurers for the pick list: motor from general insurers, life from life insurers; SME is a General type.
+        assertThat(cats.get(2).get("insurers").toString()).contains("ICICI Lombard").doesNotContain("LIC");
+        assertThat(cats.get(0).get("insurers").toString()).contains("LIC").doesNotContain("ICICI Lombard");
+        assertThat(cats.get(3).get("subTypes").toString()).contains("\"SME\"");
         assertThat(getJson("/api/insurance/choices", admin, 200).get("insurers").toString()).contains("INSURER" + tag);
     }
 
@@ -122,19 +126,25 @@ class InsuranceIT extends IntegrationTestBase {
                 new Object[]{"Aug'26", "S3-" + tag, "NA", "INSURER " + tag, "Health", "No PAN", null, 2000, 2000, "New", 0.1, 200, "-", 0},
                 new Object[]{"Aug'26", "S4-" + tag, "NA", "INSURER " + tag, "Health", "Unknown", unknownPan, 2000, 2000, "New", 0.1, 200, "-", 0},
                 new Object[]{"Aug'26", "S6-" + tag, "NA", "INSURER " + tag, "General", "SHEET CLIENT " + tag, null, 1180, 1000, "New", 0.1, 100, "-", 0},  // no PAN: by name
+                new Object[]{"Aug'26", "S7-" + tag, "NA", "INSURER " + tag, "SME ", "SHEET CLIENT", pan, 3540, 3000, "Renewal", 0.1, 300, "-", 0,
+                        "MSME SURAKSHA", "Fire - Corporate"},   // CAT SME: General, sub type SME
                 new Object[]{"Jul'26", "S5-" + tag, "NA", "INSURER " + tag, "Health", "Old month", pan, 2000, 2000, "New", 0.1, 200, "-", 0},
                 new Object[]{null, null, null, null, null, null, null, 12000, 11900, null, null, 1377, null, 90}));   // the total row
         JsonNode up = upload(sheet);
-        assertThat(up.get("rows").asInt()).isEqualTo(6);
-        assertThat(up.get("saved").asInt()).isEqualTo(3);
+        assertThat(up.get("rows").asInt()).isEqualTo(7);
+        assertThat(up.get("saved").asInt()).isEqualTo(4);
         assertThat(up.get("newPosps").asInt()).isEqualTo(1);
-        assertThat(up.get("expectedTotal").decimalValue()).isEqualByComparingTo("1057");   // 180 + 777 (typed, not 500) + 100 (no PAN, found by name)
+        assertThat(up.get("expectedTotal").decimalValue()).isEqualByComparingTo("1357");   // 180 + 777 (typed, not 500) + 100 (no PAN, found by name) + 300 (SME)
         assertThat(up.get("pospTotal").decimalValue()).isEqualByComparingTo("90");
         assertThat(up.get("notSaved")).hasSize(3);
         assertThat(up.get("notSaved").toString()).contains("No PAN").contains("PAN not in Clients").contains("Business month is 2026-07");
 
         JsonNode list = getJson("/api/insurance?q=" + tag, admin, 200);
-        assertThat(list).hasSize(3);
+        assertThat(list).hasSize(4);
+        JsonNode sme = java.util.stream.StreamSupport.stream(list.spliterator(), false).filter(x -> x.get("policyNo").asText().equals("S7-" + tag)).findFirst().orElseThrow();
+        assertThat(sme.get("category").asText()).isEqualTo("GENERAL");
+        assertThat(sme.get("subType").asText()).isEqualTo("SME");
+        assertThat(sme.get("remarks").asText()).startsWith("SME: Fire - Corporate");
         assertThat(list.toString()).contains("SHEET CLIENT " + tag).contains("INRM " + tag);   // the client master's name and RM
         JsonNode motor = java.util.stream.StreamSupport.stream(list.spliterator(), false).filter(x -> x.get("category").asText().equals("MOTOR")).findFirst().orElseThrow();
         assertThat(motor.get("expectedPercent").decimalValue()).isEqualByComparingTo("20");
@@ -142,8 +152,8 @@ class InsuranceIT extends IntegrationTestBase {
 
         // Uploading again replaces the month's uploaded policies; nothing is counted twice.
         JsonNode again = upload(sheet);
-        assertThat(again.get("replaced").asInt()).isEqualTo(3);
-        assertThat(getJson("/api/insurance?q=" + tag, admin, 200)).hasSize(3);
+        assertThat(again.get("replaced").asInt()).isEqualTo(4);
+        assertThat(getJson("/api/insurance?q=" + tag, admin, 200)).hasSize(4);
 
         byte[] xlsx = mvc.perform(get("/api/insurance/export.xlsx?q=" + tag).session(admin)).andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsByteArray();
@@ -160,7 +170,7 @@ class InsuranceIT extends IntegrationTestBase {
 
     private static byte[] sheet(List<Object[]> rows) throws Exception {
         String[] h = {"Business Month", "Policy No", "POSP Name", "Insurance Company", "CAT", "Client", "PAN", "Total Premium", "Net Premuim",
-                "Business Type", "% Expect Comm.", "Expect Comm.", "Agreed % sharing with POSP", "POSP Ideal Commission", "Product Name"};
+                "Business Type", "% Expect Comm.", "Expect Comm.", "Agreed % sharing with POSP", "POSP Ideal Commission", "Product Name", "Insurance Sub Type"};
         try (XSSFWorkbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             wb.createSheet("Summary");
             Sheet s = wb.createSheet("Policy level data");

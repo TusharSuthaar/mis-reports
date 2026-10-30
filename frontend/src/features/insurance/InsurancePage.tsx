@@ -46,6 +46,8 @@ interface CategoryRule {
   termRequired: boolean;
   premium: 'OD_TP' | 'TOTAL' | 'TOTAL_LESS_GST';
   gstPercent: number;
+  /** The insurers that sell this kind of insurance, for the pick list. */
+  insurers: string[];
 }
 const thisMonth = () => todayIso().slice(0, 7);
 
@@ -248,6 +250,8 @@ function PolicyForm({ policy, onDone, choices }: { policy?: InsurancePolicy; onD
   const rule = cats.data?.find((r) => r.category === category);
   // A sub type not in the list (typed, or from the sheet) shows as "Other…" with its text.
   const subTypeOptions = rule?.subTypes ?? [];
+  // Insurers of the chosen kind (before one is chosen: all of them); another one is typed under "Other…".
+  const insurerOptions = rule?.insurers ?? [...new Set((cats.data ?? []).flatMap((c) => c.insurers))].sort((a, b) => a.localeCompare(b));
   const showOd = cover !== 'TP';
   const showTp = cover !== 'OD';
   // The net premium follows the category (R-96) until it is typed over: Motor = OD + TP, Life / Health = total, General = total less GST.
@@ -465,8 +469,26 @@ function PolicyForm({ policy, onDone, choices }: { policy?: InsurancePolicy; onD
         </label>
         <label>
           Insurance company
-          <input value={insurer} onChange={(e) => setInsurer(e.target.value)} list="ins-insurers" required />
+          <select
+            value={insurerOptions.includes(insurer) ? insurer : insurer ? OTHER : ''}
+            onChange={(e) => setInsurer(e.target.value === OTHER ? ' ' : e.target.value)}
+            required
+          >
+            <option value="">Choose…</option>
+            {insurerOptions.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+            <option value={OTHER}>Other…</option>
+          </select>
         </label>
+        {insurer !== '' && !insurerOptions.includes(insurer) && (
+          <label>
+            Insurance company (other)
+            <input value={insurer.trim()} onChange={(e) => setInsurer(e.target.value || ' ')} list="ins-insurers" required autoFocus />
+          </label>
+        )}
         <label>
           Product name
           <input value={productName} onChange={(e) => setProductName(e.target.value)} list="ins-products" required />

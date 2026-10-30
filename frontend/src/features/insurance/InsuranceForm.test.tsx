@@ -11,13 +11,13 @@ const ok = (body: unknown) => () => ({ status: 200, body });
 /** The server's rules per kind of insurance (R-96), as GET /api/insurance/categories sends them. */
 const CATEGORIES = [
   { category: 'LIFE', label: 'Life', subTypeLabel: 'Plan type', subTypes: ['Term', 'Savings – Non-PAR', 'ULIP'], businessTypes: ['NEW', 'RENEWAL', 'FYCI'],
-    sumLabel: 'Sum assured', sumRequired: true, pptLabel: 'Premium paying term (years)', pptChoices: [], termRequired: true, premium: 'TOTAL', gstPercent: 0 },
+    sumLabel: 'Sum assured', sumRequired: true, pptLabel: 'Premium paying term (years)', pptChoices: [], termRequired: true, premium: 'TOTAL', gstPercent: 0, insurers: ['HDFC Life Insurance Company Limited'] },
   { category: 'HEALTH', label: 'Health', subTypeLabel: 'Cover type', subTypes: ['Individual', 'Floater'], businessTypes: ['NEW', 'RENEWAL', 'PORT', 'ENDORSEMENT'],
-    sumLabel: 'Sum insured', sumRequired: true, pptLabel: 'Policy period (years)', pptChoices: ['1', '2', '3'], termRequired: false, premium: 'TOTAL', gstPercent: 0 },
+    sumLabel: 'Sum insured', sumRequired: true, pptLabel: 'Policy period (years)', pptChoices: ['1', '2', '3'], termRequired: false, premium: 'TOTAL', gstPercent: 0, insurers: ['Care Health Insurance', 'TATA AIG'] },
   { category: 'MOTOR', label: 'Motor', subTypeLabel: 'Vehicle', subTypes: ['Private car', 'Two-wheeler'], businessTypes: ['NEW', 'RENEWAL', 'ENDORSEMENT'],
-    sumLabel: 'IDV', sumRequired: false, pptLabel: 'Policy period (OD + TP years)', pptChoices: ['1', '1+3', '1+5'], termRequired: false, premium: 'OD_TP', gstPercent: 18 },
-  { category: 'GENERAL', label: 'General', subTypeLabel: 'Policy type', subTypes: ['Fire – Corporate', 'Marine'], businessTypes: ['NEW', 'RENEWAL', 'ENDORSEMENT'],
-    sumLabel: 'Sum insured', sumRequired: true, pptLabel: 'Policy period (years)', pptChoices: ['1', '2', '3', '5'], termRequired: false, premium: 'TOTAL_LESS_GST', gstPercent: 18 },
+    sumLabel: 'IDV', sumRequired: false, pptLabel: 'Policy period (OD + TP years)', pptChoices: ['1', '1+3', '1+5'], termRequired: false, premium: 'OD_TP', gstPercent: 18, insurers: ['ICICI Lombard', 'TATA AIG'] },
+  { category: 'GENERAL', label: 'General', subTypeLabel: 'Policy type', subTypes: ['Fire – Corporate', 'Marine', 'SME'], businessTypes: ['NEW', 'RENEWAL', 'ENDORSEMENT'],
+    sumLabel: 'Sum insured', sumRequired: true, pptLabel: 'Policy period (years)', pptChoices: ['1', '2', '3', '5'], termRequired: false, premium: 'TOTAL_LESS_GST', gstPercent: 18, insurers: ['ICICI Lombard', 'TATA AIG'] },
 ];
 
 function open(posted: unknown[] = [], postStatus = 201) {
@@ -88,7 +88,7 @@ describe('insurance form: each kind of insurance shows its own fields (R-96)', (
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'General' }));
     expect(await within(dialog).findByRole('group', { name: '3 · General details' })).toBeInTheDocument();
-    expect(options(field(dialog, /^Policy type/))).toEqual(['Choose…', 'Fire – Corporate', 'Marine', 'Other…']);
+    expect(options(field(dialog, /^Policy type/))).toEqual(['Choose…', 'Fire – Corporate', 'Marine', 'SME', 'Other…']);
     expect(field(dialog, /^Sum insured/)).toBeRequired();
     expect(options(field(dialog, /^Policy period/))).toEqual(['1', '2', '3', '5']);
     expect(within(dialog).queryByLabelText(/^OD premium/)).toBeNull();
@@ -164,7 +164,10 @@ describe('insurance form: each kind of insurance shows its own fields (R-96)', (
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Motor' }));
     await userEvent.click(await within(dialog).findByRole('button', { name: 'Renewal' }));
-    await userEvent.type(field(dialog, /^Insurance company/), 'TATA AIG');
+    // The insurer is picked from the insurers that sell motor cover (no life insurer among them).
+    const insurerList = field(dialog, /^Insurance company/);
+    expect(within(insurerList).queryByRole('option', { name: 'HDFC Life Insurance Company Limited' })).toBeNull();
+    await userEvent.selectOptions(insurerList, 'TATA AIG');
     await userEvent.type(field(dialog, /^Product name/), 'AUTO SECURE');
     await userEvent.type(field(dialog, /^Policy no/), 'M-1');
     await userEvent.selectOptions(field(dialog, /^Vehicle/), 'Two-wheeler');
@@ -181,7 +184,7 @@ describe('insurance form: each kind of insurance shows its own fields (R-96)', (
 
     expect(posted).toHaveLength(1);
     expect(posted[0]).toMatchObject({
-      clientId: 5, rmId: null, category: 'MOTOR', businessType: 'RENEWAL', subType: 'Two-wheeler', ppt: '1+5',
+      clientId: 5, rmId: null, insurer: 'TATA AIG', category: 'MOTOR', businessType: 'RENEWAL', subType: 'Two-wheeler', ppt: '1+5',
       odPremium: null, tpPremium: 1500, totalPremium: 1770, netPremium: 1500, expectedPercent: 2.5, pospId: 7, newPospName: null, pospShare: 50, policyTerm: null,
     });
   });
@@ -194,7 +197,8 @@ describe('insurance form: each kind of insurance shows its own fields (R-96)', (
     await within(dialog).findByText(/CLIENT ONE/);
     await userEvent.click(within(dialog).getByRole('button', { name: 'Health' }));
     await userEvent.click(await within(dialog).findByRole('button', { name: 'New' }));
-    await userEvent.type(field(dialog, /^Insurance company/), 'CARE');
+    await userEvent.selectOptions(field(dialog, /^Insurance company(?! \(other\))/), '__other__');   // not in the list: typed
+    await userEvent.type(field(dialog, /^Insurance company \(other\)/), 'CARE');
     await userEvent.type(field(dialog, /^Product name/), 'SUPREME');
     await userEvent.type(field(dialog, /^Policy no/), 'H-1');
     await userEvent.selectOptions(field(dialog, /^Cover type/), 'Floater');
