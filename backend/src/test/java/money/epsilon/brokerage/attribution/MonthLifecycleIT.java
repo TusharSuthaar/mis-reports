@@ -433,7 +433,7 @@ class MonthLifecycleIT extends IntegrationTestBase {
         postJson("/api/preipo", deal, admin, 201);
 
         // The referral partner has no Pre-IPO % yet: the pre-check names it.
-        assertThat(getJson("/api/months/" + periodId + "/readiness", admin, 200).get("missingPercent").toString()).contains("REF " + tag + " (Pre-IPO)");
+        assertThat(getJson("/api/months/" + periodId + "/readiness", admin, 200).get("missingPercent").toString()).contains("REF " + tag + " (Unlisted)");
         postJson("/api/partners/" + refId + "/products", Map.of("product", "PREIPO", "percent", 20, "from", month + "-01"), admin, 204);
         JsonNode run = process(periodId);
         assertThat(run.get("net").decimalValue()).isEqualByComparingTo("997.46");     // MF 150 + Pre-IPO 847.46
@@ -442,9 +442,9 @@ class MonthLifecycleIT extends IntegrationTestBase {
         MockHttpServletResponse end = mvc.perform(get("/api/months/" + periodId + "/end-file").session(admin)).andExpect(status().isOk()).andReturn().getResponse();
         try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(end.getContentAsByteArray()))) {
             var data = wb.getSheetAt(2);
-            assertThat(data.getRow(0).getCell(14).getStringCellValue()).isEqualTo("Pre-IPO");
+            assertThat(data.getRow(0).getCell(14).getStringCellValue()).isEqualTo("Unlisted");
             var row = StreamSupport.stream(data.spliterator(), false)
-                    .filter(r -> r.getCell(31) != null && r.getCell(31).getStringCellValue().startsWith("Pre-IPO buy: END CO " + tag)).findFirst().orElseThrow();
+                    .filter(r -> r.getCell(31) != null && r.getCell(31).getStringCellValue().startsWith("Unlisted buy: END CO " + tag)).findFirst().orElseThrow();
             assertThat(row.getCell(10).getNumericCellValue()).isEqualTo(11000.0);    // AUM: 100 × 110
             assertThat(row.getCell(14).getNumericCellValue()).isEqualTo(847.46);     // Pre-IPO column
             assertThat(row.getCell(25).getNumericCellValue()).isEqualTo(847.46);     // Total Rev

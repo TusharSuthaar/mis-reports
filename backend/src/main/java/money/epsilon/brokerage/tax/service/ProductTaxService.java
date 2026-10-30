@@ -41,7 +41,7 @@ public class ProductTaxService {
     public List<ProductTaxLine> list() {
         LocalDate today = calendar.today();
         return Arrays.stream(Product.values())
-                .map(p -> new ProductTaxLine(p, p.heading(), rates.findOn(p.code(), today).map(this::view).orElse(null)))
+                .map(p -> new ProductTaxLine(p, p.label(), rates.findOn(p.code(), today).map(this::view).orElse(null)))
                 .toList();
     }
 
@@ -54,7 +54,7 @@ public class ProductTaxService {
     @Transactional(readOnly = true)
     public TaxRateView on(Product product, LocalDate day) {
         return rates.findOn(product.code(), day).map(this::view).orElseThrow(() -> new RuleViolationException(
-                "No GST/TDS set for " + product.heading() + " on " + day + ": set it under Setup → Products & taxes"));
+                "No GST/TDS set for " + product.label() + " on " + day + ": set it under Setup → Products & taxes"));
     }
 
     @Transactional

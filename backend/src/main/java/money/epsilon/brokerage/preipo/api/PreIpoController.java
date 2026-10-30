@@ -88,7 +88,7 @@ class PreIpoController {
                                   @RequestParam(required = false) Long platformId, @RequestParam(required = false) String payment) {
         String name = from == null && to == null ? "all" : (from == null ? "" : from.toString()) + "_to_" + (to == null ? "" : to.toString());
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"PRE_IPO_" + name + ".xlsx\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"UNLISTED_" + name + ".xlsx\"")
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(deals.export(new PreIpoService.Filter(from, to, q, kind, rmId, partnerId, platformId, billing(payment), false)));
     }
@@ -185,7 +185,7 @@ class PreIpoController {
     @PreAuthorize(Roles.MASTER_WRITE)
     UploadResult upload(@RequestParam("file") MultipartFile file, @RequestParam("asOf") LocalDate asOf,
                         @RequestParam(required = false) BigDecimal markupPercent) throws IOException {
-        UploadedFile f = UploadedFile.of(file, "pre-ipo-prices.xlsx", "the Pre-IPO price sheet");
+        UploadedFile f = UploadedFile.of(file, "pre-ipo-prices.xlsx", "the Unlisted (Pre-IPO) price sheet");
         return prices.upload(f.content(), f.name(), asOf, markupPercent);
     }
 }

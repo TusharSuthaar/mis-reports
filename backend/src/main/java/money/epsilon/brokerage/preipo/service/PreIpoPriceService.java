@@ -158,7 +158,7 @@ public class PreIpoPriceService {
         try (ExcelFile file = ExcelFile.open(content)) {
             ExcelFile.Table t = file.sheetNames().stream().map(n -> file.table(n, List.of(ISIN, BASE), 15).orElse(null))
                     .filter(x -> x != null && x.missing().isEmpty()).findFirst()
-                    .orElseThrow(() -> new RuleViolationException("This is not the Pre-IPO price sheet: no sheet has the columns " + ISIN + " and " + BASE));
+                    .orElseThrow(() -> new RuleViolationException("This is not the Unlisted (Pre-IPO) price sheet: no sheet has the columns " + ISIN + " and " + BASE));
             String nameCol = NAME.stream().filter(t::has).findFirst()
                     .orElseThrow(() -> new RuleViolationException("The price sheet has no scrip name column (" + String.join(" / ", NAME) + ")"));
             Map<Integer, String> above = file.rowTexts(t.sheetName(), t.headerRow() - 1);
@@ -229,7 +229,7 @@ public class PreIpoPriceService {
     }
 
     private PreIpoScrip findScrip(long id) {
-        return scrips.findById(id).orElseThrow(() -> new NotFoundException("Pre-IPO scrip " + id + " not found"));
+        return scrips.findById(id).orElseThrow(() -> new NotFoundException("Unlisted scrip " + id + " not found"));
     }
 
     private static ScripView view(PreIpoScrip s) {

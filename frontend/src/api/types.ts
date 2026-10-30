@@ -107,7 +107,7 @@ export type Product = 'MF' | 'PREIPO' | 'FD' | 'BOND' | 'LOAN' | 'EQUITY' | 'PMS
 
 export const PRODUCTS: { code: Product; label: string }[] = [
   { code: 'MF', label: 'MF' },
-  { code: 'PREIPO', label: 'Pre-IPO' },
+  { code: 'PREIPO', label: 'Unlisted' },
   { code: 'FD', label: 'FD' },
   { code: 'BOND', label: 'Bonds' },
   { code: 'LOAN', label: 'Loans' },

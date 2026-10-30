@@ -43,13 +43,18 @@ final class PartnerSheetReader {
                 for (var e : NAME_COLUMN.entrySet()) {
                     var table = file.table(sheet, List.of(e.getValue(), Product.MF.heading()), HEADER_SEARCH_ROWS);
                     if (table.isEmpty() || !table.get().missing().isEmpty()) continue;
-                    List<Product> columns = java.util.Arrays.stream(Product.values()).filter(p -> table.get().has(p.heading())).toList();
+                    // A product's column may carry any of its names ("Pre-IPO" or "Unlisted").
+                    Map<Product, String> columns = new EnumMap<>(Product.class);
+                    for (Product p : Product.values()) {
+                        p.names().stream().filter(n -> table.get().has(n)).findFirst().ifPresent(n -> columns.put(p, n));
+                    }
                     for (ExcelRow row : table.get().rows()) {
                         String name = Text.clean(row.text(e.getValue()));
                         if (name == null) continue;
                         Map<Product, BigDecimal> fractions = new EnumMap<>(Product.class);
-                        for (Product p : columns) {
-                            BigDecimal f = fraction(row.value(p.heading()), sheet, row.rowNumber(), p, problems);
+                        for (var c : columns.entrySet()) {
+                            Product p = c.getKey();
+                            BigDecimal f = fraction(row.value(c.getValue()), sheet, row.rowNumber(), p, problems);
                             if (f != null) fractions.put(p, f);
                         }
                         if (fractions.isEmpty()) {

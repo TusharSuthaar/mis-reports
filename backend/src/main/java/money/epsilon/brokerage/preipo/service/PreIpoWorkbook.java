@@ -52,8 +52,8 @@ final class PreIpoWorkbook {
             money.setDataFormat(wb.createDataFormat().getFormat("#,##,##0.00"));
             CellStyle pct = wb.createCellStyle();
             pct.setDataFormat(wb.createDataFormat().getFormat("0.00##"));
-            sheet(wb, "Pre IPO Purchase", BUY, entries, PreIpoEntry.Kind.BUY, header, money, pct);
-            sheet(wb, "Pre Ipo Buyback", BUYBACK, entries, PreIpoEntry.Kind.BUYBACK, header, money, pct);
+            sheet(wb, "Unlisted Purchase", BUY, entries, PreIpoEntry.Kind.BUY, header, money, pct);
+            sheet(wb, "Unlisted Buyback", BUYBACK, entries, PreIpoEntry.Kind.BUYBACK, header, money, pct);
             wb.write(out);
             return out.toByteArray();
         } catch (IOException e) {

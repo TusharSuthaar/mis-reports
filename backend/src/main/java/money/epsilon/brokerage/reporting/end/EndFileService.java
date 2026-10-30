@@ -324,7 +324,7 @@ public class EndFileService {
         return rows.stream().map(e -> {
             if (e.remarks() == null || !e.remarks().startsWith("PREIPO#")) return e;
             var l = labels.get(Long.parseLong(e.remarks().substring(7)));
-            String remark = l == null ? "Pre-IPO" : (l.kind() == money.epsilon.brokerage.preipo.domain.PreIpoEntry.Kind.BUY ? "Pre-IPO buy: " : "Pre-IPO buyback: ")
+            String remark = l == null ? "Unlisted" : (l.kind() == money.epsilon.brokerage.preipo.domain.PreIpoEntry.Kind.BUY ? "Unlisted buy: " : "Unlisted buyback: ")
                     + l.scripName() + (l.isin() == null ? "" : " " + l.isin());
             return new EndRow(e.region(), e.rd(), e.branch(), e.rm(), e.subBroker(), e.subBrokerPct(), e.referral(), e.referralPct(), e.posp(),
                     e.client(), e.pan(), null, null, null, e.subBrokerAmount(), e.referralAmount(), e.pospAmount(), remark,

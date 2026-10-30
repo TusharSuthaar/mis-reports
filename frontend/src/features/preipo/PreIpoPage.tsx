@@ -141,14 +141,14 @@ export function preIpoRevenue(kind: PreIpoKind, qty: number, clientPrice: number
   return { markup, amount: round2(qty * clientPrice), brokerage, gross, gst, invoice: round2(gross + gst), tds, net: round2(brokerage - tds) };
 }
 
-/** Pre-IPO (unlisted shares): the deals (buys and buybacks) and the vendors' price list. */
+/** Unlisted shares (Pre-IPO, R-97): the deals (buys and buybacks) and the vendors' price list. */
 export function PreIpoPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [view, setView] = useState<PreIpoKind | 'PRICES'>('BUY');
   const views: [PreIpoKind | 'PRICES', string][] = [['BUY', 'Buy'], ['BUYBACK', 'Buyback'], ['PRICES', 'Available IPOs']];
   return (
     <section>
-      {!embedded && <h1>Pre-IPO</h1>}
-      <div className="tabs" role="tablist" aria-label="Pre-IPO">
+      {!embedded && <h1>Unlisted</h1>}
+      <div className="tabs" role="tablist" aria-label="Unlisted">
         {views.map(([k, label]) => (
           <button key={k} type="button" role="tab" aria-selected={view === k} className={view === k ? 'tab active' : 'tab'} onClick={() => setView(k)}>
             {label}
@@ -216,7 +216,7 @@ function Deals({ kind }: { kind: PreIpoKind }) {
                   {view.th('month', 'Month')}
                   {view.th('date', buy ? 'Invt date' : 'Transaction date')}
                   {view.th('client', 'Client')}
-                  {view.th('scrip', 'Pre-IPO')}
+                  {view.th('scrip', 'Unlisted')}
                   {view.th('vendor', 'Vendor')}
                   {view.th('rm', 'RM')}
                   {view.th('qty', 'Qty', 'num')}
@@ -277,7 +277,7 @@ function Deals({ kind }: { kind: PreIpoKind }) {
         </>
       )}
       {panel === 'new' && (
-        <Modal title={buy ? 'Add Pre-IPO buy' : 'Add Pre-IPO buyback'} onClose={() => setPanel(null)}>
+        <Modal title={buy ? 'Add Unlisted buy' : 'Add Unlisted buyback'} onClose={() => setPanel(null)}>
           <DealForm kind={kind} onDone={done} />
         </Modal>
       )}
@@ -566,7 +566,7 @@ function DealForm({ kind, entry, onDone }: { kind: PreIpoKind; entry?: PreIpoDea
         {partnerId && (
           <label>
             Sharing % for this deal
-            <input type="number" min={0} max={100} step="0.01" value={sharing} onChange={(e) => setSharing(e.target.value)} placeholder="Blank: the partner's Pre-IPO %" />
+            <input type="number" min={0} max={100} step="0.01" value={sharing} onChange={(e) => setSharing(e.target.value)} placeholder="Blank: the partner's Unlisted %" />
           </label>
         )}
         <p className="muted">
@@ -576,9 +576,9 @@ function DealForm({ kind, entry, onDone }: { kind: PreIpoKind; entry?: PreIpoDea
       </fieldset>
 
       <fieldset>
-        <legend>Pre-IPO</legend>
+        <legend>Unlisted</legend>
         <label>
-          Pre-IPO (scrip)
+          Unlisted (scrip)
           <select value={scripId} onChange={(e) => setScripId(e.target.value)} required>
             <option value="">Choose…</option>
             {(scrips.data ?? []).filter((s) => s.active || String(s.id) === scripId).map((s) => (
@@ -789,7 +789,7 @@ function AvailableIpos() {
       </div>
       <p className="muted">Each vendor's latest price on or before the date. Lowest base price first; click a scrip for its price history or to set a price.</p>
       {board.error && <p className="error">{board.error}</p>}
-      {board.data && rows.length === 0 && <div className="empty">No scrips yet. Upload the Pre-IPO price sheet or add a scrip.</div>}
+      {board.data && rows.length === 0 && <div className="empty">No scrips yet. Upload the Unlisted (Pre-IPO) price sheet or add a scrip.</div>}
       {rows.length > 0 && (
         <>
           <div className="table-scroll">
@@ -887,7 +887,7 @@ function UploadPrices({ onDone }: { onDone: () => void }) {
   return (
     <form onSubmit={submit} className="fd-form">
       <p className="muted">
-        The Pre-IPO master file's "Purchase Price Availabity" sheet: ISIN, scrip name, face value, lot size, and one "Base Price (INR)" column per vendor
+        The Pre-IPO (Unlisted) master file's "Purchase Price Availabity" sheet: ISIN, scrip name, face value, lot size, and one "Base Price (INR)" column per vendor
         with the vendor's name above it.
       </p>
       <label>

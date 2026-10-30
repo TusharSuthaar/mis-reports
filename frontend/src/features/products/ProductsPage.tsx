@@ -24,7 +24,7 @@ import { KIND_LABEL, PreIpoPage, type PreIpoDeal } from '../preipo/PreIpoPage';
 const TABS = [
   { key: 'ALL', label: 'All products' },
   { key: 'MF', label: 'MF' },
-  { key: 'PREIPO', label: 'Pre-IPO' },
+  { key: 'PREIPO', label: 'Unlisted' },
   { key: 'FD', label: 'FD' },
   { key: 'BOND', label: 'Bonds' },
   { key: 'AIF', label: 'AIF' },
@@ -36,7 +36,7 @@ const TABS = [
   { key: 'INS', label: 'Insurance' },
   { key: 'EQUITY', label: 'Equity' },
 ];
-const PRODUCT_NAME: Record<string, string> = { PREIPO: 'Pre-IPO', FD: 'FD', BOND: 'Bond', AIF: 'AIF', LOAN: 'Loan', GIFT: 'GIFT City', PMS: 'PMS', NPS: 'NPS', P2P: 'P2P', INS: 'Insurance' };
+const PRODUCT_NAME: Record<string, string> = { PREIPO: 'Unlisted', FD: 'FD', BOND: 'Bond', AIF: 'AIF', LOAN: 'Loan', GIFT: 'GIFT City', PMS: 'PMS', NPS: 'NPS', P2P: 'P2P', INS: 'Insurance' };
 
 /** Product entries: every product booked by hand on one page — all together, or one product with its own columns. */
 export function ProductsPage() {
@@ -55,7 +55,7 @@ export function ProductsPage() {
         <div>
           <h1>Product entries</h1>
           <p className="muted" style={{ margin: 0 }}>
-            MF and equity brokerage from the monthly uploads, and Pre-IPO, FD, bonds, AIF, loans, GIFT City, PMS, NPS, P2P and insurance booked by hand. Filters apply across months.
+            MF and equity brokerage from the monthly uploads, and Unlisted, FD, bonds, AIF, loans, GIFT City, PMS, NPS, P2P and insurance booked by hand. Filters apply across months.
           </p>
         </div>
         <NewEntryMenu onPick={(p) => {
@@ -165,7 +165,7 @@ function AllProducts({ onOpen }: { onOpen: (product: string, id: number) => void
 
   return (
     <>
-      <ListFilters searchHint="Client, PAN, code, Pre-IPO scrip, FD / bond / fund name, ISIN, lender, GIFT City fund, PMS AMC or strategy, NPS POP, P2P platform, insurer or policy no." />
+      <ListFilters searchHint="Client, PAN, code, Unlisted scrip, FD / bond / fund name, ISIN, lender, GIFT City fund, PMS AMC or strategy, NPS POP, P2P platform, insurer or policy no." />
       {!loading && (
         <div className="cards">
           {(['PREIPO', 'FD', 'BOND', 'AIF', 'LOAN', 'GIFT'] as const).map((p) => (

@@ -272,7 +272,7 @@ public class AttributionService {
                     ShareService.ProductShare ps = x == null || x.partnerId() == null ? null : shares.productShare(x.partnerId(), Product.PREIPO, day);
                     java.math.BigDecimal fraction = ps == null ? null
                             : x.sharingPercent() != null ? x.sharingPercent().movePointLeft(2) : ps.fraction();
-                    if (ps != null && fraction == null) noFdPercent.add(ps.partnerName() + " (Pre-IPO)");
+                    if (ps != null && fraction == null) noFdPercent.add(ps.partnerName() + " (Unlisted)");
                     lineShares = fraction == null ? List.of() : List.of(new Share(ps.role(), ps.partnerId(), ps.partnerName(), fraction));
                 } else if (l.aifEntryId() != null) {
                     AifForLedger a = aifById.get(l.aifEntryId());
@@ -332,7 +332,7 @@ public class AttributionService {
                 net = net.add(l.net());
             }
             if (!noFdPercent.isEmpty()) {
-                throw new RuleViolationException(noFdPercent.size() + " partner(s) on FD / bond / other product entries of " + period.month() + " have no FD % / Bonds % / AIF % / Loans % / GIFT % / Pre-IPO % on "
+                throw new RuleViolationException(noFdPercent.size() + " partner(s) on FD / bond / other product entries of " + period.month() + " have no FD % / Bonds % / AIF % / Loans % / GIFT % / Unlisted % on "
                         + day + ": " + String.join(", ", noFdPercent) + ". Set it on the Partners screen, then process.");
             }
         }
@@ -372,7 +372,7 @@ public class AttributionService {
     }
 
     private static final Map<Product, String> PRODUCT_LABEL = Map.of(Product.FD, "FD", Product.BOND, "Bonds", Product.AIF, "AIF",
-            Product.LOAN, "Loans", Product.GIFT, "GIFT City", Product.PREIPO, "Pre-IPO", Product.PMS, "PMS", Product.NPS, "NPS",
+            Product.LOAN, "Loans", Product.GIFT, "GIFT City", Product.PREIPO, "Unlisted", Product.PMS, "PMS", Product.NPS, "NPS",
             Product.P2P, "P2P");
 
     @Transactional(readOnly = true)

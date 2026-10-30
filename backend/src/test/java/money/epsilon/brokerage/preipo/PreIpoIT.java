@@ -143,7 +143,7 @@ class PreIpoIT extends IntegrationTestBase {
         byte[] xlsx = mvc.perform(get("/api/preipo/export.xlsx?q=" + tag).session(admin)).andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsByteArray();
         try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(xlsx))) {
-            assertThat(wb.getSheetAt(0).getSheetName()).isEqualTo("Pre IPO Purchase");
+            assertThat(wb.getSheetAt(0).getSheetName()).isEqualTo("Unlisted Purchase");
             assertThat(wb.getSheetAt(0).getPhysicalNumberOfRows()).isEqualTo(2);
             assertThat(wb.getSheetAt(1).getRow(1).getCell(29).getStringCellValue()).isEqualTo("SELL");
         }

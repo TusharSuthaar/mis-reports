@@ -60,7 +60,7 @@ interface Readiness {
 
 /** The products entered for a month, in END order, with the Product entries tab each lives on. */
 const PRODUCTS: { key: string; label: string }[] = [
-  { key: 'PREIPO', label: 'Pre-IPO' }, { key: 'FD', label: 'FD' }, { key: 'BOND', label: 'Bonds' }, { key: 'LOAN', label: 'Loans' },
+  { key: 'PREIPO', label: 'Unlisted' }, { key: 'FD', label: 'FD' }, { key: 'BOND', label: 'Bonds' }, { key: 'LOAN', label: 'Loans' },
   { key: 'INS', label: 'Insurance' }, { key: 'PMS', label: 'PMS' }, { key: 'AIF', label: 'AIF' }, { key: 'GIFT', label: 'GIFT City' },
   { key: 'NPS', label: 'NPS' }, { key: 'P2P', label: 'P2P' },
 ];
@@ -208,7 +208,7 @@ function MonthWizard({ month, row, canEdit, onChanged }: { month: string; row: M
         summary={r ? `${entryCount} entries · equity ${r.equityUploaded ? `${r.equityClients} clients` : 'not uploaded'}` : undefined}>
         {!row ? (
           <p className="muted">
-            Pre-IPO, FD, bonds, loans, insurance, PMS, AIF, GIFT City, NPS and P2P can be entered for {monthLabel(month)} any time on{' '}
+            Unlisted, FD, bonds, loans, insurance, PMS, AIF, GIFT City, NPS and P2P can be entered for {monthLabel(month)} any time on{' '}
             <Link to={`/products?from=${month}&to=${month}`}>Product entries</Link>; once the MF file is saved, their counts show here.
           </p>
         ) : !r ? (

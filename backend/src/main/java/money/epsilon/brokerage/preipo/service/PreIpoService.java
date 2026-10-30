@@ -157,7 +157,7 @@ public class PreIpoService {
             client = clientId;
         } else {
             if (newClientName == null || newClientName.isBlank()) throw new IllegalArgumentException("Pick the client or enter a new client's name");
-            client = clients.addByHand(newClientName, newClientPan, details.rmId(), details.month(), "Pre-IPO entry");
+            client = clients.addByHand(newClientName, newClientPan, details.rmId(), details.month(), "Unlisted entry");
         }
         PreIpoEntry e = new PreIpoEntry(client);
         e.fill(details, gstPercent(details));
@@ -170,7 +170,7 @@ public class PreIpoService {
     @Transactional
     public PreIpoView update(long id, Details d) {
         PreIpoEntry e = find(id);
-        if (e.getStatus() == PreIpoEntry.Status.CANCELLED) throw new RuleViolationException("This Pre-IPO deal is cancelled");
+        if (e.getStatus() == PreIpoEntry.Status.CANCELLED) throw new RuleViolationException("This Unlisted deal is cancelled");
         Details details = check(d);
         PreIpoView before = get(id);
         e.fill(details, gstPercent(details));
@@ -201,7 +201,7 @@ public class PreIpoService {
         employees.requireEmployedOn(d.rmId(), month);
         if (d.partnerId() != null) partners.get(d.partnerId());
         if (d.sharingPercent() != null) requirePercent(d.sharingPercent(), "Sharing");
-        if (!scrips.existsById(d.scripId())) throw new NotFoundException("Pre-IPO scrip " + d.scripId() + " not found");
+        if (!scrips.existsById(d.scripId())) throw new NotFoundException("Unlisted scrip " + d.scripId() + " not found");
         platforms.get(d.vendorId());
         if (d.dealDate() == null) throw new IllegalArgumentException("Enter the deal date");
         if (d.quantity() == null || d.quantity().signum() <= 0) throw new IllegalArgumentException("Enter the quantity");
@@ -222,7 +222,7 @@ public class PreIpoService {
     }
 
     private PreIpoEntry find(long id) {
-        return entries.findById(id).orElseThrow(() -> new NotFoundException("Pre-IPO deal " + id + " not found"));
+        return entries.findById(id).orElseThrow(() -> new NotFoundException("Unlisted deal " + id + " not found"));
     }
 
     private List<PreIpoView> views(List<PreIpoEntry> list) {
