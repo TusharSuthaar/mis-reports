@@ -19,7 +19,7 @@ reads or writes those tables with SQL — it calls the owner's public service.
 | `period` | `period` | Months per product: OPEN → PROCESSED → LOCKED; locked-month guard | `PeriodService` |
 | `ledger` | `brokerage_line` | Append-only brokerage lines per client per month (+ corrections) | `LedgerService` |
 | `attribution` | `attribution_run`, `brokerage_split` | Splits each line: sub broker, referral, Epsilon; RM/branch snapshot | `AttributionService` |
-| `reporting` | `v_line_split` | END file and reports, read from the stored split only | `EndFileService` |
+| `reporting` | `v_line_split` | END file and reports, read from the stored split only; the client page's MF brokerage and PAN-level holdings | `EndFileService`, `ClientHoldingsService` |
 | `tax` | `product_tax_rate` | Products & taxes: GST and TDS % per product, dated | `ProductTaxService` |
 | `intermediary` | `intermediary`, `intermediary_terms` | Platforms investments are booked through (GoldenPi, SMC…) and their dated brokerage terms; "Platforms" on screen | `IntermediaryService` |
 | `bond` | `bond_entry` | Bond deals entered on the Bonds screen, with their brokerage (gross, TDS, GST, net, invoice) | `BondService` |
@@ -51,5 +51,6 @@ client, org, partner, tax, ledger  ←  fd, loan, pms, nps, p2p, gift  ←  repo
 client, org, partner, tax, ledger, intermediary  ←  bond, aif, preipo  ←  reporting (END labels)
 client, org, partner, ledger  ←  insurance
 client, period  ←  equity  ←  attribution (equity lines: the broker's report, not entries)
+client, ingestion (minors' codes), fd, bond, aif, loan, gift, pms, nps, p2p, preipo, insurance, equity  ←  reporting (client holdings)
 ```
 No cycles between modules (checked by `ArchitectureTest`).

@@ -27,4 +27,7 @@ public interface P2pEntryRepository extends JpaRepository<P2pEntry, Long> {
                      @org.springframework.data.repository.query.Param("active") P2pEntry.Status active,
                      @org.springframework.data.repository.query.Param("rmId") Long rmId,
                      @org.springframework.data.repository.query.Param("partnerId") Long partnerId);
+
+    /** Every entry of these clients, all months, newest first (the client page's holdings). */
+    List<P2pEntry> findByClientIdInOrderByMonthDescIdDesc(java.util.Collection<Long> clientIds);
 }

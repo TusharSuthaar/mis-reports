@@ -26,4 +26,7 @@ public interface InsurancePolicyRepository extends JpaRepository<InsurancePolicy
                      @org.springframework.data.repository.query.Param("active") InsurancePolicy.Status active,
                      @org.springframework.data.repository.query.Param("rmId") Long rmId,
                      @org.springframework.data.repository.query.Param("pospId") Long pospId);
+
+    /** Every entry of these clients, all months, newest first (the client page's holdings). */
+    List<InsurancePolicy> findByClientIdInOrderByMonthDescIdDesc(java.util.Collection<Long> clientIds);
 }

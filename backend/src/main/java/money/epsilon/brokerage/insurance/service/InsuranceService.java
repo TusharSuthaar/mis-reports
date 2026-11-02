@@ -375,6 +375,13 @@ public class InsuranceService {
 
     // ---- views -------------------------------------------------------------------------------------------------------
 
+    /** The insurance policies of these clients (cancelled ones left out), all months, newest first: the client page's holdings (R-09). */
+    @Transactional(readOnly = true)
+    public List<PolicyView> forClients(java.util.Collection<Long> clientIds) {
+        if (clientIds.isEmpty()) return List.of();
+        return views(policies.findByClientIdInOrderByMonthDescIdDesc(clientIds).stream().filter(e -> e.getStatus() == InsurancePolicy.Status.ACTIVE).toList());
+    }
+
     private List<PolicyView> views(List<InsurancePolicy> list) {
         if (list.isEmpty()) return List.of();
         Set<Long> clientIds = list.stream().map(InsurancePolicy::getClientId).collect(Collectors.toSet());

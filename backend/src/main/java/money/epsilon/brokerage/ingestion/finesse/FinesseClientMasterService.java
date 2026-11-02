@@ -187,6 +187,13 @@ public class FinesseClientMasterService {
                 .list();
     }
 
+    /** The codes of minors under this guardian's PAN: codes without a PAN of their own whose guardian PAN is this one (R-03). */
+    @Transactional(readOnly = true)
+    public List<String> minorCodes(String guardianPanHash) {
+        return jdbc.sql("SELECT code FROM finesse_client WHERE guardian_pan_hash = ? AND pan_hash IS NULL ORDER BY code")
+                .param(guardianPanHash).query(String.class).list();
+    }
+
     /** A joint holder's PAN (any column named "…PAN…") is masked like the client's own. */
     private static Field masked(Field f, boolean fullPan) {
         return !fullPan && f.label().toUpperCase().contains("PAN") ? new Field(f.label(), PanCipher.mask(f.value())) : f;

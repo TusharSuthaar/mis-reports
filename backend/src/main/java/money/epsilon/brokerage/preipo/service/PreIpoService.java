@@ -232,6 +232,13 @@ public class PreIpoService {
         return entries.findById(id).orElseThrow(() -> new NotFoundException("Unlisted deal " + id + " not found"));
     }
 
+    /** The Unlisted deals of these clients (cancelled ones left out), all months, newest first: the client page's holdings (R-09). */
+    @Transactional(readOnly = true)
+    public List<PreIpoView> forClients(java.util.Collection<Long> clientIds) {
+        if (clientIds.isEmpty()) return List.of();
+        return views(entries.findByClientIdInOrderByMonthDescIdDesc(clientIds).stream().filter(e -> e.getStatus() == PreIpoEntry.Status.ACTIVE).toList());
+    }
+
     private List<PreIpoView> views(List<PreIpoEntry> list) {
         if (list.isEmpty()) return List.of();
         Set<Long> clientIds = list.stream().map(PreIpoEntry::getClientId).collect(Collectors.toSet());

@@ -30,4 +30,7 @@ public interface LoanEntryRepository extends JpaRepository<LoanEntry, Long> {
                      @org.springframework.data.repository.query.Param("active") LoanEntry.Status active,
                      @org.springframework.data.repository.query.Param("rmId") Long rmId,
                      @org.springframework.data.repository.query.Param("partnerId") Long partnerId);
+
+    /** Every entry of these clients, all months, newest first (the client page's holdings). */
+    List<LoanEntry> findByClientIdInOrderByMonthDescIdDesc(java.util.Collection<Long> clientIds);
 }
