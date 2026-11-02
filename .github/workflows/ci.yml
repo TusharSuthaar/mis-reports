@@ -1,5 +1,6 @@
 # Every push and pull request: backend (unit + integration + guardrail tests) and frontend (types, lint, tests,
-# production build, no high/critical vulnerabilities in shipped packages).
+# production build, no high/critical vulnerabilities in shipped packages); on pull requests, no dependency added or
+# changed (Maven or npm) with a high or critical advisory.
 # main only moves with both green (guardrail G-13). Integration tests start Postgres with Testcontainers.
 name: CI
 
@@ -47,3 +48,14 @@ jobs:
       - name: No high or critical vulnerabilities in what ships
         working-directory: frontend
         run: npm audit --omit=dev --audit-level=high
+
+  dependencies:
+    # Pull requests only: GitHub's dependency review checks every Maven and npm dependency the change adds or moves
+    # against the GitHub advisory database (audit: dependency check in CI). Existing ones are watched by Dependabot.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
