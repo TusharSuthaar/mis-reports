@@ -29,6 +29,7 @@ checklist asks for it.
 | G-22 | Unexpected errors show only "something went wrong + reference"; every job type has a plain-words title for the Activity screen. | `ActivityIT`, `JobHandler.title()` (compiler) |
 | G-23 | A message about invalid input that the user should read is a `ValidationException` (400, shown as written); a plain `IllegalArgumentException` is only for checks that cannot fail on user input, and its wording never reaches the screen (logged, reference only). | `GuardrailsTest.ownMessagesForInvalidInputAreValidationExceptions`, `ActivityIT.theAppsOwnInputMessagesAreShownButALibrarysWordingIsNot` |
 | G-24 | A product list or export is marked `@ProductListFilters`: it takes the shared list filters plus its own parameters and refuses any other with a 400 that lists the known ones. | `ProductListFiltersIT` |
+| G-25 | A hand-entered product reaches month processing only through its own `LineSource` (ledger module): attribution names no product module, so a new product adds a source, never a branch in processing. | `ArchitectureTest`, `MonthLifecycleIT` and each product's processing test |
 
 ## Before you commit
 1. `backend/mvnw-docker.sh verify` and `cd frontend && npm test` are green.
