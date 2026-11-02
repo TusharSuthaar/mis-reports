@@ -15,6 +15,7 @@ import money.epsilon.brokerage.org.service.OrgViews.HistoryEntry;
 import money.epsilon.brokerage.platform.audit.AuditService.AuditView;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.web.PageResponse;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -47,7 +48,7 @@ class ClientController {
                                   @RequestParam(defaultValue = "0") int page,
                                   @RequestParam(defaultValue = "50") int size) {
         if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
-            throw new IllegalArgumentException("page must be >= 0 and size between 1 and " + MAX_PAGE_SIZE);
+            throw new ValidationException("page must be >= 0 and size between 1 and " + MAX_PAGE_SIZE);
         }
         return service.page(q, needsRm, rmId, attention == null || attention.isBlank() ? null : attention.trim(), page, size);
     }

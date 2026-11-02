@@ -8,6 +8,7 @@ import jakarta.persistence.MappedSuperclass;
 import java.time.Instant;
 import java.time.LocalDate;
 import money.epsilon.brokerage.platform.security.CurrentUser;
+import money.epsilon.brokerage.platform.web.ValidationException;
 
 /**
  * Base for effective-dated rows (assignments, links). Both ends are inclusive; validTo null = still current.
@@ -38,8 +39,8 @@ public abstract class DatedRow {
     }
 
     protected DatedRow(LocalDate validFrom, LocalDate validTo, String reason) {
-        if (validFrom == null) throw new IllegalArgumentException("A start date is required");
-        if (validTo != null && validTo.isBefore(validFrom)) throw new IllegalArgumentException("End date is before start date");
+        if (validFrom == null) throw new ValidationException("A start date is required");
+        if (validTo != null && validTo.isBefore(validFrom)) throw new ValidationException("End date is before start date");
         this.validFrom = validFrom;
         this.validTo = validTo;
         this.reason = reason;
@@ -49,7 +50,7 @@ public abstract class DatedRow {
     /** Ends this row on {@code lastDay} (inclusive). The reason for ending goes to the audit log, not here. */
     public void closeOn(LocalDate lastDay) {
         if (lastDay.isBefore(validFrom)) {
-            throw new IllegalArgumentException("Cannot end on " + lastDay + ": it starts on " + validFrom);
+            throw new ValidationException("Cannot end on " + lastDay + ": it starts on " + validFrom);
         }
         this.validTo = lastDay;
         stamp();

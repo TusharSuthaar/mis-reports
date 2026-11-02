@@ -26,6 +26,7 @@ import money.epsilon.brokerage.org.service.EmployeeService;
 import money.epsilon.brokerage.org.service.OrgViews.EmployeeView;
 import money.epsilon.brokerage.partner.service.PartnerService;
 import money.epsilon.brokerage.platform.storage.FileStore;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -135,10 +136,10 @@ public class ClientLoadService {
 
     /** Used by {@link ClientLoadJob}: reads the stored file again and applies it with the decisions. */
     LoadResult apply(String token, String fileName, Decisions d) {
-        if (d.from() == null) throw new IllegalArgumentException("A start date is required");
+        if (d.from() == null) throw new ValidationException("A start date is required");
         ParsedIncomeFile parsed = parser.parse(files.read(STORE_AREA, token));
         if (!parsed.ok()) {
-            throw new IllegalArgumentException("The file has problems and cannot be loaded: " + parsed.errors().get(0).message());
+            throw new ValidationException("The file has problems and cannot be loaded: " + parsed.errors().get(0).message());
         }
         String source = parser.source();
         List<EmployeeView> allRms = employees.list();

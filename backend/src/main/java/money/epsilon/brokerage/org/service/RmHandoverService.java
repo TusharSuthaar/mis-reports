@@ -8,6 +8,7 @@ import money.epsilon.brokerage.org.repository.RdAssignmentRepository;
 import money.epsilon.brokerage.org.service.OrgViews.EmployeeView;
 import money.epsilon.brokerage.platform.text.Text;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,11 +39,11 @@ public class RmHandoverService {
 
     @Transactional
     public Result handOver(long leaverId, Handover h) {
-        if (h.lastDay() == null) throw new IllegalArgumentException("Last working day is required");
+        if (h.lastDay() == null) throw new ValidationException("Last working day is required");
         EmployeeView leaver = employees.get(leaverId);
         LocalDate from = h.lastDay().plusDays(1);
         String newName = Text.clean(h.newRmName());
-        if ((newName == null) == (h.replacementId() == null)) throw new IllegalArgumentException("Pick who takes over, or give the new RM's name");
+        if ((newName == null) == (h.replacementId() == null)) throw new ValidationException("Pick who takes over, or give the new RM's name");
 
         EmployeeView next;
         if (newName != null) {

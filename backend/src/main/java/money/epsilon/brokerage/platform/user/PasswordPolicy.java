@@ -1,4 +1,5 @@
 package money.epsilon.brokerage.platform.user;
+import money.epsilon.brokerage.platform.web.ValidationException;
 
 import java.nio.charset.StandardCharsets;
 
@@ -14,16 +15,16 @@ final class PasswordPolicy {
     /** @throws IllegalArgumentException with a user-readable reason */
     static void check(String password, String username) {
         if (password == null || password.length() < MIN_LENGTH) {
-            throw new IllegalArgumentException("Password must be at least " + MIN_LENGTH + " characters");
+            throw new ValidationException("Password must be at least " + MIN_LENGTH + " characters");
         }
         if (password.getBytes(StandardCharsets.UTF_8).length > MAX_BYTES) {
-            throw new IllegalArgumentException("Password must be at most " + MAX_BYTES + " bytes");
+            throw new ValidationException("Password must be at most " + MAX_BYTES + " bytes");
         }
         if (password.isBlank()) {
-            throw new IllegalArgumentException("Password cannot be only spaces");
+            throw new ValidationException("Password cannot be only spaces");
         }
         if (username != null && password.toLowerCase().contains(username.toLowerCase())) {
-            throw new IllegalArgumentException("Password must not contain the username");
+            throw new ValidationException("Password must not contain the username");
         }
     }
 }

@@ -17,6 +17,7 @@ import money.epsilon.brokerage.ingestion.parser.ParsedIncomeFile.Totals;
 import money.epsilon.brokerage.ingestion.parser.StagedIncomeRow;
 import money.epsilon.brokerage.platform.excel.ExcelFile;
 import money.epsilon.brokerage.platform.excel.ExcelRow;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Component;
 
 /**
@@ -90,7 +91,7 @@ public class FinesseBrokerageParser implements IncomeFileParser {
             YearMonth month;
             try {
                 LocalDate end = l.date(END);
-                if (end == null) throw new IllegalArgumentException("blank");
+                if (end == null) throw new ValidationException("blank");
                 month = YearMonth.from(end);
             } catch (IllegalArgumentException e) {
                 errors.add(new Problem(l.rowNumber(), "Brokerage end period '" + l.text(END) + "' is not a date like 31-Aug-2026"));

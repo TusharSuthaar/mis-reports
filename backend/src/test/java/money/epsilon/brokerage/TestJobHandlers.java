@@ -97,5 +97,20 @@ public class TestJobHandlers {
         String boom() {
             throw new IllegalStateException("broke while reading " + BOOM_PAN);
         }
+
+        /** The app's own message about bad input (M-02). */
+        @GetMapping(INVALID_PATH)
+        String invalid() {
+            throw new money.epsilon.brokerage.platform.web.ValidationException("Enter the deposit date");
+        }
+
+        /** A library's own check failing, with its internal wording (M-02). */
+        @GetMapping(LIBRARY_PATH)
+        String library() {
+            throw new IllegalArgumentException("No enum constant money.epsilon.brokerage.fd.domain.FdEntry.Status.ACTIV");
+        }
     }
+
+    public static final String INVALID_PATH = "/api/test/invalid";
+    public static final String LIBRARY_PATH = "/api/test/library";
 }

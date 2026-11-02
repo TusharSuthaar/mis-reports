@@ -15,6 +15,7 @@ import money.epsilon.brokerage.loan.service.LoanService.LoanView;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.web.EditVersion;
 import money.epsilon.brokerage.tax.service.GivenFigures;
+import money.epsilon.brokerage.platform.web.ProductListFilters;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -42,6 +43,7 @@ class LoanController {
         this.service = service;
     }
 
+    @ProductListFilters
     @GetMapping
     @PreAuthorize(Roles.MASTER_READ)
     List<LoanView> list(@RequestParam(required = false) YearMonth from, @RequestParam(required = false) YearMonth to,
@@ -65,6 +67,7 @@ class LoanController {
         return service.suggestions();
     }
 
+    @ProductListFilters
     @GetMapping("/export.xlsx")
     @PreAuthorize(Roles.MASTER_READ)
     ResponseEntity<byte[]> export(@RequestParam(required = false) YearMonth from, @RequestParam(required = false) YearMonth to,

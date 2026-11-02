@@ -38,6 +38,7 @@ import money.epsilon.brokerage.platform.text.Text;
 import money.epsilon.brokerage.platform.web.EditVersion;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -178,8 +179,8 @@ public class InsuranceService {
             clients.requireExists(clientId);
             client = clientId;
         } else {
-            if (newClientName == null || newClientName.isBlank()) throw new IllegalArgumentException("Find the client by PAN or code, or enter a new client's name");
-            if (rmId == null) throw new IllegalArgumentException("Choose the new client's RM");
+            if (newClientName == null || newClientName.isBlank()) throw new ValidationException("Find the client by PAN or code, or enter a new client's name");
+            if (rmId == null) throw new ValidationException("Choose the new client's RM");
             employees.requireEmployedOn(rmId, month);
             client = clients.addByHand(newClientName, newClientPan, rmId, month, "Insurance policy");
         }
@@ -252,19 +253,19 @@ public class InsuranceService {
     }
 
     static InsurancePolicy.Details check(InsurancePolicy.Details d) {
-        if (d.insurer() == null) throw new IllegalArgumentException("Enter the insurance company");
-        if (d.category() == null) throw new IllegalArgumentException("Choose Life, Health, Motor or General");
-        if (d.productName() == null) throw new IllegalArgumentException("Enter the product name");
-        if (d.policyNo() == null) throw new IllegalArgumentException("Enter the policy number");
-        if (d.businessType() == null) throw new IllegalArgumentException("Choose the business type (New, Renewal, Port …)");
-        if (d.totalPremium() == null) throw new IllegalArgumentException("Enter the total premium");
-        if (d.netPremium() == null) throw new IllegalArgumentException("Enter the net premium");
-        if (d.expectedPercent() == null && d.expectedComm() == null) throw new IllegalArgumentException("Enter the expected commission % (or the amount)");
+        if (d.insurer() == null) throw new ValidationException("Enter the insurance company");
+        if (d.category() == null) throw new ValidationException("Choose Life, Health, Motor or General");
+        if (d.productName() == null) throw new ValidationException("Enter the product name");
+        if (d.policyNo() == null) throw new ValidationException("Enter the policy number");
+        if (d.businessType() == null) throw new ValidationException("Choose the business type (New, Renewal, Port …)");
+        if (d.totalPremium() == null) throw new ValidationException("Enter the total premium");
+        if (d.netPremium() == null) throw new ValidationException("Enter the net premium");
+        if (d.expectedPercent() == null && d.expectedComm() == null) throw new ValidationException("Enter the expected commission % (or the amount)");
         for (BigDecimal pct : new BigDecimal[]{d.expectedPercent(), d.actualPercent(), d.pospShare()}) {
-            if (pct != null && (pct.signum() < 0 || pct.compareTo(HUNDRED) > 0)) throw new IllegalArgumentException("Percentages must be between 0 and 100");
+            if (pct != null && (pct.signum() < 0 || pct.compareTo(HUNDRED) > 0)) throw new ValidationException("Percentages must be between 0 and 100");
         }
         if (d.pospId() != null && d.pospShare() == null && d.pospComm() == null) {
-            throw new IllegalArgumentException("Enter the % agreed with the POSP (or the POSP's commission)");
+            throw new ValidationException("Enter the % agreed with the POSP (or the POSP's commission)");
         }
         // A POSP's commission above the expected commission is allowed: the sheet has such policies (the expected amount
         // typed low), and the END pays the POSP what the sheet says; the screen warns.
@@ -272,7 +273,7 @@ public class InsuranceService {
     }
 
     private static LocalDate month(LocalDate month) {
-        if (month == null) throw new IllegalArgumentException("Choose the business month");
+        if (month == null) throw new ValidationException("Choose the business month");
         return month.withDayOfMonth(1);
     }
 

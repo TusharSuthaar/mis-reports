@@ -35,6 +35,7 @@ import money.epsilon.brokerage.pms.repository.PmsInvestmentRepository;
 import money.epsilon.brokerage.pms.repository.PmsPayoutRepository;
 import money.epsilon.brokerage.sharing.domain.Product;
 import money.epsilon.brokerage.tax.service.ProductTaxService;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -135,7 +136,7 @@ public class PmsService {
             clients.requireExists(clientId);
             client = clientId;
         } else {
-            if (newClientName == null || newClientName.isBlank()) throw new IllegalArgumentException("Pick the client or enter a new client's name");
+            if (newClientName == null || newClientName.isBlank()) throw new ValidationException("Pick the client or enter a new client's name");
             client = clients.addByHand(newClientName, newClientPan, details.rmId(), details.month(), "PMS entry");
         }
         PmsInvestment e = new PmsInvestment(client);
@@ -180,20 +181,20 @@ public class PmsService {
     }
 
     private PmsInvestment.Details check(PmsInvestment.Details d) {
-        if (d.month() == null) throw new IllegalArgumentException("Choose the month");
+        if (d.month() == null) throw new ValidationException("Choose the month");
         LocalDate month = d.month().withDayOfMonth(1);
         employees.requireEmployedOn(d.rmId(), month);
         if (d.partnerId() != null) partners.get(d.partnerId());
-        if (Text.clean(d.amc()) == null) throw new IllegalArgumentException("Enter the AMC (e.g. ICICI PRU)");
-        if (Text.clean(d.strategy()) == null) throw new IllegalArgumentException("Enter the PMS strategy (e.g. ICICI PIPE)");
-        if (d.amount() == null || d.amount().signum() <= 0) throw new IllegalArgumentException("Enter the investment amount");
-        if (d.investmentDate() == null) throw new IllegalArgumentException("Enter the investment date");
+        if (Text.clean(d.amc()) == null) throw new ValidationException("Enter the AMC (e.g. ICICI PRU)");
+        if (Text.clean(d.strategy()) == null) throw new ValidationException("Enter the PMS strategy (e.g. ICICI PIPE)");
+        if (d.amount() == null || d.amount().signum() <= 0) throw new ValidationException("Enter the investment amount");
+        if (d.investmentDate() == null) throw new ValidationException("Enter the investment date");
         if (d.trailPercent() != null && (d.trailPercent().signum() < 0 || d.trailPercent().compareTo(new BigDecimal("100")) > 0)) {
-            throw new IllegalArgumentException("Trail % must be between 0 and 100");
+            throw new ValidationException("Trail % must be between 0 and 100");
         }
         if (d.holdingStatus() == PmsInvestment.Holding.REDEEMED) {
-            if (d.redeemedOn() == null) throw new IllegalArgumentException("Enter the date it was redeemed");
-            if (d.redeemedOn().isBefore(d.investmentDate())) throw new IllegalArgumentException("Redeemed before it was invested");
+            if (d.redeemedOn() == null) throw new ValidationException("Enter the date it was redeemed");
+            if (d.redeemedOn().isBefore(d.investmentDate())) throw new ValidationException("Redeemed before it was invested");
         }
         return new PmsInvestment.Details(month, d.rmId(), d.partnerId(), Text.clean(d.mobile()), Text.clean(d.email()), Text.clean(d.address()),
                 Text.clean(d.amc()), Text.clean(d.strategy()), d.amount(), d.investmentDate(), d.onPortal(), d.trailPercent(), d.payoutFrequency(),
@@ -313,14 +314,14 @@ public class PmsService {
     }
 
     private PmsPayout.Details check(PmsPayout.Details d) {
-        if (Text.clean(d.amc()) == null) throw new IllegalArgumentException("Enter the AMC");
-        if (d.periodFrom() == null) throw new IllegalArgumentException("Enter the invoice period");
+        if (Text.clean(d.amc()) == null) throw new ValidationException("Enter the AMC");
+        if (d.periodFrom() == null) throw new ValidationException("Enter the invoice period");
         LocalDate from = d.periodFrom().withDayOfMonth(1);
         LocalDate to = d.periodTo() == null ? from : d.periodTo().withDayOfMonth(1);
-        if (to.isBefore(from)) throw new IllegalArgumentException("The period ends before it starts");
-        if (d.amount() == null || d.amount().signum() < 0) throw new IllegalArgumentException("Enter the payout amount");
+        if (to.isBefore(from)) throw new ValidationException("The period ends before it starts");
+        if (d.amount() == null || d.amount().signum() < 0) throw new ValidationException("Enter the payout amount");
         if (d.tdsApplied() && (d.tdsPercent() == null || d.tdsPercent().signum() < 0 || d.tdsPercent().compareTo(new BigDecimal("100")) > 0)) {
-            throw new IllegalArgumentException("TDS % must be between 0 and 100");
+            throw new ValidationException("TDS % must be between 0 and 100");
         }
         return new PmsPayout.Details(Text.clean(d.amc()), from, to, d.amount(), d.tdsApplied(), d.tdsApplied() ? d.tdsPercent() : BigDecimal.ZERO,
                 d.invoiceRaised(), d.receivedOn(), Text.clean(d.remarks()));

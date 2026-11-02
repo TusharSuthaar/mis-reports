@@ -21,6 +21,7 @@ import money.epsilon.brokerage.preipo.domain.PreIpoPrice;
 import money.epsilon.brokerage.preipo.domain.PreIpoScrip;
 import money.epsilon.brokerage.preipo.repository.PreIpoPriceRepository;
 import money.epsilon.brokerage.preipo.repository.PreIpoScripRepository;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -88,7 +89,7 @@ public class PreIpoPriceService {
 
     private ScripInput check(ScripInput in, Long id) {
         String name = Text.clean(in.name());
-        if (name == null) throw new IllegalArgumentException("Enter the scrip name");
+        if (name == null) throw new ValidationException("Enter the scrip name");
         String isin = Text.clean(in.isin()) == null ? null : Text.clean(in.isin()).toUpperCase();
         scrips.findByNameIgnoreCase(name).filter(o -> !o.getId().equals(id)).ifPresent(o -> {
             throw new RuleViolationException("A scrip named " + o.getName() + " already exists");
@@ -96,7 +97,7 @@ public class PreIpoPriceService {
         if (isin != null) scrips.findByIsinIgnoreCase(isin).filter(o -> !o.getId().equals(id)).ifPresent(o -> {
             throw new RuleViolationException("ISIN " + isin + " is already " + o.getName());
         });
-        if (in.lotSize() != null && in.lotSize() <= 0) throw new IllegalArgumentException("Lot size must be more than 0");
+        if (in.lotSize() != null && in.lotSize() <= 0) throw new ValidationException("Lot size must be more than 0");
         return new ScripInput(name, isin, in.faceValue(), in.lotSize(), in.active(), Text.clean(in.remarks()));
     }
 
@@ -134,10 +135,10 @@ public class PreIpoPriceService {
     }
 
     private PriceView put(long scripId, long vendorId, LocalDate asOf, BigDecimal basePrice, BigDecimal markupPercent) {
-        if (asOf == null) throw new IllegalArgumentException("Choose the date of the price");
-        if (basePrice == null || basePrice.signum() <= 0) throw new IllegalArgumentException("Enter the base price");
+        if (asOf == null) throw new ValidationException("Choose the date of the price");
+        if (basePrice == null || basePrice.signum() <= 0) throw new ValidationException("Enter the base price");
         BigDecimal markup = markupPercent == null ? DEFAULT_MARKUP : markupPercent;
-        if (markup.signum() < 0 || markup.compareTo(new BigDecimal("100")) > 0) throw new IllegalArgumentException("Mark-up % must be between 0 and 100");
+        if (markup.signum() < 0 || markup.compareTo(new BigDecimal("100")) > 0) throw new ValidationException("Mark-up % must be between 0 and 100");
         PreIpoPrice p = prices.findByScripIdAndVendorIdAndAsOf(scripId, vendorId, asOf).orElseGet(() -> new PreIpoPrice(scripId, vendorId, asOf));
         p.set(basePrice, markup);
         prices.saveAndFlush(p);
@@ -152,7 +153,7 @@ public class PreIpoPriceService {
      */
     @Transactional
     public UploadResult upload(byte[] content, String fileName, LocalDate asOf, BigDecimal markupPercent) {
-        if (asOf == null) throw new IllegalArgumentException("Choose the date the prices are for");
+        if (asOf == null) throw new ValidationException("Choose the date the prices are for");
         int scripsSeen = 0, newScrips = 0, priceCount = 0, skipped = 0, unpriced = 0;
         TreeSet<String> newVendors = new TreeSet<>();
         try (ExcelFile file = ExcelFile.open(content)) {

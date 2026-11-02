@@ -30,6 +30,7 @@ import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
 import money.epsilon.brokerage.sharing.domain.Product;
 import money.epsilon.brokerage.tax.service.ProductTaxService;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -117,7 +118,7 @@ public class NpsService {
             clients.requireExists(clientId);
             client = clientId;
         } else {
-            if (newClientName == null || newClientName.isBlank()) throw new IllegalArgumentException("Pick the client or enter a new client's name");
+            if (newClientName == null || newClientName.isBlank()) throw new ValidationException("Pick the client or enter a new client's name");
             client = clients.addByHand(newClientName, newClientPan, details.rmId(), details.month(), "NPS entry");
         }
         NpsEntry e = new NpsEntry(client);
@@ -156,18 +157,18 @@ public class NpsService {
     }
 
     private NpsEntry.Details check(NpsEntry.Details d) {
-        if (d.month() == null) throw new IllegalArgumentException("Choose the month");
+        if (d.month() == null) throw new ValidationException("Choose the month");
         LocalDate month = d.month().withDayOfMonth(1);
         employees.requireEmployedOn(d.rmId(), month);
         if (d.partnerId() != null) partners.get(d.partnerId());
-        if (Text.clean(d.pop()) == null) throw new IllegalArgumentException("Enter the partner (POP, e.g. STOCK HOLDING)");
-        if (d.investmentDate() == null) throw new IllegalArgumentException("Enter the investment date");
-        if (d.amount() == null || d.amount().signum() <= 0) throw new IllegalArgumentException("Enter the investment amount");
+        if (Text.clean(d.pop()) == null) throw new ValidationException("Enter the partner (POP, e.g. STOCK HOLDING)");
+        if (d.investmentDate() == null) throw new ValidationException("Enter the investment date");
+        if (d.amount() == null || d.amount().signum() <= 0) throw new ValidationException("Enter the investment amount");
         if (d.sharePercent() != null && (d.sharePercent().signum() < 0 || d.sharePercent().compareTo(new BigDecimal("100")) > 0)) {
-            throw new IllegalArgumentException("Sharing % must be between 0 and 100");
+            throw new ValidationException("Sharing % must be between 0 and 100");
         }
         if ((d.popCharges() != null && d.popCharges().signum() < 0) || (d.revenue() != null && d.revenue().signum() < 0)) {
-            throw new IllegalArgumentException("Amounts cannot be negative");
+            throw new ValidationException("Amounts cannot be negative");
         }
         return new NpsEntry.Details(month, d.rmId(), d.partnerId(), Text.clean(d.mobile()), Text.clean(d.email()), Text.clean(d.address()),
                 Text.clean(d.pop()), d.investmentDate(), d.amount(), d.welcomeMail(), d.investmentMail(), d.certificate(), d.onPortal(),

@@ -14,6 +14,7 @@ import money.epsilon.brokerage.fd.service.FdService;
 import money.epsilon.brokerage.fd.service.FdService.FdView;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.web.EditVersion;
+import money.epsilon.brokerage.platform.web.ProductListFilters;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,6 +39,7 @@ class FdController {
         this.service = service;
     }
 
+    @ProductListFilters
     @GetMapping
     @PreAuthorize(Roles.MASTER_READ)
     List<FdView> list(@RequestParam(required = false) YearMonth from, @RequestParam(required = false) YearMonth to,
@@ -60,6 +62,7 @@ class FdController {
         return service.suggestions();
     }
 
+    @ProductListFilters
     @GetMapping("/export.xlsx")
     @PreAuthorize(Roles.MASTER_READ)
     org.springframework.http.ResponseEntity<byte[]> export(@RequestParam(required = false) YearMonth from, @RequestParam(required = false) YearMonth to,

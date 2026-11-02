@@ -26,6 +26,7 @@ import money.epsilon.brokerage.platform.security.CurrentUser;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.text.Text;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -224,7 +225,7 @@ public class EquityService {
         try {
             return new BigDecimal(text.replace(",", "").trim());
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Row " + row + ": '" + text + "' in " + what + " is not an amount");
+            throw new ValidationException("Row " + row + ": '" + text + "' in " + what + " is not an amount");
         }
     }
 

@@ -84,7 +84,7 @@ class FdIT extends IntegrationTestBase {
         assertThat(edited.get("paymentStatus").asText()).isEqualTo("RECEIVED_GST_PENDING");
         assertThat(edited.get("onPortal").asBoolean()).isTrue();
         // The month as the FD register in Excel.
-        byte[] xlsx = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/fd/export.xlsx?month=2026-08").session(admin))
+        byte[] xlsx = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/fd/export.xlsx?from=2026-08&to=2026-08").session(admin))
                 .andReturn().getResponse().getContentAsByteArray();
         try (var wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(xlsx))) {
             var sheet = wb.getSheetAt(0);

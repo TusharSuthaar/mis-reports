@@ -1,4 +1,5 @@
 package money.epsilon.brokerage.platform.importing;
+import money.epsilon.brokerage.platform.web.ValidationException;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -19,8 +20,8 @@ public record UploadedFile(String name, byte[] content, String sha256) {
      */
     public static UploadedFile of(MultipartFile file, String defaultName, String what) {
         String name = file.getOriginalFilename() == null || file.getOriginalFilename().isBlank() ? defaultName : file.getOriginalFilename();
-        if (file.isEmpty()) throw new IllegalArgumentException("The file is empty");
-        if (!name.toLowerCase().endsWith(".xlsx")) throw new IllegalArgumentException("Upload " + what + " as an .xlsx file");
+        if (file.isEmpty()) throw new ValidationException("The file is empty");
+        if (!name.toLowerCase().endsWith(".xlsx")) throw new ValidationException("Upload " + what + " as an .xlsx file");
         try {
             byte[] content = file.getBytes();
             return new UploadedFile(name, content, sha256(content));

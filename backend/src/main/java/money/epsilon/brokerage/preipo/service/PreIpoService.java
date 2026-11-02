@@ -35,6 +35,7 @@ import money.epsilon.brokerage.preipo.repository.PreIpoEntryRepository;
 import money.epsilon.brokerage.preipo.repository.PreIpoScripRepository;
 import money.epsilon.brokerage.sharing.domain.Product;
 import money.epsilon.brokerage.tax.service.ProductTaxService;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -161,7 +162,7 @@ public class PreIpoService {
             clients.requireExists(clientId);
             client = clientId;
         } else {
-            if (newClientName == null || newClientName.isBlank()) throw new IllegalArgumentException("Pick the client or enter a new client's name");
+            if (newClientName == null || newClientName.isBlank()) throw new ValidationException("Pick the client or enter a new client's name");
             client = clients.addByHand(newClientName, newClientPan, details.rmId(), details.month(), "Unlisted entry");
         }
         PreIpoEntry e = new PreIpoEntry(client);
@@ -204,19 +205,19 @@ public class PreIpoService {
     }
 
     private Details check(Details d) {
-        if (d.kind() == null) throw new IllegalArgumentException("Choose buy or buyback");
-        if (d.month() == null) throw new IllegalArgumentException("Choose the month");
+        if (d.kind() == null) throw new ValidationException("Choose buy or buyback");
+        if (d.month() == null) throw new ValidationException("Choose the month");
         LocalDate month = d.month().withDayOfMonth(1);
         employees.requireEmployedOn(d.rmId(), month);
         if (d.partnerId() != null) partners.get(d.partnerId());
         if (d.sharingPercent() != null) requirePercent(d.sharingPercent(), "Sharing");
         if (!scrips.existsById(d.scripId())) throw new NotFoundException("Unlisted scrip " + d.scripId() + " not found");
         platforms.get(d.vendorId());
-        if (d.dealDate() == null) throw new IllegalArgumentException("Enter the deal date");
-        if (d.quantity() == null || d.quantity().signum() <= 0) throw new IllegalArgumentException("Enter the quantity");
-        if (d.clientPrice() == null || d.clientPrice().signum() <= 0) throw new IllegalArgumentException("Enter the client price");
+        if (d.dealDate() == null) throw new ValidationException("Enter the deal date");
+        if (d.quantity() == null || d.quantity().signum() <= 0) throw new ValidationException("Enter the quantity");
+        if (d.clientPrice() == null || d.clientPrice().signum() <= 0) throw new ValidationException("Enter the client price");
         if (d.vendorPrice() == null || d.vendorPrice().signum() <= 0) {
-            throw new IllegalArgumentException(d.kind() == PreIpoEntry.Kind.BUY ? "Enter the vendor's base price" : "Enter the price the vendor pays");
+            throw new ValidationException(d.kind() == PreIpoEntry.Kind.BUY ? "Enter the vendor's base price" : "Enter the price the vendor pays");
         }
         if (d.tdsApplied()) requirePercent(d.tdsPercent(), "TDS");
         return new Details(d.kind(), month, d.rmId(), d.partnerId(), d.sharingPercent(), Text.clean(d.mobile()), Text.clean(d.email()),
@@ -226,8 +227,8 @@ public class PreIpoService {
     }
 
     private static void requirePercent(BigDecimal value, String what) {
-        if (value == null) throw new IllegalArgumentException("Enter the " + what.toLowerCase() + " %");
-        if (value.signum() < 0 || value.compareTo(new BigDecimal("100")) > 0) throw new IllegalArgumentException(what + " % must be between 0 and 100");
+        if (value == null) throw new ValidationException("Enter the " + what.toLowerCase() + " %");
+        if (value.signum() < 0 || value.compareTo(new BigDecimal("100")) > 0) throw new ValidationException(what + " % must be between 0 and 100");
     }
 
     private PreIpoEntry find(long id) {

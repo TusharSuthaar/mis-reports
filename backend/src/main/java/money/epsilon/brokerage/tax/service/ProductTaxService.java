@@ -14,6 +14,7 @@ import money.epsilon.brokerage.platform.web.RuleViolationException;
 import money.epsilon.brokerage.sharing.domain.Product;
 import money.epsilon.brokerage.tax.domain.ProductTaxRate;
 import money.epsilon.brokerage.tax.repository.ProductTaxRateRepository;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,7 +60,7 @@ public class ProductTaxService {
 
     @Transactional
     public void set(Product product, BigDecimal gstPercent, BigDecimal tdsPercent, boolean tdsByDefault, LocalDate from, String reason) {
-        if (product == null) throw new IllegalArgumentException("Choose a product");
+        if (product == null) throw new ValidationException("Choose a product");
         BigDecimal gst = percent(gstPercent, "GST");
         BigDecimal tds = percent(tdsPercent, "TDS");
         window.beforeChange(from);
@@ -72,8 +73,8 @@ public class ProductTaxService {
     }
 
     private static BigDecimal percent(BigDecimal value, String what) {
-        if (value == null) throw new IllegalArgumentException(what + " % is required (0 if none)");
-        if (value.signum() < 0 || value.compareTo(HUNDRED) > 0) throw new IllegalArgumentException(what + " % must be between 0 and 100");
+        if (value == null) throw new ValidationException(what + " % is required (0 if none)");
+        if (value.signum() < 0 || value.compareTo(HUNDRED) > 0) throw new ValidationException(what + " % must be between 0 and 100");
         return value.stripTrailingZeros();
     }
 

@@ -23,6 +23,7 @@ import money.epsilon.brokerage.preipo.service.PreIpoPriceService.ScripView;
 import money.epsilon.brokerage.preipo.service.PreIpoPriceService.UploadResult;
 import money.epsilon.brokerage.preipo.service.PreIpoService;
 import money.epsilon.brokerage.preipo.service.PreIpoService.PreIpoView;
+import money.epsilon.brokerage.platform.web.ProductListFilters;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -55,6 +56,7 @@ class PreIpoController {
 
     // ---- deals -------------------------------------------------------------------------------------------------------
 
+    @ProductListFilters
     @GetMapping
     @PreAuthorize(Roles.MASTER_READ)
     List<PreIpoView> list(@RequestParam(required = false) YearMonth from, @RequestParam(required = false) YearMonth to,
@@ -82,6 +84,7 @@ class PreIpoController {
         return Map.of("pendingPayments", deals.pendingPayments());
     }
 
+    @ProductListFilters
     @GetMapping("/export.xlsx")
     @PreAuthorize(Roles.MASTER_READ)
     ResponseEntity<byte[]> export(@RequestParam(required = false) YearMonth from, @RequestParam(required = false) YearMonth to,

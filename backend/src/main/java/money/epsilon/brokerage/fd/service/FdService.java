@@ -28,6 +28,7 @@ import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
 import money.epsilon.brokerage.sharing.domain.Product;
 import money.epsilon.brokerage.tax.service.ProductTaxService;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -179,7 +180,7 @@ public class FdService {
             clients.requireExists(clientId);
             client = clientId;
         } else {
-            if (newClientName == null || newClientName.isBlank()) throw new IllegalArgumentException("Pick the client or enter a new client's name");
+            if (newClientName == null || newClientName.isBlank()) throw new ValidationException("Pick the client or enter a new client's name");
             client = clients.addByHand(newClientName, newClientPan, details.rmId(), details.month(), "FD entry");
         }
         FdEntry e = new FdEntry(client);
@@ -218,20 +219,20 @@ public class FdService {
     }
 
     private Details check(Details d) {
-        if (d.month() == null) throw new IllegalArgumentException("Choose the month");
+        if (d.month() == null) throw new ValidationException("Choose the month");
         LocalDate month = d.month().withDayOfMonth(1);
         employees.requireEmployedOn(d.rmId(), month);
         if (d.partnerId() != null) partners.get(d.partnerId());
-        if (d.fdName() == null || d.fdName().isBlank()) throw new IllegalArgumentException("Enter the FD name");
-        if (d.interestFrequency() == null) throw new IllegalArgumentException("Choose the interest frequency");
-        if (d.depositDate() == null || d.maturityDate() == null) throw new IllegalArgumentException("Enter the deposit and maturity dates");
-        if (!d.maturityDate().isAfter(d.depositDate())) throw new IllegalArgumentException("The maturity date must be after the deposit date");
-        if (d.periodMonths() < 1 || d.periodMonths() > 600) throw new IllegalArgumentException("Enter the deposit period in months");
+        if (d.fdName() == null || d.fdName().isBlank()) throw new ValidationException("Enter the FD name");
+        if (d.interestFrequency() == null) throw new ValidationException("Choose the interest frequency");
+        if (d.depositDate() == null || d.maturityDate() == null) throw new ValidationException("Enter the deposit and maturity dates");
+        if (!d.maturityDate().isAfter(d.depositDate())) throw new ValidationException("The maturity date must be after the deposit date");
+        if (d.periodMonths() < 1 || d.periodMonths() > 600) throw new ValidationException("Enter the deposit period in months");
         requirePercent(d.ratePercent(), "Interest rate");
         requirePercent(d.marginPercent(), "Margin");
         if (d.tdsApplied()) requirePercent(d.tdsPercent(), "TDS");
-        if (d.amount() == null || d.amount().signum() <= 0) throw new IllegalArgumentException("Enter the investment amount");
-        if (d.certificate() == null) throw new IllegalArgumentException("Choose the certificate status");
+        if (d.amount() == null || d.amount().signum() <= 0) throw new ValidationException("Enter the investment amount");
+        if (d.certificate() == null) throw new ValidationException("Choose the certificate status");
         return new Details(month, d.rmId(), d.partnerId(), Text.clean(d.mobile()), Text.clean(d.email()), Text.clean(d.address()),
                 Text.clean(d.fdName()), Text.clean(d.fdNo()), d.interestFrequency(), Text.clean(d.platform()), d.depositDate(),
                 d.periodMonths(), d.maturityDate(), d.ratePercent(), d.amount(), d.compounding(), d.certificate(), d.marginPercent(), d.tdsApplied(),
@@ -239,8 +240,8 @@ public class FdService {
     }
 
     private static void requirePercent(BigDecimal value, String what) {
-        if (value == null) throw new IllegalArgumentException("Enter the " + what.toLowerCase() + " %");
-        if (value.signum() < 0 || value.compareTo(new BigDecimal("100")) > 0) throw new IllegalArgumentException(what + " % must be between 0 and 100");
+        if (value == null) throw new ValidationException("Enter the " + what.toLowerCase() + " %");
+        if (value.signum() < 0 || value.compareTo(new BigDecimal("100")) > 0) throw new ValidationException(what + " % must be between 0 and 100");
     }
 
     private BigDecimal gstPercent(LocalDate month) {

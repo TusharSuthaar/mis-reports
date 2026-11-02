@@ -1,4 +1,5 @@
 package money.epsilon.brokerage.tax.service;
+import money.epsilon.brokerage.platform.web.ValidationException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -11,10 +12,10 @@ public record GivenFigures(BigDecimal gross, BigDecimal tds, BigDecimal gst, Big
 
     /** The figures to store, checked: gross is required and nothing may be negative. */
     public Resolved resolve() {
-        if (gross == null) throw new IllegalArgumentException("Enter the gross revenue from the register");
+        if (gross == null) throw new ValidationException("Enter the gross revenue from the register");
         BigDecimal g = p(gross), t = p(tds), s = p(gst);
-        if (g.signum() < 0 || t.signum() < 0 || s.signum() < 0) throw new IllegalArgumentException("Register figures cannot be negative");
-        if (t.compareTo(g) > 0) throw new IllegalArgumentException("TDS cannot be more than the gross revenue");
+        if (g.signum() < 0 || t.signum() < 0 || s.signum() < 0) throw new ValidationException("Register figures cannot be negative");
+        if (t.compareTo(g) > 0) throw new ValidationException("TDS cannot be more than the gross revenue");
         BigDecimal i = invoice == null ? g.add(s) : p(invoice);
         return new Resolved(g, t, s, g.subtract(t), i);
     }

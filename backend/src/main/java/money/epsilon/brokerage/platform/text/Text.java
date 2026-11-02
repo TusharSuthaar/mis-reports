@@ -1,4 +1,5 @@
 package money.epsilon.brokerage.platform.text;
+import money.epsilon.brokerage.platform.web.ValidationException;
 
 import java.util.Locale;
 
@@ -37,7 +38,7 @@ public final class Text {
     /** {@link #clean} that refuses blanks. */
     public static String required(String s, String field) {
         String t = clean(s);
-        if (t == null) throw new IllegalArgumentException(field + " is required");
+        if (t == null) throw new ValidationException(field + " is required");
         return t;
     }
 }

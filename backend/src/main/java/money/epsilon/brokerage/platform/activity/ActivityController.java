@@ -6,6 +6,7 @@ import money.epsilon.brokerage.platform.activity.ActivityService.ActivityView;
 import money.epsilon.brokerage.platform.activity.ActivityService.Kind;
 import money.epsilon.brokerage.platform.activity.ActivityService.Summary;
 import money.epsilon.brokerage.platform.web.PageResponse;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,7 +36,7 @@ class ActivityController {
                                       @RequestParam(defaultValue = "0") int page,
                                       @RequestParam(defaultValue = "50") int size) {
         if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
-            throw new IllegalArgumentException("page must be >= 0 and size between 1 and " + MAX_PAGE_SIZE);
+            throw new ValidationException("page must be >= 0 and size between 1 and " + MAX_PAGE_SIZE);
         }
         return service.search(new ActivityFilter(kind, blankToNull(by), problemsOnly, blankToNull(reference), from, to), page, size);
     }

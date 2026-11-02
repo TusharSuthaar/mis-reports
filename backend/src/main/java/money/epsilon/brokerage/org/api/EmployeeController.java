@@ -12,6 +12,7 @@ import money.epsilon.brokerage.org.service.RmHandoverService;
 import money.epsilon.brokerage.org.service.OrgViews.EmployeeView;
 import money.epsilon.brokerage.org.service.OrgViews.HistoryEntry;
 import money.epsilon.brokerage.platform.security.Roles;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -52,7 +53,7 @@ class EmployeeController {
     @PreAuthorize(Roles.MASTER_WRITE)
     EmployeeView create(@Valid @RequestBody CreateEmployeeRequest req) {
         if (req.branchId() != null) {
-            if (req.from() == null) throw new IllegalArgumentException("From date is required with a branch");
+            if (req.from() == null) throw new ValidationException("From date is required with a branch");
             return service.createInBranch(req.empCode(), req.name(), req.type(), req.branchId(), req.from());
         }
         return service.create(req.empCode(), req.name(), req.type(), req.joinedOn());

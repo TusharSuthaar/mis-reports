@@ -4,6 +4,7 @@ import java.time.Instant;
 import money.epsilon.brokerage.platform.audit.AuditService.AuditFilter;
 import money.epsilon.brokerage.platform.audit.AuditService.AuditView;
 import money.epsilon.brokerage.platform.web.PageResponse;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,7 +34,7 @@ class AuditController {
                                    @RequestParam(defaultValue = "0") int page,
                                    @RequestParam(defaultValue = "50") int size) {
         if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
-            throw new IllegalArgumentException("page must be >= 0 and size between 1 and " + MAX_PAGE_SIZE);
+            throw new ValidationException("page must be >= 0 and size between 1 and " + MAX_PAGE_SIZE);
         }
         AuditFilter filter = new AuditFilter(blankToNull(entity), blankToNull(entityId), blankToNull(action),
                 blankToNull(by), from, to);

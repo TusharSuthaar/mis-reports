@@ -23,7 +23,7 @@ public final class EditVersion {
         try {
             seen = Instant.parse(opened.trim().replace("\"", ""));
         } catch (DateTimeParseException e) {
-            throw new IllegalArgumentException("If-Match must be the entry's updatedAt");
+            throw new ValidationException("If-Match must be the entry's updatedAt");
         }
         if (!seen.truncatedTo(ChronoUnit.MILLIS).equals(current.truncatedTo(ChronoUnit.MILLIS))) {
             throw new RuleViolationException("Someone else saved this entry after you opened it. Close it and open it again to see"

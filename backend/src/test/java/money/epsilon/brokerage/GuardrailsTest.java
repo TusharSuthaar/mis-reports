@@ -173,6 +173,23 @@ class GuardrailsTest {
         assertThat(printers).as("use an SLF4J logger instead of System.out / printStackTrace").isEmpty();
     }
 
+    /**
+     * The app's own messages about invalid input are {@code ValidationException}s, shown on the screen; a plain
+     * {@code IllegalArgumentException} is for "cannot happen" checks, whose wording never reaches a user (M-02).
+     */
+    @Test
+    void ownMessagesForInvalidInputAreValidationExceptions() throws IOException {
+        Set<String> internal = Set.of("platform/job/JobService.java", "platform/job/JobRunner.java", "platform/storage/FileStore.java");
+        List<String> plain = new ArrayList<>();
+        try (Stream<Path> files = Files.walk(MAIN)) {
+            for (Path f : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+                String rel = MAIN.relativize(f).toString().replace('\\', '/');
+                if (!internal.contains(rel) && Files.readString(f).contains("new IllegalArgumentException(")) plain.add(rel);
+            }
+        }
+        assertThat(plain).as("throw ValidationException for a message meant for the user").isEmpty();
+    }
+
     // ---- helpers -------------------------------------------------------------------------------------------
 
     /** table → owning module, from the table in docs/architecture/modules.md. */

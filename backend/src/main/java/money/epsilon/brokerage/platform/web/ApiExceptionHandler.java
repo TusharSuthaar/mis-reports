@@ -55,9 +55,23 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(HttpStatus.CONFLICT, "The change conflicts with existing data");
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    ProblemDetail badRequest(IllegalArgumentException e) {
+    /** The app's own message about invalid input: shown as written (M-02). */
+    @ExceptionHandler(ValidationException.class)
+    ProblemDetail invalid(ValidationException e) {
         return problem(HttpStatus.BAD_REQUEST, e.getMessage());
+    }
+
+    /**
+     * An {@link IllegalArgumentException} the app did not write (Java, Spring, POI): its wording is internal, so it is
+     * logged with the reference and the screen gets only the reference (M-02).
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    ProblemDetail badRequest(IllegalArgumentException e, HttpServletRequest request) {
+        String reference = RequestContext.requestIdOrNew();
+        log.warn("Request refused by a library check", e);
+        errors.record(reference, request.getMethod(), request.getRequestURI(), 400, e.getClass().getSimpleName() + ": " + e.getMessage());
+        return problem(HttpStatus.BAD_REQUEST, "This request could not be processed. Please share reference " + reference
+                + " with the support team.", reference);
     }
 
     /** Method security (@PreAuthorize) inside a controller: a plain 403, not a 500. */

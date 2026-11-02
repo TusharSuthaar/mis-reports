@@ -37,6 +37,7 @@ import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
 import money.epsilon.brokerage.sharing.domain.Product;
 import money.epsilon.brokerage.tax.service.ProductTaxService;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -172,7 +173,7 @@ public class AifService {
             clients.requireExists(clientId);
             client = clientId;
         } else {
-            if (newClientName == null || newClientName.isBlank()) throw new IllegalArgumentException("Pick the client or enter a new client's name");
+            if (newClientName == null || newClientName.isBlank()) throw new ValidationException("Pick the client or enter a new client's name");
             client = clients.addByHand(newClientName, newClientPan, details.rmId(), details.month(), "AIF entry");
         }
         AifEntry e = new AifEntry(client);
@@ -226,13 +227,13 @@ public class AifService {
     }
 
     private Details check(Details d) {
-        if (d.month() == null) throw new IllegalArgumentException("Choose the month");
+        if (d.month() == null) throw new ValidationException("Choose the month");
         LocalDate month = d.month().withDayOfMonth(1);
         employees.requireEmployedOn(d.rmId(), month);
         if (d.partnerId() != null) partners.get(d.partnerId());
         platforms.get(d.platformId());
-        if (d.fundName() == null || d.fundName().isBlank()) throw new IllegalArgumentException("Enter the AIF (fund) name");
-        if (d.commitment() == null || d.commitment().signum() <= 0) throw new IllegalArgumentException("Enter the commitment amount");
+        if (d.fundName() == null || d.fundName().isBlank()) throw new ValidationException("Enter the AIF (fund) name");
+        if (d.commitment() == null || d.commitment().signum() <= 0) throw new ValidationException("Enter the commitment amount");
         requirePercent(d.markupPercent(), "Mark-up");
         if (d.tdsApplied()) requirePercent(d.tdsPercent(), "TDS");
         if (d.sharingPercent() != null) requirePercent(d.sharingPercent(), "Revenue sharing");
@@ -240,11 +241,11 @@ public class AifService {
         BigDecimal called = BigDecimal.ZERO;
         for (AifEntry.Instalment i : d.instalments() == null ? List.<AifEntry.Instalment>of() : d.instalments()) {
             if (i == null || i.amount() == null) continue;
-            if (i.amount().signum() <= 0) throw new IllegalArgumentException("An instalment amount must be above 0");
+            if (i.amount().signum() <= 0) throw new ValidationException("An instalment amount must be above 0");
             list.add(i);
             called = called.add(i.amount());
         }
-        if (called.compareTo(d.commitment()) > 0) throw new IllegalArgumentException("The instalments add up to more than the commitment");
+        if (called.compareTo(d.commitment()) > 0) throw new ValidationException("The instalments add up to more than the commitment");
         return new Details(month, d.rmId(), d.partnerId(), d.sharingPercent(), Text.clean(d.mobile()), Text.clean(d.email()), Text.clean(d.address()),
                 d.platformId(), Text.clean(d.fundName()), d.commitment(), d.agreementDate(), Text.clean(d.tenure()), d.maturityDate(),
                 d.soaReceived(), d.applicationForm(), d.investmentMail(), d.quantity(), d.price(), d.certificate(), Text.clean(d.payoutTerms()),
@@ -253,8 +254,8 @@ public class AifService {
     }
 
     private static void requirePercent(BigDecimal value, String what) {
-        if (value == null) throw new IllegalArgumentException("Enter the " + what.toLowerCase() + " %");
-        if (value.signum() < 0 || value.compareTo(new BigDecimal("100")) > 0) throw new IllegalArgumentException(what + " % must be between 0 and 100");
+        if (value == null) throw new ValidationException("Enter the " + what.toLowerCase() + " %");
+        if (value.signum() < 0 || value.compareTo(new BigDecimal("100")) > 0) throw new ValidationException(what + " % must be between 0 and 100");
     }
 
     private AifEntry find(long id) {

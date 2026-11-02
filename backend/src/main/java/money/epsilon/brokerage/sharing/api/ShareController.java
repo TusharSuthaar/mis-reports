@@ -17,6 +17,7 @@ import money.epsilon.brokerage.sharing.service.ShareService.ProductShareView;
 import money.epsilon.brokerage.sharing.service.ShareService.ShareView;
 import money.epsilon.brokerage.sharing.domain.Product;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -51,7 +52,7 @@ class ShareController {
     @GetMapping("/api/shares")
     @PreAuthorize(Roles.MASTER_READ)
     Map<Long, List<ShareView>> current(@RequestParam List<Long> clientIds) {
-        if (clientIds.size() > MAX_IDS) throw new IllegalArgumentException("At most " + MAX_IDS + " clients at a time");
+        if (clientIds.size() > MAX_IDS) throw new ValidationException("At most " + MAX_IDS + " clients at a time");
         return service.current(clientIds);
     }
 
