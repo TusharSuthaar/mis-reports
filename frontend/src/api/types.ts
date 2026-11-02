@@ -419,6 +419,9 @@ export interface UploadReview {
   notInMaster: NotInMaster[];
   canSave: boolean;
   correction: boolean;
+  /** Codes found by name only (R-100): saving waits until each is confirmed. */
+  nameMatches: { code: string; nameInFile: string; clientId: number; clientName: string | null; pan: string | null; rmName: string | null; net: number; confirmed: boolean }[];
+  toConfirm: number;
 }
 
 export interface FinesseMasterStatus {

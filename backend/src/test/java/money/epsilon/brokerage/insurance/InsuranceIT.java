@@ -155,6 +155,19 @@ class InsuranceIT extends IntegrationTestBase {
         assertThat(again.get("replaced").asInt()).isEqualTo(4);
         assertThat(getJson("/api/insurance?q=" + tag, admin, 200)).hasSize(4);
 
+        // S6 had no PAN and went to the one client with that name: a suggestion, waiting for a confirmation (R-100).
+        assertThat(again.get("byName").asInt()).isEqualTo(1);
+        JsonNode waiting = java.util.stream.StreamSupport.stream(getJson("/api/insurance/name-matches?month=2026-08", admin, 200).spliterator(), false)
+                .filter(x -> x.get("policyNo").asText().equals("S6-" + tag)).findFirst().orElseThrow();
+        assertThat(waiting.get("clientName").asText()).isEqualTo("SHEET CLIENT " + tag);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> insurance.forLedger(java.time.YearMonth.of(2026, 8)))
+                .hasMessageContaining("found by name only");
+        JsonNode left = postJson("/api/insurance/" + waiting.get("policyId").asLong() + "/confirm-client",
+                Map.of("clientId", waiting.get("clientId").asLong()), admin, 200);
+        assertThat(left.toString()).doesNotContain("S6-" + tag);
+        // Confirmed once: the next upload sends that name to the client without asking.
+        assertThat(upload(sheet).get("byName").asInt()).isZero();
+
         byte[] xlsx = mvc.perform(get("/api/insurance/export.xlsx?q=" + tag).session(admin)).andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsByteArray();
         try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(xlsx))) {
@@ -189,4 +202,7 @@ class InsuranceIT extends IntegrationTestBase {
             return out.toByteArray();
         }
     }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    money.epsilon.brokerage.insurance.service.InsuranceService insurance;
 }

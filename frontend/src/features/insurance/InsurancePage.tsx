@@ -1,5 +1,6 @@
 import { PAN_FORMAT } from '../entry/ClientAndRm';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 import type { ClientRow, Employee, InsuranceBusinessType, InsuranceCategory, InsurancePolicy, Page, Partner } from '../../api/types';
 import { useLoad } from '../../api/useLoad';
@@ -716,6 +717,8 @@ interface UploadResult {
   expectedTotal: number;
   pospTotal: number;
   notSaved: { row: number; client: string | null; pan: string | null; reason: string }[];
+  /** Saved policies whose client was found by name only (no PAN): confirm them before the month is processed (R-100). */
+  byName: number;
 }
 
 /** The month's "Policy level data" sheet: rows are mapped to clients by PAN; those that cannot be are listed by row. */
@@ -741,6 +744,12 @@ function UploadPolicies({ onDone }: { onDone: () => void }) {
         </p>
         {result.replaced > 0 && <p className="muted">{result.replaced} policies from the earlier upload of this month were replaced.</p>}
         {result.newPosps > 0 && <p className="muted">{result.newPosps} new POSPs were added as POSP partners.</p>}
+        {result.byName > 0 && (
+          <p className="warn-note">
+            {result.byName} policies had no PAN and went to the one client with that name. Confirm each is the right person on{' '}
+            <Link to={`/month?m=${result.month}`}>Month close</Link> (step 3) before the month is processed.
+          </p>
+        )}
         {result.notSaved.length > 0 && (
           <>
             <p className="error">

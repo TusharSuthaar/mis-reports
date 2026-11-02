@@ -1,5 +1,9 @@
 package money.epsilon.brokerage.ingestion.upload;
 
+import org.springframework.web.bind.annotation.RequestBody;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.Valid;
 import money.epsilon.brokerage.platform.importing.UploadedFile;
 import java.io.IOException;
 import java.time.YearMonth;
@@ -64,6 +68,16 @@ class UploadController {
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename("Not_in_Master_MIS.xlsx").build().toString())
                 .body(xlsx);
+    }
+
+    public record ConfirmName(@NotBlank String code, @NotNull Long clientId) {
+    }
+
+    /** A code found by name only: confirm the client suggested, or give another (R-100). */
+    @PostMapping("/api/uploads/{id}/name-matches")
+    @PreAuthorize(Roles.MASTER_WRITE)
+    Review confirmName(@PathVariable long id, @Valid @RequestBody ConfirmName body) {
+        return service.confirmName(id, body.code(), body.clientId());
     }
 
     @PostMapping("/api/uploads/{id}/commit")

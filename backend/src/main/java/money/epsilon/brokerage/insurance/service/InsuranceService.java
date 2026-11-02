@@ -15,6 +15,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import money.epsilon.brokerage.client.service.ClientService;
+import money.epsilon.brokerage.mapping.service.AliasService;
+import money.epsilon.brokerage.mapping.domain.SourceAlias.EntityType;
 import money.epsilon.brokerage.client.service.ClientService.ClientKey;
 import money.epsilon.brokerage.insurance.domain.InsuranceCategoryRules;
 import money.epsilon.brokerage.insurance.domain.InsurancePolicy;
@@ -51,6 +53,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class InsuranceService {
 
     static final String AUDIT = "INSURANCE_POLICY";
+    /** The source of a confirmed sheet name in remembered matches (R-100). */
+    static final String ALIAS_SOURCE = "INSURANCE";
     static final String SHEET = "Policy level data";
     static final String H_MONTH = "Business Month", H_POLICY = "Policy No", H_POSP = "POSP Name", H_INSURER = "Insurance Company",
             H_CAT = "CAT", H_CLIENT = "Client", H_PAN = "PAN", H_SUB = "Insurance Sub Type", H_PRODUCT = "Product Name", H_PPT = "PPT",
@@ -71,9 +75,11 @@ public class InsuranceService {
     private final PanCipher panCipher;
     private final AuditService audit;
     private final ChangeWindow months;
+    private final AliasService aliases;
 
     InsuranceService(InsurancePolicyRepository policies, ClientService clients, EmployeeService employees, OrgChartService org,
-                     PartnerService partners, PanCipher panCipher, AuditService audit, ChangeWindow months) {
+                     PartnerService partners, PanCipher panCipher, AuditService audit, ChangeWindow months,
+                     AliasService aliases) {
         this.policies = policies;
         this.clients = clients;
         this.employees = employees;
@@ -82,6 +88,7 @@ public class InsuranceService {
         this.panCipher = panCipher;
         this.audit = audit;
         this.months = months;
+        this.aliases = aliases;
     }
 
     // ---- list --------------------------------------------------------------------------------------------------------
@@ -310,8 +317,50 @@ public class InsuranceService {
     public record Unmapped(int row, String client, String pan, String reason) {
     }
 
+    /** {@code byName}: saved policies whose client was found by name only, waiting for a confirmation (R-100). */
     public record UploadResult(YearMonth month, String fileName, int rows, int saved, int replaced, int newPosps, BigDecimal expectedTotal,
-                               BigDecimal pospTotal, List<Unmapped> notSaved) {
+                               BigDecimal pospTotal, List<Unmapped> notSaved, int byName) {
+    }
+
+    /** A policy whose client was found by its name only: the client suggested, waiting for a person to confirm it (R-100). */
+    public record NameMatch(long policyId, String policyNo, String insurer, String nameInFile, long clientId, String clientName, String pan,
+                            String rmName, BigDecimal expectedComm) {
+    }
+
+    /** The month's policies whose client was found by name only and is not confirmed yet. */
+    @Transactional(readOnly = true)
+    public List<NameMatch> nameMatches(YearMonth month) {
+        List<InsurancePolicy> waiting = policies.findByMonthOrderByIdAsc(month.atDay(1)).stream()
+                .filter(p -> p.getStatus() == InsurancePolicy.Status.ACTIVE && p.isMatchedByName()).toList();
+        if (waiting.isEmpty()) return List.of();
+        Map<Long, ClientService.ClientView> views = clients.views(waiting.stream().map(InsurancePolicy::getClientId).distinct().toList());
+        return waiting.stream().map(p -> {
+            ClientService.ClientView v = views.get(p.getClientId());
+            return new NameMatch(p.getId(), p.getPolicyNo(), p.getInsurer(), v == null ? null : v.name(), p.getClientId(), v == null ? null : v.name(),
+                    v == null ? null : v.pan(), v == null ? null : v.rmName(), p.getExpectedComm());
+        }).toList();
+    }
+
+    record NameConfirmed(long policyId, String nameInFile, long clientIdBefore, long clientId) {
+    }
+
+    /**
+     * Confirms which client a policy found by name is (R-100): the one suggested, or another picked instead. The name is
+     * remembered for that client, so the next sheet's rows with it go there without asking. Audited.
+     */
+    @Transactional
+    public List<NameMatch> confirmName(long policyId, long clientId) {
+        InsurancePolicy p = policies.findById(policyId).orElseThrow(() -> new NotFoundException("Policy " + policyId + " not found"));
+        if (!p.isMatchedByName()) throw new RuleViolationException("This policy's client was not found by name, or is confirmed already");
+        months.beforeEntryChange(p.getMonth());
+        clients.requireExists(clientId);
+        long before = p.getClientId();
+        String nameInFile = clients.names(List.of(before)).get(before);
+        p.confirmClient(clientId);
+        policies.save(p);
+        aliases.confirm(ALIAS_SOURCE, EntityType.CLIENT, Text.nameKey(nameInFile), clientId);
+        audit.record(AUDIT, p.getId(), "CONFIRM_NAME_MATCH", null, new NameConfirmed(p.getId(), nameInFile, before, clientId));
+        return nameMatches(YearMonth.from(p.getMonth()));
     }
 
     /**
@@ -349,7 +398,7 @@ public class InsuranceService {
         }
         policies.saveAll(earlier);
 
-        record Row(ExcelRow r, long clientId, String clientName, String pan) {
+        record Row(ExcelRow r, long clientId, String clientName, String pan, boolean byName) {
         }
         List<Row> ok = new ArrayList<>();
         int rows = 0;
@@ -373,10 +422,16 @@ public class InsuranceService {
                     continue;
                 }
                 if (pan == null && Text.clean(r.text(H_PAN)) == null && name != null) {
-                    // No PAN in the sheet (taken to be on a guardian's PAN for now): the one client with exactly this name.
+                    // No PAN in the sheet (taken to be on a guardian's PAN for now): the client this name was confirmed as, else
+                    // the one client with exactly this name, as a suggestion to confirm (R-100).
+                    java.util.Optional<Long> confirmed = aliases.resolve(ALIAS_SOURCE, EntityType.CLIENT, Text.nameKey(name));
+                    if (confirmed.isPresent()) {
+                        ok.add(new Row(r, confirmed.get(), name, null, false));
+                        continue;
+                    }
                     List<Long> same = byName.getOrDefault(Text.nameKey(name), List.of());
                     if (same.size() == 1) {
-                        ok.add(new Row(r, same.get(0), name, null));
+                        ok.add(new Row(r, same.get(0), name, null, true));
                         continue;
                     }
                 }
@@ -390,10 +445,10 @@ public class InsuranceService {
                     notSaved.add(new Unmapped(r.rowNumber(), name, mask(pan), "PAN not in Clients: add the client on the Clients screen (with its RM), then upload again"));
                     continue;
                 }
-                ok.add(new Row(r, clientId, name, mask(pan)));
+                ok.add(new Row(r, clientId, name, mask(pan), false));
             }
             Map<Long, Long> rmOf = clients.rmsOn(ok.stream().map(Row::clientId).distinct().toList(), lastDay);
-            int saved = 0;
+            int saved = 0, byNameCount = 0;
             BigDecimal expectedTotal = BigDecimal.ZERO, pospTotal = BigDecimal.ZERO;
             for (Row x : ok) {
                 ExcelRow r = x.r();
@@ -423,6 +478,10 @@ public class InsuranceService {
                 }
                 InsurancePolicy p = new InsurancePolicy(x.clientId(), InsurancePolicy.Source.UPLOAD, r.rowNumber());
                 p.fill(d);
+                if (x.byName()) {
+                    p.matchedByName();
+                    byNameCount++;
+                }
                 policies.save(p);
                 saved++;
                 expectedTotal = expectedTotal.add(p.getExpectedComm());
@@ -431,7 +490,7 @@ public class InsuranceService {
             policies.flush();
             notSaved.sort(java.util.Comparator.comparingInt(Unmapped::row));
             UploadResult result = new UploadResult(YearMonth.from(month), fileName, rows, saved, replaced, posps.size() - pospsBefore,
-                    expectedTotal, pospTotal, notSaved);
+                    expectedTotal, pospTotal, notSaved, byNameCount);
             Map<String, Object> auditView = new LinkedHashMap<>();
             auditView.put("month", result.month());
             auditView.put("fileName", fileName);
@@ -439,6 +498,7 @@ public class InsuranceService {
             auditView.put("saved", saved);
             auditView.put("replaced", replaced);
             auditView.put("notSaved", notSaved.size());
+            auditView.put("byName", byNameCount);
             auditView.put("expectedTotal", expectedTotal);
             auditView.put("pospTotal", pospTotal);
             audit.record(AUDIT, null, "UPLOAD", null, auditView);
@@ -519,6 +579,11 @@ public class InsuranceService {
     /** The month's active policies with commission, as processing needs them (R-95): no GST, net = expected commission. */
     @Transactional(readOnly = true)
     public List<InsuranceForLedger> forLedger(YearMonth month) {
+        int toConfirm = nameMatches(month).size();
+        if (toConfirm > 0) {
+            throw new RuleViolationException(toConfirm + " insurance policy(ies) of " + month + " have a client found by name only (no PAN)."
+                    + " Confirm or change each of them on the Insurance screen, then process.");
+        }
         Map<Long, String> pospNames = new HashMap<>();
         return policies.findByMonthOrderByIdAsc(month.atDay(1)).stream()
                 .filter(p -> p.getStatus() == InsurancePolicy.Status.ACTIVE && p.getExpectedComm().signum() != 0)

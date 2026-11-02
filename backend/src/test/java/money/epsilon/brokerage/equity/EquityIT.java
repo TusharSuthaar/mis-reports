@@ -111,6 +111,27 @@ class EquityIT extends IntegrationTestBase {
         });
         postJson("/api/clients", Map.of("name", "NOBODY " + tag, "rmId", rm, "from", y + "-05-01"), admin, 201);
         assertThat(equity.check(java.time.YearMonth.of(y, 5)).notInClients()).isZero();
+
+        // Found by name only (at upload, or later once the client was added): suggestions, until confirmed (R-100).
+        JsonNode open = getJson("/api/equity/name-matches?month=" + y + "-05", admin, 200);
+        assertThat(open).hasSize(2);
+        assertThat(open.toString()).contains("R" + tag).contains("S" + tag);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> equity.forLedger(java.time.YearMonth.of(y, 5)))
+                .hasMessageContaining("found by name only");
+
+        // Not confirmed yet: the next report does not take the name match's PAN for party R.
+        JsonNode jun = upload(new EquityFiles().tradeWithoutPan("R" + tag, "Named  Client " + tag, LocalDate.of(y, 6, 4), 10, 8).bytesWithoutPan(), 200);
+        assertThat(jun.get("byPartyCode").asInt()).isZero();
+        assertThat(jun.get("byName").asInt()).isEqualTo(1);
+
+        // Confirmed once: later reports send party R to that client without asking.
+        long namedId = open.get(0).get("partyCode").asText().equals("R" + tag) ? open.get(0).get("clientId").asLong() : open.get(1).get("clientId").asLong();
+        JsonNode left = postJson("/api/equity/name-matches", Map.of("month", y + "-05", "partyCode", "R" + tag, "clientId", namedId), admin, 200);
+        assertThat(left).singleElement().satisfies(m -> assertThat(m.get("partyCode").asText()).isEqualTo("S" + tag));
+        JsonNode jul = upload(new EquityFiles().tradeWithoutPan("R" + tag, "Named  Client " + tag, LocalDate.of(y, 7, 4), 10, 8).bytesWithoutPan(), 200);
+        assertThat(jul.get("byName").asInt()).isZero();
+        assertThat(jul.get("clientsFound").asInt()).isEqualTo(1);
+        assertThat(getJson("/api/equity/name-matches?month=" + y + "-07", admin, 200)).isEmpty();
     }
 
     @org.springframework.beans.factory.annotation.Autowired

@@ -15,7 +15,7 @@ import java.time.Instant;
 @Table(name = "source_alias")
 public class SourceAlias {
 
-    public enum EntityType { RM, PARTNER }
+    public enum EntityType { RM, PARTNER, CLIENT }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
