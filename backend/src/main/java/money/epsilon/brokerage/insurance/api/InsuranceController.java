@@ -15,7 +15,8 @@ import money.epsilon.brokerage.insurance.service.InsuranceService.Choices;
 import money.epsilon.brokerage.insurance.service.InsuranceService.Defaults;
 import money.epsilon.brokerage.insurance.service.InsuranceService.PolicyInput;
 import money.epsilon.brokerage.insurance.service.InsuranceService.PolicyView;
-import money.epsilon.brokerage.insurance.service.InsuranceService.UploadResult;
+import money.epsilon.brokerage.insurance.service.InsuranceSheetUpload;
+import money.epsilon.brokerage.insurance.service.InsuranceSheetUpload.UploadResult;
 import money.epsilon.brokerage.platform.importing.UploadedFile;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.web.EditVersion;
@@ -43,9 +44,11 @@ import org.springframework.web.multipart.MultipartFile;
 class InsuranceController {
 
     private final InsuranceService service;
+    private final InsuranceSheetUpload sheet;
 
-    InsuranceController(InsuranceService service) {
+    InsuranceController(InsuranceService service, InsuranceSheetUpload sheet) {
         this.service = service;
+        this.sheet = sheet;
     }
 
     @ProductListFilters
@@ -124,7 +127,7 @@ class InsuranceController {
     @PreAuthorize(Roles.MASTER_WRITE)
     UploadResult upload(@RequestParam("file") MultipartFile file, @RequestParam("month") LocalDate month) throws IOException {
         UploadedFile f = UploadedFile.of(file, "insurance-policies.xlsx", "the insurance policy sheet");
-        return service.upload(f.content(), f.name(), month);
+        return sheet.upload(f.content(), f.name(), month);
     }
 
     record CancelRequest(@Size(max = 500) String reason) {
