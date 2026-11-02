@@ -21,11 +21,8 @@ import money.epsilon.brokerage.attribution.service.SplitCalculator.Part;
 import money.epsilon.brokerage.attribution.service.SplitCalculator.Share;
 import money.epsilon.brokerage.client.service.ClientService;
 import money.epsilon.brokerage.aif.service.AifService;
-import money.epsilon.brokerage.aif.service.AifService.AifForLedger;
 import money.epsilon.brokerage.bond.service.BondService;
-import money.epsilon.brokerage.bond.service.BondService.BondForLedger;
 import money.epsilon.brokerage.fd.service.FdService;
-import money.epsilon.brokerage.fd.service.FdService.FdForLedger;
 import money.epsilon.brokerage.sharing.domain.Product;
 import money.epsilon.brokerage.ledger.service.LedgerService;
 import money.epsilon.brokerage.ledger.service.LedgerService.ActiveLine;
@@ -139,82 +136,27 @@ public class AttributionService {
         if (period.status() == Period.Status.LOCKED) throw new RuleViolationException(period.month() + " is locked");
         List<ActiveLine> mfLines = ledger.activeLines(periodId, MF);
         if (mfLines.isEmpty()) throw new RuleViolationException("Nothing to split: save " + period.month() + " first");
-        // The month's FD entries become its FD lines, split with the partner chosen on each FD at its FD % (R-74).
-        List<FdForLedger> fdEntries = fds.forLedger(period.month());
-        ledger.replaceFdLines(periodId, fdEntries.stream()
-                .map(f -> new LedgerService.FdLineInput(f.fdEntryId(), f.clientId(), f.gross(), f.gst(), f.net())).toList());
-        Map<Long, Long> fdPartner = new HashMap<>();
-        fdEntries.forEach(f -> { if (f.partnerId() != null) fdPartner.put(f.fdEntryId(), f.partnerId()); });
-        List<BondForLedger> bondEntries = bonds.forLedger(period.month());
-        ledger.replaceBondLines(periodId, bondEntries.stream()
-                .map(b -> new LedgerService.BondLineInput(b.bondEntryId(), b.clientId(), b.gross(), b.gst(), b.net())).toList());
-        Map<Long, Long> bondPartner = new HashMap<>();
-        bondEntries.forEach(b -> { if (b.partnerId() != null) bondPartner.put(b.bondEntryId(), b.partnerId()); });
+        // Each hand-entered product's entries become its lines for the month (R-74, R-78, R-80, R-82, R-85..R-87, R-93, R-95),
+        // in END order; the equity report's lines sit between GIFT City and Unlisted, as they always have.
         List<ActiveLine> lines = new ArrayList<>(mfLines);
-        lines.addAll(ledger.activeLines(periodId, FD));
-        lines.addAll(ledger.activeLines(periodId, BOND));
-        // AIF commitments (R-78): a deal's own sharing % for its partner wins over the partner's AIF %.
-        List<AifForLedger> aifEntries = aifs.forLedger(period.month());
-        ledger.replaceAifLines(periodId, aifEntries.stream()
-                .map(a -> new LedgerService.AifLineInput(a.aifEntryId(), a.clientId(), a.gross(), a.gst(), a.net())).toList());
-        Map<Long, AifForLedger> aifById = new HashMap<>();
-        aifEntries.forEach(a -> aifById.put(a.aifEntryId(), a));
-        lines.addAll(ledger.activeLines(periodId, AIF));
-        // Loan payouts (R-80): split with the partner chosen on each entry at the partner's Loans %.
-        var loanEntries = loans.forLedger(period.month());
-        ledger.replaceLoanLines(periodId, loanEntries.stream()
-                .map(x -> new LedgerService.LoanLineInput(x.loanEntryId(), x.clientId(), x.gross(), x.gst(), x.net())).toList());
-        Map<Long, Long> loanPartner = new HashMap<>();
-        loanEntries.forEach(x -> { if (x.partnerId() != null) loanPartner.put(x.loanEntryId(), x.partnerId()); });
-        lines.addAll(ledger.activeLines(periodId, LOAN));
-        // GIFT City entries with brokerage (R-82): split with the partner chosen on each at the partner's GIFT %.
-        var giftEntries = gifts.forLedger(period.month());
-        ledger.replaceGiftLines(periodId, giftEntries.stream()
-                .map(x -> new LedgerService.GiftLineInput(x.giftEntryId(), x.clientId(), x.gross(), x.gst(), x.net())).toList());
-        Map<Long, Long> giftPartner = new HashMap<>();
-        giftEntries.forEach(x -> { if (x.partnerId() != null) giftPartner.put(x.giftEntryId(), x.partnerId()); });
-        lines.addAll(ledger.activeLines(periodId, GIFT));
-        // Equity brokerage (R-89): each client's franchise share of the month, split with the client's own partner % like MF.
-        ledger.replaceEquityLines(periodId, equity.forLedger(period.month()).stream()
-                .map(x -> new LedgerService.EquityLineInput(x.uploadId(), x.clientId(), x.share())).toList());
-        List<ActiveLine> equityLines = ledger.activeLines(periodId, EQUITY);
+        Map<String, Map<Long, EntryLine>> entriesBySource = new HashMap<>();
         java.util.Set<Long> equityLineIds = new java.util.HashSet<>();
-        equityLines.forEach(x -> equityLineIds.add(x.id()));
-        lines.addAll(equityLines);
-        // Pre-IPO deals (R-93): like AIF, a deal's own sharing % for its partner wins over the partner's Pre-IPO %.
-        var preIpoEntries = preIpos.forLedger(period.month());
-        ledger.replacePreIpoLines(periodId, preIpoEntries.stream()
-                .map(x -> new LedgerService.PreIpoLineInput(x.preIpoEntryId(), x.clientId(), x.gross(), x.gst(), x.net())).toList());
-        Map<Long, money.epsilon.brokerage.preipo.service.PreIpoService.PreIpoForLedger> preIpoById = new HashMap<>();
-        preIpoEntries.forEach(x -> preIpoById.put(x.preIpoEntryId(), x));
-        lines.addAll(ledger.activeLines(periodId, PREIPO));
-        // PMS revenue typed per client, NPS revenue and P2P brokerage (R-85..R-87): split with the partner on the investment /
-        // entry at the partner's PMS / NPS / P2P %.
-        var pmsEntries = pmsFees.forLedger(period.month());
-        ledger.replacePmsLines(periodId, pmsEntries.stream()
-                .map(x -> new LedgerService.OtherLineInput(x.pmsFeeId(), x.clientId(), x.amount(), java.math.BigDecimal.ZERO, x.amount())).toList());
-        Map<Long, Long> pmsPartner = new HashMap<>();
-        pmsEntries.forEach(x -> { if (x.partnerId() != null) pmsPartner.put(x.pmsFeeId(), x.partnerId()); });
-        lines.addAll(ledger.activeLines(periodId, PMS));
-        var npsEntries = npses.forLedger(period.month());
-        ledger.replaceNpsLines(periodId, npsEntries.stream()
-                .map(x -> new LedgerService.OtherLineInput(x.npsEntryId(), x.clientId(), x.gross(), x.gst(), x.net())).toList());
-        Map<Long, Long> npsPartner = new HashMap<>();
-        npsEntries.forEach(x -> { if (x.partnerId() != null) npsPartner.put(x.npsEntryId(), x.partnerId()); });
-        lines.addAll(ledger.activeLines(periodId, NPS));
-        var p2pEntries = p2ps.forLedger(period.month());
-        ledger.replaceP2pLines(periodId, p2pEntries.stream()
-                .map(x -> new LedgerService.OtherLineInput(x.p2pEntryId(), x.clientId(), x.gross(), x.gst(), x.net())).toList());
-        Map<Long, Long> p2pPartner = new HashMap<>();
-        p2pEntries.forEach(x -> { if (x.partnerId() != null) p2pPartner.put(x.p2pEntryId(), x.partnerId()); });
-        lines.addAll(ledger.activeLines(periodId, P2P));
-        // Insurance policies (R-95): the expected commission, shared only with the policy's POSP, at the POSP's commission.
-        var insEntries = insurance.forLedger(period.month());
-        ledger.replaceInsuranceLines(periodId, insEntries.stream()
-                .map(x -> new LedgerService.OtherLineInput(x.policyId(), x.clientId(), x.expectedComm(), java.math.BigDecimal.ZERO, x.expectedComm())).toList());
-        Map<Long, money.epsilon.brokerage.insurance.service.InsuranceService.InsuranceForLedger> insById = new HashMap<>();
-        insEntries.forEach(x -> insById.put(x.policyId(), x));
-        lines.addAll(ledger.activeLines(periodId, INS));
+        for (EntrySource src : sources()) {
+            if (src.code().equals(PREIPO)) {
+                // Equity brokerage (R-89): each client's franchise share of the month, split with the client's own partners like MF.
+                ledger.replaceEquityLines(periodId, equity.forLedger(period.month()).stream()
+                        .map(x -> new LedgerService.EquityLineInput(x.uploadId(), x.clientId(), x.share())).toList());
+                List<ActiveLine> equityLines = ledger.activeLines(periodId, EQUITY);
+                equityLines.forEach(x -> equityLineIds.add(x.id()));
+                lines.addAll(equityLines);
+            }
+            List<EntryLine> entries = src.entries().apply(period.month());
+            src.writeLines().accept(periodId, entries);
+            Map<Long, EntryLine> byId = new HashMap<>();
+            entries.forEach(x -> byId.put(x.entryId(), x));
+            entriesBySource.put(src.code(), byId);
+            lines.addAll(ledger.activeLines(periodId, src.code()));
+        }
         List<Long> own = lines.stream().filter(l -> l.adjustsPeriodId() == null).map(ActiveLine::clientId).distinct().toList();
         long notInMaster = own.size() - clients.rmsOn(own, period.toDate()).size();
         if (notInMaster > 0) {
@@ -253,53 +195,9 @@ public class AttributionService {
             java.util.Set<String> noFdPercent = new java.util.TreeSet<>();
             for (ActiveLine l : e.getValue()) {
                 List<Share> lineShares;
-                if (l.insurancePolicyId() != null) {
-                    var x = insById.get(l.insurancePolicyId());
-                    lineShares = x == null || x.pospId() == null || x.pospComm().signum() == 0 ? List.of()
-                            : List.of(new Share(PartnerType.POSP, x.pospId(),
-                                    x.pospName(),
-                                    x.pospComm().divide(x.expectedComm(), 12, java.math.RoundingMode.HALF_UP)));
-                } else if (l.pmsFeeId() != null || l.npsEntryId() != null || l.p2pEntryId() != null) {
-                    Long partnerId = l.pmsFeeId() != null ? pmsPartner.get(l.pmsFeeId())
-                            : l.npsEntryId() != null ? npsPartner.get(l.npsEntryId()) : p2pPartner.get(l.p2pEntryId());
-                    Product product = l.pmsFeeId() != null ? Product.PMS : l.npsEntryId() != null ? Product.NPS : Product.P2P;
-                    ShareService.ProductShare ps = partnerId == null ? null : shares.productShare(partnerId, product, day);
-                    if (ps != null && ps.fraction() == null) noFdPercent.add(ps.partnerName() + " (" + PRODUCT_LABEL.get(product) + ")");
-                    lineShares = ps == null || ps.fraction() == null ? List.of()
-                            : List.of(new Share(ps.role(), ps.partnerId(), ps.partnerName(), ps.fraction()));
-                } else if (l.preIpoEntryId() != null) {
-                    var x = preIpoById.get(l.preIpoEntryId());
-                    ShareService.ProductShare ps = x == null || x.partnerId() == null ? null : shares.productShare(x.partnerId(), Product.PREIPO, day);
-                    java.math.BigDecimal fraction = ps == null ? null
-                            : x.sharingPercent() != null ? x.sharingPercent().movePointLeft(2) : ps.fraction();
-                    if (ps != null && fraction == null) noFdPercent.add(ps.partnerName() + " (Unlisted)");
-                    lineShares = fraction == null ? List.of() : List.of(new Share(ps.role(), ps.partnerId(), ps.partnerName(), fraction));
-                } else if (l.aifEntryId() != null) {
-                    AifForLedger a = aifById.get(l.aifEntryId());
-                    ShareService.ProductShare ps = a == null || a.partnerId() == null ? null : shares.productShare(a.partnerId(), Product.AIF, day);
-                    java.math.BigDecimal fraction = ps == null ? null
-                            : a.sharingPercent() != null ? a.sharingPercent().movePointLeft(2) : ps.fraction();
-                    if (ps != null && fraction == null) noFdPercent.add(ps.partnerName() + " (AIF)");
-                    lineShares = fraction == null ? List.of() : List.of(new Share(ps.role(), ps.partnerId(), ps.partnerName(), fraction));
-                } else if (l.giftEntryId() != null) {
-                    Long partnerId = giftPartner.get(l.giftEntryId());
-                    ShareService.ProductShare ps = partnerId == null ? null : shares.productShare(partnerId, Product.GIFT, day);
-                    if (ps != null && ps.fraction() == null) noFdPercent.add(ps.partnerName() + " (GIFT City)");
-                    lineShares = ps == null || ps.fraction() == null ? List.of()
-                            : List.of(new Share(ps.role(), ps.partnerId(), ps.partnerName(), ps.fraction()));
-                } else if (l.loanEntryId() != null) {
-                    Long partnerId = loanPartner.get(l.loanEntryId());
-                    ShareService.ProductShare ps = partnerId == null ? null : shares.productShare(partnerId, Product.LOAN, day);
-                    if (ps != null && ps.fraction() == null) noFdPercent.add(ps.partnerName() + " (Loans)");
-                    lineShares = ps == null || ps.fraction() == null ? List.of()
-                            : List.of(new Share(ps.role(), ps.partnerId(), ps.partnerName(), ps.fraction()));
-                } else if (l.fdEntryId() != null || l.bondEntryId() != null) {
-                    boolean fd = l.fdEntryId() != null;
-                    Long partnerId = fd ? fdPartner.get(l.fdEntryId()) : bondPartner.get(l.bondEntryId());
-                    ShareService.ProductShare ps = partnerId == null ? null : shares.productShare(partnerId, fd ? Product.FD : Product.BOND, day);
-                    if (ps != null && ps.fraction() == null) noFdPercent.add(ps.partnerName() + (fd ? " (FD)" : " (Bonds)"));
-                    lineShares = ps == null || ps.fraction() == null ? List.of()
-                            : List.of(new Share(ps.role(), ps.partnerId(), ps.partnerName(), ps.fraction()));
+                EntrySource src = sourceOf(l);
+                if (src != null) {
+                    lineShares = entryShares(src, entriesBySource.get(src.code()).get(src.entryIdOf().apply(l)), day, noFdPercent);
                 } else if (equityLineIds.contains(l.id())) {
                     // Equity (R-89): the client's partners, each at its own Equity % from the rate card (its MF % for this client
                     // when it has no Equity %), so a partner at 0% for MF can still share equity.
@@ -383,31 +281,14 @@ public class AttributionService {
         List<Long> mfClients = ledger.activeLines(periodId, MF).stream().filter(l -> l.adjustsPeriodId() == null).map(ActiveLine::clientId)
                 .distinct().toList();
         var eq = equity.check(month);
-        List<FdForLedger> fdEntries = fds.forLedger(month);
-        List<BondForLedger> bondEntries = bonds.forLedger(month);
-        List<AifForLedger> aifEntries = aifs.forLedger(month);
-        var loanEntries = loans.forLedger(month);
-        var giftEntries = gifts.forLedger(month);
-        var preIpoEntries = preIpos.forLedger(month);
-        var pmsEntries = pmsFees.forLedger(month);
-        var npsEntries = npses.forLedger(month);
-        var p2pEntries = p2ps.forLedger(month);
-        var insEntries = insurance.forLedger(month);
+        Map<EntrySource, List<EntryLine>> byProduct = new LinkedHashMap<>();
+        for (EntrySource src : sources()) byProduct.put(src, src.entries().apply(month));
 
         // Clients split with their own partners (MF and equity) and every client with business this month.
         java.util.Set<Long> splitByShares = new java.util.LinkedHashSet<>(mfClients);
         splitByShares.addAll(eq.clientIds());
         java.util.Set<Long> all = new java.util.LinkedHashSet<>(splitByShares);
-        fdEntries.forEach(x -> all.add(x.clientId()));
-        bondEntries.forEach(x -> all.add(x.clientId()));
-        aifEntries.forEach(x -> all.add(x.clientId()));
-        loanEntries.forEach(x -> all.add(x.clientId()));
-        giftEntries.forEach(x -> all.add(x.clientId()));
-        preIpoEntries.forEach(x -> all.add(x.clientId()));
-        pmsEntries.forEach(x -> all.add(x.clientId()));
-        npsEntries.forEach(x -> all.add(x.clientId()));
-        p2pEntries.forEach(x -> all.add(x.clientId()));
-        insEntries.forEach(x -> all.add(x.clientId()));
+        byProduct.values().forEach(list -> list.forEach(x -> all.add(x.clientId())));
         long notInMaster = all.size() - clients.rmsOn(List.copyOf(all), day).size();
 
         java.util.Set<String> missing = new java.util.TreeSet<>();
@@ -419,32 +300,111 @@ public class AttributionService {
             ShareService.ProductShare ps = seen.computeIfAbsent(partnerId + product.code(), k -> shares.productShare(partnerId, product, day));
             if (ps.fraction() == null) missing.add(ps.partnerName() + " (" + PRODUCT_LABEL.get(product) + ")");
         };
-        fdEntries.forEach(x -> need.accept(x.partnerId(), Product.FD));
-        bondEntries.forEach(x -> need.accept(x.partnerId(), Product.BOND));
-        // An AIF deal's own sharing % stands in for the partner's AIF %.
-        aifEntries.stream().filter(x -> x.sharingPercent() == null).forEach(x -> need.accept(x.partnerId(), Product.AIF));
-        loanEntries.forEach(x -> need.accept(x.partnerId(), Product.LOAN));
-        giftEntries.forEach(x -> need.accept(x.partnerId(), Product.GIFT));
-        preIpoEntries.stream().filter(x -> x.sharingPercent() == null).forEach(x -> need.accept(x.partnerId(), Product.PREIPO));
-        pmsEntries.forEach(x -> need.accept(x.partnerId(), Product.PMS));
-        npsEntries.forEach(x -> need.accept(x.partnerId(), Product.NPS));
-        p2pEntries.forEach(x -> need.accept(x.partnerId(), Product.P2P));
+        // An AIF or Unlisted deal's own sharing % stands in for the partner's %; insurance shares only with its POSP.
+        byProduct.forEach((src, list) -> {
+            if (src.product() != null) list.stream().filter(x -> x.dealPercent() == null).forEach(x -> need.accept(x.partnerId(), src.product()));
+        });
 
         Map<String, Integer> entries = new LinkedHashMap<>();
-        entries.put(FD, fdEntries.size());
-        entries.put(BOND, bondEntries.size());
-        entries.put(AIF, aifEntries.size());
-        entries.put(LOAN, loanEntries.size());
-        entries.put(GIFT, giftEntries.size());
-        entries.put(PREIPO, preIpoEntries.size());
-        entries.put(PMS, pmsEntries.size());
-        entries.put(NPS, npsEntries.size());
-        entries.put(P2P, p2pEntries.size());
-        entries.put(INS, insEntries.size());
+        byProduct.forEach((src, list) -> entries.put(src.code(), list.size()));
         boolean ready = period.status() != Period.Status.LOCKED && !mfClients.isEmpty() && notInMaster == 0 && missing.isEmpty()
                 && eq.notInClients() == 0;
         return new Readiness(periodId, month, period.status().name(), !mfClients.isEmpty(), mfClients.size(), eq.uploaded(),
                 eq.clientIds().size(), eq.notInClients(), entries, notInMaster, List.copyOf(missing), ready, eq.missing());
+    }
+
+    // ---- hand-entered products (audit M-03) ----------------------------------------------------------------------------
+
+    /**
+     * One entry with revenue in the month, as processing sees it. {@code dealPercent}: an AIF / Unlisted deal's own sharing %
+     * (wins over the partner's product %); {@code posp}: insurance's POSP share (the only partner a policy has).
+     */
+    record EntryLine(long entryId, long clientId, BigDecimal gross, BigDecimal gst, BigDecimal net, Long partnerId, BigDecimal dealPercent,
+                     Share posp) {
+    }
+
+    /**
+     * A hand-entered product in month processing: its ledger code, the product its partner % is read for (null: insurance,
+     * shared only with its POSP), its name in messages, its month's entries, how they become its lines, and which of a line's
+     * columns names its entry. Processing and the readiness check loop over these, in END order.
+     */
+    record EntrySource(String code, Product product, String label, java.util.function.Function<YearMonth, List<EntryLine>> entries,
+                       java.util.function.BiConsumer<Long, List<EntryLine>> writeLines, java.util.function.Function<ActiveLine, Long> entryIdOf) {
+    }
+
+    private static LedgerService.OtherLineInput other(EntryLine x) {
+        return new LedgerService.OtherLineInput(x.entryId(), x.clientId(), x.gross(), x.gst(), x.net());
+    }
+
+    private List<EntrySource> sources() {
+        return List.of(
+                new EntrySource(FD, Product.FD, PRODUCT_LABEL.get(Product.FD),
+                        m -> fds.forLedger(m).stream().map(x -> new EntryLine(x.fdEntryId(), x.clientId(), x.gross(), x.gst(), x.net(), x.partnerId(), null, null)).toList(),
+                        (pid, xs) -> ledger.replaceFdLines(pid, xs.stream().map(x -> new LedgerService.FdLineInput(x.entryId(), x.clientId(), x.gross(), x.gst(), x.net())).toList()),
+                        ActiveLine::fdEntryId),
+                new EntrySource(BOND, Product.BOND, PRODUCT_LABEL.get(Product.BOND),
+                        m -> bonds.forLedger(m).stream().map(x -> new EntryLine(x.bondEntryId(), x.clientId(), x.gross(), x.gst(), x.net(), x.partnerId(), null, null)).toList(),
+                        (pid, xs) -> ledger.replaceBondLines(pid, xs.stream().map(x -> new LedgerService.BondLineInput(x.entryId(), x.clientId(), x.gross(), x.gst(), x.net())).toList()),
+                        ActiveLine::bondEntryId),
+                new EntrySource(AIF, Product.AIF, PRODUCT_LABEL.get(Product.AIF),
+                        m -> aifs.forLedger(m).stream().map(x -> new EntryLine(x.aifEntryId(), x.clientId(), x.gross(), x.gst(), x.net(), x.partnerId(), x.sharingPercent(), null)).toList(),
+                        (pid, xs) -> ledger.replaceAifLines(pid, xs.stream().map(x -> new LedgerService.AifLineInput(x.entryId(), x.clientId(), x.gross(), x.gst(), x.net())).toList()),
+                        ActiveLine::aifEntryId),
+                new EntrySource(LOAN, Product.LOAN, PRODUCT_LABEL.get(Product.LOAN),
+                        m -> loans.forLedger(m).stream().map(x -> new EntryLine(x.loanEntryId(), x.clientId(), x.gross(), x.gst(), x.net(), x.partnerId(), null, null)).toList(),
+                        (pid, xs) -> ledger.replaceLoanLines(pid, xs.stream().map(x -> new LedgerService.LoanLineInput(x.entryId(), x.clientId(), x.gross(), x.gst(), x.net())).toList()),
+                        ActiveLine::loanEntryId),
+                new EntrySource(GIFT, Product.GIFT, PRODUCT_LABEL.get(Product.GIFT),
+                        m -> gifts.forLedger(m).stream().map(x -> new EntryLine(x.giftEntryId(), x.clientId(), x.gross(), x.gst(), x.net(), x.partnerId(), null, null)).toList(),
+                        (pid, xs) -> ledger.replaceGiftLines(pid, xs.stream().map(x -> new LedgerService.GiftLineInput(x.entryId(), x.clientId(), x.gross(), x.gst(), x.net())).toList()),
+                        ActiveLine::giftEntryId),
+                new EntrySource(PREIPO, Product.PREIPO, PRODUCT_LABEL.get(Product.PREIPO),
+                        m -> preIpos.forLedger(m).stream().map(x -> new EntryLine(x.preIpoEntryId(), x.clientId(), x.gross(), x.gst(), x.net(), x.partnerId(), x.sharingPercent(), null)).toList(),
+                        (pid, xs) -> ledger.replacePreIpoLines(pid, xs.stream().map(x -> new LedgerService.PreIpoLineInput(x.entryId(), x.clientId(), x.gross(), x.gst(), x.net())).toList()),
+                        ActiveLine::preIpoEntryId),
+                new EntrySource(PMS, Product.PMS, PRODUCT_LABEL.get(Product.PMS),
+                        m -> pmsFees.forLedger(m).stream().map(x -> new EntryLine(x.pmsFeeId(), x.clientId(), x.amount(), BigDecimal.ZERO, x.amount(), x.partnerId(), null, null)).toList(),
+                        (pid, xs) -> ledger.replacePmsLines(pid, xs.stream().map(AttributionService::other).toList()),
+                        ActiveLine::pmsFeeId),
+                new EntrySource(NPS, Product.NPS, PRODUCT_LABEL.get(Product.NPS),
+                        m -> npses.forLedger(m).stream().map(x -> new EntryLine(x.npsEntryId(), x.clientId(), x.gross(), x.gst(), x.net(), x.partnerId(), null, null)).toList(),
+                        (pid, xs) -> ledger.replaceNpsLines(pid, xs.stream().map(AttributionService::other).toList()),
+                        ActiveLine::npsEntryId),
+                new EntrySource(P2P, Product.P2P, PRODUCT_LABEL.get(Product.P2P),
+                        m -> p2ps.forLedger(m).stream().map(x -> new EntryLine(x.p2pEntryId(), x.clientId(), x.gross(), x.gst(), x.net(), x.partnerId(), null, null)).toList(),
+                        (pid, xs) -> ledger.replaceP2pLines(pid, xs.stream().map(AttributionService::other).toList()),
+                        ActiveLine::p2pEntryId),
+                // Insurance (R-95): the expected commission, shared only with the policy's POSP, at the POSP's commission.
+                new EntrySource(INS, null, "Insurance",
+                        m -> insurance.forLedger(m).stream().map(x -> new EntryLine(x.policyId(), x.clientId(), x.expectedComm(), BigDecimal.ZERO,
+                                x.expectedComm(), x.pospId(), null, x.pospId() == null || x.pospComm().signum() == 0 ? null
+                                        : new Share(PartnerType.POSP, x.pospId(), x.pospName(), x.pospComm().divide(x.expectedComm(), 12, java.math.RoundingMode.HALF_UP))))
+                                .toList(),
+                        (pid, xs) -> ledger.replaceInsuranceLines(pid, xs.stream().map(AttributionService::other).toList()),
+                        ActiveLine::insurancePolicyId));
+    }
+
+    /** The hand-entered product a line came from, or null for an MF or equity line. */
+    private EntrySource sourceOf(ActiveLine l) {
+        for (EntrySource src : sources()) if (src.entryIdOf().apply(l) != null) return src;
+        return null;
+    }
+
+    /**
+     * How an entry's line is shared: insurance with its POSP; otherwise with the partner on the entry, at the deal's own % when
+     * it has one (AIF, Unlisted), else at the partner's % for the product. A partner with neither is noted in {@code noPercent}.
+     */
+    private List<Share> entryShares(EntrySource src, EntryLine x, LocalDate day, java.util.Set<String> noPercent) {
+        if (x == null) return List.of();
+        if (src.product() == null) return x.posp() == null ? List.of() : List.of(x.posp());
+        if (x.partnerId() == null) return List.of();
+        ShareService.ProductShare ps = shares.productShare(x.partnerId(), src.product(), day);
+        BigDecimal fraction = x.dealPercent() != null ? x.dealPercent().movePointLeft(2) : ps.fraction();
+        if (fraction == null) {
+            noPercent.add(ps.partnerName() + " (" + src.label() + ")");
+            return List.of();
+        }
+        return List.of(new Share(ps.role(), ps.partnerId(), ps.partnerName(), fraction));
     }
 
     /** Voids the month's current split (its figures changed or it is being re-run). */
