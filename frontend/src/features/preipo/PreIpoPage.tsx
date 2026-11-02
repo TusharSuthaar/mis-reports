@@ -7,7 +7,7 @@ import { useSubmit } from '../../api/useSubmit';
 import { useAuth } from '../../app/auth';
 import { canEditMasters } from '../../app/permissions';
 import { Amount } from '../../components/Amount';
-import { ListFilters, useFilterQuery } from '../../components/ListFilters';
+import { ListFilters, listPath, useFilterQuery } from '../../components/ListFilters';
 import { Modal } from '../../components/Modal';
 import { useEntryPanel } from '../../components/useEntryPanel';
 import { useTableView } from '../../components/useTableView';
@@ -166,9 +166,9 @@ function Deals({ kind }: { kind: PreIpoKind }) {
   const { user } = useAuth();
   const canEdit = canEditMasters(user?.role);
   const filters = useFilterQuery();
-  const query = `${filters ? `${filters}&` : '?'}kind=${kind}`;
+  const query = filters === null ? null : `${filters ? `${filters}&` : '?'}kind=${kind}`;
   const buy = kind === 'BUY';
-  const list = useLoad<PreIpoDeal[]>(`/api/preipo${query}`);
+  const list = useLoad<PreIpoDeal[]>(listPath('/api/preipo', query));
   const platforms = useLoad<Platform[]>('/api/platforms');
   const [panel, setPanel] = useEntryPanel();
   const editing = typeof panel === 'number' ? list.data?.find((e) => e.id === panel) : undefined;
@@ -189,7 +189,7 @@ function Deals({ kind }: { kind: PreIpoKind }) {
       <div className="page-head" style={{ justifyContent: 'flex-end', marginBottom: 12 }}>
         {canEdit && (
           <div className="actions">
-            <a className="button-link secondary" href={`/api/preipo/export.xlsx${query}`} download>
+            <a className="button-link secondary" href={`/api/preipo/export.xlsx${query ?? ''}`} download>
               Download Excel
             </a>
             <button type="button" onClick={() => setPanel('new')}>

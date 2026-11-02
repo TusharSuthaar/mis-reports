@@ -19,7 +19,7 @@ import { useLoad } from '../../api/useLoad';
 import { useSubmit } from '../../api/useSubmit';
 import { useAuth } from '../../app/auth';
 import { canEditMasters } from '../../app/permissions';
-import { ListFilters, useFilterQuery } from '../../components/ListFilters';
+import { ListFilters, listPath, useFilterQuery } from '../../components/ListFilters';
 import { GivenFiguresFields, givenBody, shownFigures, useGiven } from '../../components/GivenFigures';
 import { Modal } from '../../components/Modal';
 import { useEntryPanel } from '../../components/useEntryPanel';
@@ -82,7 +82,7 @@ export function FdPage({ embedded = false }: { embedded?: boolean } = {}) {
   const canEdit = canEditMasters(user?.role);
   const month = thisMonth();   // the month a new FD starts in
   const query = useFilterQuery();
-  const list = useLoad<FdEntry[]>(`/api/fd${query}`);
+  const list = useLoad<FdEntry[]>(listPath('/api/fd', query));
   const suggestions = useLoad<FdSuggestions>('/api/fd/suggestions');
   const [panel, setPanel] = useEntryPanel();
   const editing = typeof panel === 'number' ? list.data?.find((e) => e.id === panel) : undefined;
@@ -100,7 +100,7 @@ export function FdPage({ embedded = false }: { embedded?: boolean } = {}) {
         {!embedded && <h1>FD</h1>}
         {canEdit && (
           <div className="actions">
-            <a className="button-link secondary" href={`/api/fd/export.xlsx${query}`} download>
+            <a className="button-link secondary" href={`/api/fd/export.xlsx${query ?? ''}`} download>
               Download Excel
             </a>
             <button type="button" onClick={() => setPanel('new')}>

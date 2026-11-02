@@ -52,6 +52,12 @@ describe('fd helpers', () => {
     expect(maturityValue(100000, 8, 0, 'CUMULATIVE', 'YEARLY')).toBeNull();
   });
 
+  it('counts the default list window back from the newest month in Month close, or from today when there is none', () => {
+    expect(defaultFromMonth('2026-08')).toBe('2026-06');
+    expect(defaultFromMonth('2026-02')).toBe('2025-12');
+    expect(defaultFromMonth(null, new Date(2026, 10, 2))).toBe('2026-09');
+  });
+
   it('links deposit date, months and maturity date, and groups amounts the Indian way', () => {
     expect(addMonths('2022-11-17', 33)).toBe('2025-08-17');
     expect(addMonths('2026-01-31', 1)).toBe('2026-02-28');
@@ -127,11 +133,14 @@ describe('fd screen', () => {
       'GET /api/fd/suggestions': ok({ fdNames: [], platforms: ['J M Finance'], margins: [] }),
       'GET /api/employees': ok(rms),
       'GET /api/partners': ok([]),
+      'GET /api/months': ok([{ month: '2026-07' }, { month: '2026-08' }]),
     });
     renderAt('/fd');
     expect(await screen.findByText('No FDs match.')).toBeInTheDocument();
-    const firstList = fetchMock.mock.calls.map((c) => String(c[0])).find((u) => u.includes('/api/fd') && !u.includes('suggestions'));
-    expect(firstList).toBe(`/api/fd?from=${defaultFromMonth()}`);   // no month chosen: the last 3 months (R-77)
+    const lists = fetchMock.mock.calls.map((c) => String(c[0])).filter((u) => u.startsWith('/api/fd') && !u.includes('suggestions'));
+    // No month chosen: the newest month in Month close and the two before (R-77), asked for once.
+    expect(lists).toEqual(['/api/fd?from=2026-06']);
+    expect(screen.getByText(/Showing the last 3 months \(from 2026-06\)/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'All months' }));
     await waitFor(() => expect(fetchMock.mock.calls.map((c) => String(c[0])).filter((u) => u.startsWith('/api/fd')).pop()).toBe('/api/fd'));
     expect(screen.getByText(/Showing all months/)).toBeInTheDocument();
@@ -149,7 +158,7 @@ describe('fd screen', () => {
     expect(screen.getByRole('link', { name: 'Download Excel' }).getAttribute('href')).toContain('rmId=1');
     await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
     // Back to the default window, for the Excel download too.
-    expect(screen.getByRole('link', { name: 'Download Excel' }).getAttribute('href')).toBe(`/api/fd/export.xlsx?from=${defaultFromMonth()}`);
+    expect(screen.getByRole('link', { name: 'Download Excel' }).getAttribute('href')).toBe('/api/fd/export.xlsx?from=2026-06');
   });
 
   it('finds an existing client by code and takes the RM from the client', async () => {

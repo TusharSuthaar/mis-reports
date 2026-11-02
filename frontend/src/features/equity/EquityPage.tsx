@@ -7,7 +7,7 @@ import { useSubmit } from '../../api/useSubmit';
 import { useAuth } from '../../app/auth';
 import { canEditMasters } from '../../app/permissions';
 import { Amount } from '../../components/Amount';
-import { ListFilters, useFilterQuery } from '../../components/ListFilters';
+import { ListFilters, listPath, useFilterQuery } from '../../components/ListFilters';
 import { Modal } from '../../components/Modal';
 import { formatDate, formatDateTime, formatMoney, formatMonth } from '../../format';
 
@@ -66,7 +66,7 @@ export function EquityPage() {
   const { user } = useAuth();
   const canEdit = canEditMasters(user?.role);
   const query = useFilterQuery();
-  const list = useLoad<EquityClientMonth[]>(`/api/equity${query}`);
+  const list = useLoad<EquityClientMonth[]>(listPath('/api/equity', query));
   const uploads = useLoad<EquityUpload[]>('/api/equity/uploads');
   const [open, setOpen] = useState<EquityClientMonth | null>(null);
   const rows = list.data ?? [];

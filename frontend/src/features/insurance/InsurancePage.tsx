@@ -8,7 +8,7 @@ import { useSubmit } from '../../api/useSubmit';
 import { useAuth } from '../../app/auth';
 import { canEditMasters } from '../../app/permissions';
 import { Amount } from '../../components/Amount';
-import { ListFilters, useFilterQuery } from '../../components/ListFilters';
+import { ListFilters, listPath, useFilterQuery } from '../../components/ListFilters';
 import { Modal } from '../../components/Modal';
 import { useEntryPanel } from '../../components/useEntryPanel';
 import { useTableView } from '../../components/useTableView';
@@ -56,7 +56,7 @@ export function InsurancePage({ embedded = false }: { embedded?: boolean } = {})
   const { user } = useAuth();
   const canEdit = canEditMasters(user?.role);
   const query = useFilterQuery();
-  const list = useLoad<InsurancePolicy[]>(`/api/insurance${query}`);
+  const list = useLoad<InsurancePolicy[]>(listPath('/api/insurance', query));
   const choices = useLoad<{ insurers: string[]; products: string[]; subTypes: string[] }>('/api/insurance/choices');
   const [panel, setPanel] = useEntryPanel();
   const [uploading, setUploading] = useState(false);
@@ -79,7 +79,7 @@ export function InsurancePage({ embedded = false }: { embedded?: boolean } = {})
         {!embedded && <h1>Insurance</h1>}
         {canEdit && (
           <div className="actions">
-            <a className="button-link secondary" href={`/api/insurance/export.xlsx${query}`} download>
+            <a className="button-link secondary" href={`/api/insurance/export.xlsx${query ?? ''}`} download>
               Download Excel
             </a>
             <button type="button" className="secondary" onClick={() => setUploading(true)}>

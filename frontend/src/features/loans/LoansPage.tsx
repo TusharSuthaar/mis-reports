@@ -17,7 +17,7 @@ import { useAuth } from '../../app/auth';
 import { canEditMasters } from '../../app/permissions';
 import { Amount } from '../../components/Amount';
 import { GivenFiguresFields, givenBody, shownFigures, useGiven } from '../../components/GivenFigures';
-import { ListFilters, useFilterQuery } from '../../components/ListFilters';
+import { ListFilters, listPath, useFilterQuery } from '../../components/ListFilters';
 import { Modal } from '../../components/Modal';
 import { useEntryPanel } from '../../components/useEntryPanel';
 import { formatDate, formatMoney, todayIso, formatMonth, indianDigits } from '../../format';
@@ -53,7 +53,7 @@ export function LoansPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { user } = useAuth();
   const canEdit = canEditMasters(user?.role);
   const query = useFilterQuery();
-  const list = useLoad<LoanEntry[]>(`/api/loans${query}`);
+  const list = useLoad<LoanEntry[]>(listPath('/api/loans', query));
   const suggestions = useLoad<LoanSuggestions>('/api/loans/suggestions');
   const [panel, setPanel] = useEntryPanel();
   const [nextOf, setNextOf] = useState<LoanEntry | null>(null);
@@ -74,7 +74,7 @@ export function LoansPage({ embedded = false }: { embedded?: boolean } = {}) {
         {!embedded && <h1>Loans</h1>}
         {canEdit && (
           <div className="actions">
-            <a className="button-link secondary" href={`/api/loans/export.xlsx${query}`} download>
+            <a className="button-link secondary" href={`/api/loans/export.xlsx${query ?? ''}`} download>
               Download Excel
             </a>
             <button type="button" onClick={() => setPanel('new')}>

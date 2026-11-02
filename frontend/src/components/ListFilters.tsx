@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { PAYMENT_LABEL, type Employee, type Partner } from '../api/types';
+import { PAYMENT_LABEL, type Employee, type MonthRow, type Partner } from '../api/types';
 import { useLoad } from '../api/useLoad';
 
 /** The filter keys a product list understands (R-77); they live in the page address, so a refresh or a shared link keeps them. */
@@ -9,10 +9,22 @@ export const FILTER_KEYS = ['from', 'to', 'q', 'rmId', 'partnerId', 'platform', 
 /** Page-address marker for "every month" (a screen choice only: never sent to the server). */
 const ALL_MONTHS = 'months';
 
-/** The first month of the default window: this month and the two before (R-77, audit M-04). */
-export function defaultFromMonth(today: Date = new Date()): string {
-  const d = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+/**
+ * The first month of the default window: the newest month in Month close and the two before it, so the lists never open
+ * empty just because the next month is not loaded yet; this month and the two before when there is none (R-77, audit M-04).
+ */
+export function defaultFromMonth(latest?: string | null, today: Date = new Date()): string {
+  const [y, m] = latest ? latest.split('-').map(Number) : [today.getFullYear(), today.getMonth() + 1];
+  const d = new Date(y, m - 3, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** The newest month in Month close ("2026-08"); undefined while it loads, null when there is none or it cannot be read. */
+function useLatestMonth(): string | null | undefined {
+  const months = useLoad<MonthRow[]>('/api/months');
+  if (months.error) return null;
+  if (!months.data) return undefined;
+  return months.data.map((r) => r.month.substring(0, 7)).sort().pop() ?? null;
 }
 
 /** No month chosen and "All months" not asked for: the list shows the last 3 months. */
@@ -20,11 +32,18 @@ function windowed(params: URLSearchParams): boolean {
   return !params.get('from') && !params.get('to') && params.get(ALL_MONTHS) !== 'all';
 }
 
-/** The current filters as a query string for the list / Excel endpoints; without chosen months, the last 3 months (R-77). */
-export function useFilterQuery(): string {
+/**
+ * The current filters as a query string for the list / Excel endpoints; without chosen months, the last 3 months (R-77).
+ * null while the newest month is still loading, so a list is asked for once, with the right window.
+ */
+export function useFilterQuery(): string | null {
   const [params] = useSearchParams();
+  const latest = useLatestMonth();
   const q = new URLSearchParams();
-  if (windowed(params)) q.set('from', defaultFromMonth());
+  if (windowed(params)) {
+    if (latest === undefined) return null;
+    q.set('from', defaultFromMonth(latest));
+  }
   for (const k of FILTER_KEYS) {
     const v = params.get(k);
     if (v) q.set(k, v);
@@ -33,8 +52,13 @@ export function useFilterQuery(): string {
   return s ? `?${s}` : '';
 }
 
+/** A list path with the filter query, or null (nothing asked yet) while the query is not ready. */
+export function listPath(path: string, query: string | null): string | null {
+  return query === null ? null : `${path}${query}`;
+}
+
 /**
- * All months by default; narrow by month range, text, RM, referral / sub-broker, platform, payment status, cancelled.
+ * The last 3 months by default (All months on request); narrow by month range, text, RM, referral / sub-broker, platform, payment status, cancelled.
  * {@code platformKey}: "platform" (FD: a name), "platformId" (Bonds: a platform of Setup → Platforms) or "lender" (Loans).
  */
 export function ListFilters({
@@ -79,6 +103,7 @@ export function ListFilters({
 
   const active = FILTER_KEYS.some((k) => params.get(k)) || params.get(ALL_MONTHS) === 'all';
   const lastThree = windowed(params);
+  const latest = useLatestMonth();
   const rms = (employees.data ?? []).filter((e) => e.status === 'ACTIVE');
   const sharePartners = (partners.data ?? []).filter((p) => p.type === 'SUB_BROKER' || p.type === 'REFERRAL');
 
@@ -171,7 +196,7 @@ export function ListFilters({
       <p className="muted window-note">
         {lastThree ? (
           <>
-            Showing the last 3 months (from {defaultFromMonth()}).{' '}
+            Showing the last 3 months (from {defaultFromMonth(latest)}).{' '}
             <button type="button" className="link" onClick={() => set(ALL_MONTHS, 'all')}>
               All months
             </button>

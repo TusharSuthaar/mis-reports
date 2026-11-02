@@ -5,7 +5,7 @@ import { useLoad } from '../../api/useLoad';
 import { useAuth } from '../../app/auth';
 import { canEditMasters } from '../../app/permissions';
 import { Icon } from '../../components/Icon';
-import { ListFilters, useFilterQuery } from '../../components/ListFilters';
+import { ListFilters, listPath, useFilterQuery } from '../../components/ListFilters';
 import { Tabs, useTab } from '../../components/Tabs';
 import { Amount } from '../../components/Amount';
 import { AifPage } from '../aif/AifPage';
@@ -138,16 +138,16 @@ interface Row {
 /** All products in one list (newest first), with the same filters; a row opens the entry in its product tab. */
 function AllProducts({ onOpen }: { onOpen: (product: string, id: number) => void }) {
   const query = useFilterQuery();
-  const fd = useLoad<FdEntry[]>(`/api/fd${query}`);
-  const bonds = useLoad<BondEntry[]>(`/api/bonds${query}`);
-  const aif = useLoad<AifEntry[]>(`/api/aif${query}`);
-  const loans = useLoad<LoanEntry[]>(`/api/loans${query}`);
-  const gifts = useLoad<GiftEntry[]>(`/api/gift${query}`);
-  const pms = useLoad<PmsInvestment[]>(`/api/pms${query}`);
-  const nps = useLoad<NpsEntry[]>(`/api/nps${query}`);
-  const p2p = useLoad<P2pEntry[]>(`/api/p2p${query}`);
-  const preIpo = useLoad<PreIpoDeal[]>(`/api/preipo${query}`);
-  const ins = useLoad<InsurancePolicy[]>(`/api/insurance${query}`);
+  const fd = useLoad<FdEntry[]>(listPath('/api/fd', query));
+  const bonds = useLoad<BondEntry[]>(listPath('/api/bonds', query));
+  const aif = useLoad<AifEntry[]>(listPath('/api/aif', query));
+  const loans = useLoad<LoanEntry[]>(listPath('/api/loans', query));
+  const gifts = useLoad<GiftEntry[]>(listPath('/api/gift', query));
+  const pms = useLoad<PmsInvestment[]>(listPath('/api/pms', query));
+  const nps = useLoad<NpsEntry[]>(listPath('/api/nps', query));
+  const p2p = useLoad<P2pEntry[]>(listPath('/api/p2p', query));
+  const preIpo = useLoad<PreIpoDeal[]>(listPath('/api/preipo', query));
+  const ins = useLoad<InsurancePolicy[]>(listPath('/api/insurance', query));
   const rows: Row[] = [
     ...(preIpo.data ?? []).map((e): Row => ({ product: 'PREIPO', id: e.id, month: e.month, client: e.clientName, item: `${KIND_LABEL[e.kind]} · ${e.scripName}`, rm: e.rmName, amount: e.amount, gross: e.gross, invoice: e.invoice, payment: e.billingStatus === 'PAYMENT_RECEIVED' || e.billingStatus === 'PAID_BY_CLIENT' ? 'RECEIVED' : 'PENDING', cancelled: e.status === 'CANCELLED' })),
     ...(fd.data ?? []).map((e): Row => ({ product: 'FD', id: e.id, month: e.month, client: e.clientName, item: `${e.fdName}${e.fdNo ? ` #${e.fdNo}` : ''}`, rm: e.rmName, amount: e.amount, gross: e.gross, invoice: e.invoice, payment: e.paymentStatus, cancelled: e.status === 'CANCELLED' })),

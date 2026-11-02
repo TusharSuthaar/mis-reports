@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useTableView } from '../../components/useTableView';
 import { useLoad } from '../../api/useLoad';
 import { Amount } from '../../components/Amount';
-import { ListFilters, useFilterQuery } from '../../components/ListFilters';
+import { ListFilters, listPath, useFilterQuery } from '../../components/ListFilters';
 import type { PartnerAmount } from '../clients/MfBrokerage';
 import { formatMoney, formatMonth } from '../../format';
 
@@ -43,7 +43,7 @@ const pct = (f: number | null) => (f == null ? '' : ` ${Math.round(f * 10000) / 
 /** MF brokerage of every client across months, from the saved months (uploaded on Month close). */
 export function MfPage() {
   const query = useFilterQuery();
-  const list = useLoad<MfList>(`/api/mf${query}`);
+  const list = useLoad<MfList>(listPath('/api/mf', query));
   const t = list.data?.totals;
   const view = useTableView(list.data?.rows, { month: (r) => r.month, client: (r) => r.clientName, rm_branch: (r) => r.rm, mf_trail: (r) => r.gross, gst: (r) => r.gst, mf_net: (r) => r.net, partners_share: (r) => r.partnersTotal, epsilon_keeps: (r) => r.epsilon, status: (r) => r.status });
   return (

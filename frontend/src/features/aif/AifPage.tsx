@@ -17,7 +17,7 @@ import { useLoad } from '../../api/useLoad';
 import { useSubmit } from '../../api/useSubmit';
 import { useAuth } from '../../app/auth';
 import { canEditMasters } from '../../app/permissions';
-import { ListFilters, useFilterQuery } from '../../components/ListFilters';
+import { ListFilters, listPath, useFilterQuery } from '../../components/ListFilters';
 import { GivenFiguresFields, givenBody, shownFigures, useGiven } from '../../components/GivenFigures';
 import { Modal } from '../../components/Modal';
 import { useEntryPanel } from '../../components/useEntryPanel';
@@ -34,7 +34,7 @@ export function AifPage({ embedded = false }: { embedded?: boolean } = {}) {
   const canEdit = canEditMasters(user?.role);
   const month = thisMonth();
   const query = useFilterQuery();
-  const list = useLoad<AifEntry[]>(`/api/aif${query}`);
+  const list = useLoad<AifEntry[]>(listPath('/api/aif', query));
   const platforms = useLoad<Platform[]>('/api/platforms');
   const [panel, setPanel] = useEntryPanel();
   const editing = typeof panel === 'number' ? list.data?.find((e) => e.id === panel) : undefined;
@@ -52,7 +52,7 @@ export function AifPage({ embedded = false }: { embedded?: boolean } = {}) {
         {!embedded && <h1>AIF</h1>}
         {canEdit && (
           <div className="actions">
-            <a className="button-link secondary" href={`/api/aif/export.xlsx${query}`} download>
+            <a className="button-link secondary" href={`/api/aif/export.xlsx${query ?? ''}`} download>
               Download Excel
             </a>
             <button type="button" onClick={() => setPanel('new')}>

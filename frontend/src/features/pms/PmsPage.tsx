@@ -15,7 +15,7 @@ import { useSubmit } from '../../api/useSubmit';
 import { useAuth } from '../../app/auth';
 import { canEditMasters } from '../../app/permissions';
 import { Amount } from '../../components/Amount';
-import { ListFilters, useFilterQuery } from '../../components/ListFilters';
+import { ListFilters, listPath, useFilterQuery } from '../../components/ListFilters';
 import { Modal } from '../../components/Modal';
 import { useEntryPanel } from '../../components/useEntryPanel';
 import { formatDate, formatMoney, todayIso, formatMonth, indianDigits } from '../../format';
@@ -64,7 +64,7 @@ function Investments() {
   const { user } = useAuth();
   const canEdit = canEditMasters(user?.role);
   const query = useFilterQuery();
-  const list = useLoad<PmsInvestment[]>(`/api/pms${query}`);
+  const list = useLoad<PmsInvestment[]>(listPath('/api/pms', query));
   const suggestions = useLoad<{ amcs: string[]; strategies: string[] }>('/api/pms/suggestions');
   const [panel, setPanel] = useEntryPanel();
   const editing = typeof panel === 'number' ? list.data?.find((e) => e.id === panel) : undefined;
@@ -79,7 +79,7 @@ function Investments() {
     <>
       {canEdit && (
         <div className="actions" style={{ justifyContent: 'flex-end', marginBottom: 12 }}>
-          <a className="button-link secondary" href={`/api/pms/export.xlsx${query}`} download>
+          <a className="button-link secondary" href={`/api/pms/export.xlsx${query ?? ''}`} download>
             Download Excel
           </a>
           <button type="button" onClick={() => setPanel('new')}>
