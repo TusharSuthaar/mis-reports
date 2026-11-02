@@ -15,11 +15,12 @@ services:
     environment:
       POSTGRES_DB: mis
       POSTGRES_USER: ${MIS_DB_USER:-mis}
-      POSTGRES_PASSWORD: ${MIS_DB_PASSWORD:-mis}
+      POSTGRES_PASSWORD: ${MIS_DB_PASSWORD:?Set MIS_DB_PASSWORD in .env (see .env.example)}
     volumes:
       - db-data:/var/lib/postgresql/data
+    # Reachable from this computer only (C-01). The database is never meant to be reached over the network.
     ports:
-      - "${MIS_DB_PORT:-5442}:5432"
+      - "127.0.0.1:${MIS_DB_PORT:-5442}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d mis"]
       interval: 5s
@@ -31,7 +32,7 @@ services:
     environment:
       MIS_DB_URL: jdbc:postgresql://db:5432/mis
       MIS_DB_USER: ${MIS_DB_USER:-mis}
-      MIS_DB_PASSWORD: ${MIS_DB_PASSWORD:-mis}
+      MIS_DB_PASSWORD: ${MIS_DB_PASSWORD:?Set MIS_DB_PASSWORD in .env (see .env.example)}
       MIS_BOOTSTRAP_ADMIN_USERNAME: ${MIS_BOOTSTRAP_ADMIN_USERNAME:-}
       MIS_BOOTSTRAP_ADMIN_PASSWORD: ${MIS_BOOTSTRAP_ADMIN_PASSWORD:-}
       MIS_COOKIE_SECURE: ${MIS_COOKIE_SECURE:-false}
@@ -44,16 +45,19 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # Direct API access is for local tools and `npm run dev`; this computer only. Screens reach the API through the UI.
     ports:
-      - "${MIS_API_PORT:-8090}:8080"
+      - "127.0.0.1:${MIS_API_PORT:-8090}:8080"
 
   ui:
     build: ./frontend
     logging: *logging
     depends_on:
       - api
+    # This computer only by default. To serve colleagues, set MIS_UI_BIND=0.0.0.0, and only behind HTTPS
+    # (MIS_COOKIE_SECURE=true): see the README's "Running for other people".
     ports:
-      - "${MIS_UI_PORT:-5180}:80"
+      - "${MIS_UI_BIND:-127.0.0.1}:${MIS_UI_PORT:-5180}:80"
 
 volumes:
   db-data:

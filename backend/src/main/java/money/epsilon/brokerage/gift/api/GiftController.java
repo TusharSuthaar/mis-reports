@@ -13,6 +13,7 @@ import money.epsilon.brokerage.gift.domain.GiftEntry.Details;
 import money.epsilon.brokerage.gift.service.GiftService;
 import money.epsilon.brokerage.gift.service.GiftService.GiftView;
 import money.epsilon.brokerage.platform.security.Roles;
+import money.epsilon.brokerage.platform.web.EditVersion;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -91,8 +93,9 @@ class GiftController {
 
     @PutMapping("/{id}")
     @PreAuthorize(Roles.MASTER_WRITE)
-    GiftView update(@PathVariable long id, @Valid @RequestBody GiftRequest req) {
-        return service.update(id, req.details());
+    GiftView update(@PathVariable long id, @Valid @RequestBody GiftRequest req,
+                    @RequestHeader(value = EditVersion.HEADER, required = false) String ifMatch) {
+        return service.update(id, req.details(), ifMatch);
     }
 
     @PostMapping("/{id}/cancel")

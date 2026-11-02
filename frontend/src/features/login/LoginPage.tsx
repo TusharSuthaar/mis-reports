@@ -12,7 +12,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const from = (location.state as { from?: string } | null)?.from ?? '/';
+  const from = safeReturnPath((location.state as { from?: string } | null)?.from);
   if (!loading && user) return <Navigate to={from} replace />;
 
   async function onSubmit(e: FormEvent) {
@@ -63,4 +63,13 @@ export function LoginPage() {
       </form>
     </div>
   );
+}
+
+/**
+ * Where to go after signing in: only a path of this app. "//host", "/\host" and full URLs would leave the site
+ * (an open redirect), so they go to the dashboard instead.
+ */
+export function safeReturnPath(from: string | undefined): string {
+  if (!from || !from.startsWith('/') || from.startsWith('//') || from.includes('\\') || /[\u0000-\u001f]/.test(from)) return '/';
+  return from;
 }

@@ -13,6 +13,7 @@ import money.epsilon.brokerage.fd.domain.FdEntry.Details;
 import money.epsilon.brokerage.fd.service.FdService;
 import money.epsilon.brokerage.fd.service.FdService.FdView;
 import money.epsilon.brokerage.platform.security.Roles;
+import money.epsilon.brokerage.platform.web.EditVersion;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -86,8 +88,9 @@ class FdController {
 
     @PutMapping("/{id}")
     @PreAuthorize(Roles.MASTER_WRITE)
-    FdView update(@PathVariable long id, @Valid @RequestBody FdRequest req) {
-        return service.update(id, req.details());
+    FdView update(@PathVariable long id, @Valid @RequestBody FdRequest req,
+                    @RequestHeader(value = EditVersion.HEADER, required = false) String ifMatch) {
+        return service.update(id, req.details(), ifMatch);
     }
 
     @PostMapping("/{id}/cancel")

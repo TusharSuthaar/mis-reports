@@ -11,6 +11,7 @@ import money.epsilon.brokerage.p2p.domain.P2pEntry;
 import money.epsilon.brokerage.p2p.service.P2pService;
 import money.epsilon.brokerage.p2p.service.P2pService.P2pView;
 import money.epsilon.brokerage.platform.security.Roles;
+import money.epsilon.brokerage.platform.web.EditVersion;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -92,8 +94,9 @@ class P2pController {
 
     @PutMapping("/{id}")
     @PreAuthorize(Roles.MASTER_WRITE)
-    P2pView update(@PathVariable long id, @Valid @RequestBody P2pRequest req) {
-        return service.update(id, req.details());
+    P2pView update(@PathVariable long id, @Valid @RequestBody P2pRequest req,
+                    @RequestHeader(value = EditVersion.HEADER, required = false) String ifMatch) {
+        return service.update(id, req.details(), ifMatch);
     }
 
     @PostMapping("/{id}/cancel")
