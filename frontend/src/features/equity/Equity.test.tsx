@@ -25,7 +25,7 @@ describe('equity tab', () => {
       ]),
     });
     render(
-      <MemoryRouter initialEntries={['/products?tab=EQUITY']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={['/products?tab=EQUITY']}>
         <AuthProvider>
           <App />
         </AuthProvider>

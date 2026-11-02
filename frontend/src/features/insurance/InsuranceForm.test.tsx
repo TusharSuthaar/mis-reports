@@ -36,7 +36,7 @@ function open(posted: unknown[] = [], postStatus = 201) {
     },
   });
   render(
-    <MemoryRouter initialEntries={['/products?tab=INS&new=1']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <MemoryRouter initialEntries={['/products?tab=INS&new=1']}>
       <AuthProvider>
         <App />
       </AuthProvider>

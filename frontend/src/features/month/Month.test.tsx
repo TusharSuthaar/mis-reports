@@ -14,7 +14,7 @@ const masterLoaded: FinesseMasterStatus = { codes: 3237, withPan: 3169, withGuar
 
 function renderAt(path: string) {
   return render(
-    <MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <MemoryRouter initialEntries={[path]}>
       <AuthProvider>
         <App />
       </AuthProvider>

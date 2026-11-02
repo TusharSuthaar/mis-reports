@@ -28,7 +28,7 @@ describe('MF tab', () => {
       }),
     });
     render(
-      <MemoryRouter initialEntries={['/products?tab=MF']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={['/products?tab=MF']}>
         <AuthProvider>
           <App />
         </AuthProvider>

@@ -36,7 +36,7 @@ describe('pms', () => {
       ]),
     });
     render(
-      <MemoryRouter initialEntries={['/products?tab=PMS']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={['/products?tab=PMS']}>
         <AuthProvider>
           <App />
         </AuthProvider>

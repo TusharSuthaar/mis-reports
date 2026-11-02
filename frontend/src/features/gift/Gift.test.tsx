@@ -49,7 +49,7 @@ describe('gift city screen', () => {
       },
     });
     render(
-      <MemoryRouter initialEntries={['/products?tab=GIFT']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={['/products?tab=GIFT']}>
         <AuthProvider>
           <App />
         </AuthProvider>
