@@ -17,6 +17,15 @@
     "ourShare": 100,
     "from": "2025-04-01"
    }
+  },
+  {
+   "name": "DEMO UNLISTED",
+   "terms": {
+    "gstInclusive": true,
+    "tdsPercent": 5,
+    "ourShare": 100,
+    "from": "2025-04-01"
+   }
   }
  ],
  "entries": [
@@ -506,7 +515,8 @@
     "onPortal": true,
     "trailPercent": 1.25,
     "payoutFrequency": "QUARTERLY"
-   }
+   },
+   "augFee": 5239.78
   },
   {
    "kind": "pms",
@@ -524,7 +534,8 @@
     "onPortal": true,
     "trailPercent": 1.25,
     "payoutFrequency": "QUARTERLY"
-   }
+   },
+   "augFee": 4430.23
   },
   {
    "kind": "pms",
@@ -542,7 +553,8 @@
     "onPortal": true,
     "trailPercent": 1.25,
     "payoutFrequency": "QUARTERLY"
-   }
+   },
+   "augFee": 4729.97
   },
   {
    "kind": "pms",
@@ -560,7 +572,8 @@
     "onPortal": true,
     "trailPercent": 1.25,
     "payoutFrequency": "QUARTERLY"
-   }
+   },
+   "augFee": 11906.65
   },
   {
    "kind": "pms",
@@ -823,6 +836,144 @@
     "tdsApplied": true,
     "tdsPercent": 2
    }
+  },
+  {
+   "kind": "preipo",
+   "client": {
+    "pan": "RZBXH2084G",
+    "partner": "Horizon Demo Investments"
+   },
+   "body": {
+    "kind": "BUY",
+    "month": "2026-08-01",
+    "partner": "Horizon Demo Investments",
+    "scrip": "DEMO ROBOTICS LTD",
+    "vendor": "DEMO UNLISTED",
+    "dealDate": "2026-08-07",
+    "quantity": 300,
+    "clientPrice": 426.4,
+    "vendorPrice": 410,
+    "tdsApplied": true,
+    "tdsPercent": 5,
+    "portalStatus": "UPDATED",
+    "billingStatus": "BILLED",
+    "dealSheet": "SIGNED",
+    "dpName": "DEMO DP"
+   }
+  },
+  {
+   "kind": "preipo",
+   "client": {
+    "pan": "SVMXD5303O",
+    "partner": "Summit Demo Investments"
+   },
+   "body": {
+    "kind": "BUY",
+    "month": "2026-08-01",
+    "partner": "Summit Demo Investments",
+    "scrip": "SAMPLE FOODS LTD",
+    "vendor": "DEMO UNLISTED",
+    "dealDate": "2026-08-10",
+    "quantity": 500,
+    "clientPrice": 100.36,
+    "vendorPrice": 96.5,
+    "tdsApplied": true,
+    "tdsPercent": 5,
+    "portalStatus": "UPDATED",
+    "billingStatus": "BILLED",
+    "dealSheet": "SIGNED",
+    "dpName": "DEMO DP"
+   }
+  },
+  {
+   "kind": "preipo",
+   "client": {
+    "pan": "QSPXL1541G",
+    "partner": null
+   },
+   "body": {
+    "kind": "BUY",
+    "month": "2026-08-01",
+    "partner": null,
+    "scrip": "DEMO ROBOTICS LTD",
+    "vendor": "DEMO UNLISTED",
+    "dealDate": "2026-08-13",
+    "quantity": 100,
+    "clientPrice": 426.4,
+    "vendorPrice": 410,
+    "tdsApplied": true,
+    "tdsPercent": 5,
+    "portalStatus": "UPDATED",
+    "billingStatus": "BILLED",
+    "dealSheet": "SIGNED",
+    "dpName": "DEMO DP"
+   }
+  },
+  {
+   "kind": "preipo",
+   "client": {
+    "pan": "JPPXP6729P",
+    "partner": null
+   },
+   "body": {
+    "kind": "BUY",
+    "month": "2026-08-01",
+    "partner": null,
+    "scrip": "SAMPLE FOODS LTD",
+    "vendor": "DEMO UNLISTED",
+    "dealDate": "2026-08-16",
+    "quantity": 100,
+    "clientPrice": 100.36,
+    "vendorPrice": 96.5,
+    "tdsApplied": true,
+    "tdsPercent": 5,
+    "portalStatus": "UPDATED",
+    "billingStatus": "BILLED",
+    "dealSheet": "SIGNED",
+    "dpName": "DEMO DP"
+   }
+  },
+  {
+   "kind": "preipo",
+   "client": {
+    "pan": "RZBXH2084G",
+    "partner": "Horizon Demo Investments"
+   },
+   "body": {
+    "kind": "BUYBACK",
+    "month": "2026-08-01",
+    "partner": "Horizon Demo Investments",
+    "scrip": "DEMO ROBOTICS LTD",
+    "vendor": "DEMO UNLISTED",
+    "dealDate": "2026-08-27",
+    "quantity": 50,
+    "clientPrice": 400,
+    "vendorPrice": 412,
+    "tdsApplied": true,
+    "tdsPercent": 5,
+    "portalStatus": "UPDATED",
+    "billingStatus": "DEAL_DONE",
+    "dealSheet": "SIGNED",
+    "dpName": "DEMO DP"
+   }
+  }
+ ],
+ "scrips": [
+  {
+   "name": "DEMO ROBOTICS LTD",
+   "isin": "INE0DEMOU001",
+   "faceValue": 10,
+   "lotSize": 50,
+   "basePrice": 410,
+   "asOf": "2026-08-01"
+  },
+  {
+   "name": "SAMPLE FOODS LTD",
+   "isin": "INE0DEMOU002",
+   "faceValue": 1,
+   "lotSize": 100,
+   "basePrice": 96.5,
+   "asOf": "2026-08-01"
   }
  ]
 }

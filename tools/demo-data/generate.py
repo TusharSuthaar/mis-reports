@@ -14,7 +14,10 @@ Files (upload order is the order of a fresh set-up; tools/demo-data/seed.py does
     3 Master_MIS.xlsx           Data uploads > Master MIS (partner sheets + per-client RM / partner / %)
     4 MFBrokerage_Aug2026.xlsx  Month close > Finesse MF brokerage, month 2026-08
     5 Equity_Brokerage_Aug2026.xlsx  Products > Equity upload (broker's Brokerage Due report)
-    6 products.json             hand-entered FD / Bonds / AIF / Loans / GIFT / PMS / NPS / P2P entries (seed.py posts them)
+    6 products.json             hand-entered FD / Bonds / AIF / Loans / GIFT / PMS (+ August revenue) / NPS / P2P / Unlisted entries
+    7 Insurance_Aug2026.xlsx    Products > Insurance upload, month 2026-08 (two rows without PAN, found by name)
+    8 MFBrokerage_Sep2026.xlsx  Month close, month 2026-09: a small file, left staged with clients found by name to confirm
+    9 Insurance_Sep2026.xlsx    Products > Insurance upload, month 2026-09: three rows found by name, left to confirm
 """
 import json
 import math
@@ -373,12 +376,123 @@ for i in range(4):
                                                       fundsInitiatedOn='2026-08-%02d' % (6 + i), startDate='2026-09-01', quarterEndDate='2026-09-30',
                                                       onPortal=True, brokerage=rnd.choice([1500, 4000]), tdsApplied=True, tdsPercent=2)))
 
+# ---- added cases (generated after everything above, so the earlier rows and totals stay as they were) ----------------------
+# Unlisted (Pre-IPO): scrips, a vendor's price on the deal day, buys and one buyback.
+products['platforms'].append({'name': 'DEMO UNLISTED', 'terms': {'gstInclusive': True, 'tdsPercent': 5, 'ourShare': 100, 'from': '2025-04-01'}})
+products['scrips'] = [dict(name='DEMO ROBOTICS LTD', isin='INE0DEMOU001', faceValue=10, lotSize=50, basePrice=410, asOf='2026-08-01'),
+                      dict(name='SAMPLE FOODS LTD', isin='INE0DEMOU002', faceValue=1, lotSize=100, basePrice=96.5, asOf='2026-08-01')]
+buyers = []
+for i in range(4):
+    who = pick(i < 2)
+    buyers.append(who)
+    sc = products['scrips'][i % 2]
+    qty = sc['lotSize'] * rnd.randint(1, 6)
+    E.append(dict(kind='preipo', client=who, body=dict(kind='BUY', month=aug, partner=who['partner'], scrip=sc['name'], vendor='DEMO UNLISTED',
+                                                         dealDate='2026-08-%02d' % (7 + 3 * i), quantity=qty,
+                                                         clientPrice=round(sc['basePrice'] * 1.04, 2), vendorPrice=sc['basePrice'],
+                                                         tdsApplied=True, tdsPercent=5, portalStatus='UPDATED', billingStatus='BILLED',
+                                                         dealSheet='SIGNED', dpName='DEMO DP')))
+sc = products['scrips'][0]
+E.append(dict(kind='preipo', client=buyers[0], body=dict(kind='BUYBACK', month=aug, partner=buyers[0]['partner'], scrip=sc['name'], vendor='DEMO UNLISTED',
+                                                           dealDate='2026-08-27', quantity=sc['lotSize'], clientPrice=400, vendorPrice=412,
+                                                           tdsApplied=True, tdsPercent=5, portalStatus='UPDATED', billingStatus='DEAL_DONE',
+                                                           dealSheet='SIGNED', dpName='DEMO DP')))
+# PMS revenue: the AMC's August payout typed per client against the investment (R-85).
+for e in [e for e in E if e['kind'] == 'pms'][:4]:
+    e['augFee'] = money(2500, 12000)
+
+# Clients found by NAME only (R-03, R-100): Finesse codes with neither PAN nor guardian PAN, named exactly as one Master MIS client.
+name_count = {}
+for c in clients:
+    name_count[c['name']] = name_count.get(c['name'], 0) + 1
+minor_names = {m['name'] for m in minors}
+unique = [c for c in clients if name_count[c['name']] == 1 and c['name'] not in minor_names and c['rm']['type'] == 'RM']
+by_name = rnd.sample(unique, 10)   # MF August 0-2, insurance August 3-4, MF September 5-6, insurance September 7-9
+fin = wb_fin['ClientMasterReport']
+name_codes = []
+for i, c in enumerate(by_name[:3] + by_name[5:7]):
+    code = 'E49%04d' % (i + 1)
+    name_codes.append((code, c))
+    fin.append(master_row(code, c['name'], None, None, None, c['family_head'], c['rm']['name'], c['rm']['branch'], rnd.randint(30, 70)))
+mf = wb_mf['Client Wise Summary']
+mf.delete_rows(mf.max_row)   # the Total row goes back at the bottom
+for code, c in name_codes[:3]:
+    amount = round(math.exp(rnd.gauss(6.2, 1.0)), 4)
+    mf.append([code, c['name'], c['family_head']['name'], c['family_head']['codes'][0], c['rm']['name'], None, c['rm']['branch'],
+               fmt(MONTH), fmt(MONTH_END), amount, 100, None])
+    total += amount
+mf.append(['Total', None, None, None, None, None, None, None, None, round(total, 4), None, None])
+mf_rows = mf.max_row - 3
+
+# September 2026, left open on purpose: a small MF file and an insurance sheet with clients found by name, waiting to be confirmed.
+SEP, SEP_END = date(2026, 9, 1), date(2026, 9, 30)
+wb_mf9 = openpyxl.Workbook()
+sm = wb_mf9.active
+sm.title = 'MFBrokerageSummary'
+sm.append(['MF Brokerage Summary  01-Sep-2026 to 30-Sep-2026'])
+sm.append(['AMC Wise', 'Amount', '%', 'IGST', 'CGST', 'SGST', 'Total GST'])
+mf9 = wb_mf9.create_sheet('Client Wise Summary')
+mf9.append(['Client Wise Summary  01-Sep-2026 to 30-Sep-2026'])
+mf9.append(['Client Code', 'Client Name', 'Family Head Name', 'Family Head Code', 'RM', 'SRM', 'Location/Branch', 'Brokerage Start period',
+            'Brokerage End period', 'Brokerage Amount', 'Percentage', 'Referred By'])
+total9 = 0.0
+sep_lines = [(c['codes'][0], c) for c in rnd.sample(clients, 40)] + name_codes
+for code, c in sep_lines:
+    amount = round(math.exp(rnd.gauss(6.2, 1.0)), 4)
+    mf9.append([code, c['name'], c['family_head']['name'], c['family_head']['codes'][0], c['rm']['name'], None, c['rm']['branch'],
+                fmt(SEP), fmt(SEP_END), amount, 100, None])
+    total9 += amount
+mf9.append(['Total', None, None, None, None, None, None, None, None, round(total9, 4), None, None])
+
+# Insurance: the insurance team's "Policy level data" sheet (R-94), percentages as fractions, as in the real sheet.
+INS_HEAD = ['Business Month', 'Policy No', 'POSP Name', 'Insurance Company', 'CAT', 'Client', 'PAN', 'RM', 'Branch', 'Insurance Sub Type',
+            'Product Name', 'PPT', 'Policy Term (PT)', 'Sum Assured', 'OD Premium', 'TP Premium', 'Total Premium', 'Net Premium',
+            'Business Type', '% Expect Comm.', 'Actual Comm.%', 'Diff in Comm.%', 'Expect Comm.', 'Actual Comm.', 'Diff in Comm.',
+            'Agreed % sharing with POSP', '% POSP Ideal Commission', 'POSP Ideal Commission', 'Remarks', 'Region', 'Client code']
+POSPS = ['Kiran Selvekar Demo POSP', 'Ritu Orvimani Demo POSP']
+PLANS = [('Life', 'DEMO LIFE INSURANCE', 'Term Plan', 'DEMO SECURE TERM', 0.30), ('Health', 'SAMPLE HEALTH INSURANCE', 'Family Floater', 'DEMO FAMILY CARE', 0.15),
+         ('Motor', 'DEMO GENERAL INSURANCE', 'Private Car', 'DEMO CAR PACKAGE', 0.12), ('SME', 'DEMO GENERAL INSURANCE', 'Fire - Corporate', 'DEMO FIRE SHIELD', 0.10)]
+
+
+def policy_sheet(month, label, people, n_by_name):
+    wbi = openpyxl.Workbook()
+    wbi.active.title = 'Summary'
+    wsi = wbi.create_sheet('Policy level data')
+    wsi.append(INS_HEAD)
+    for i, (c, named) in enumerate([(c, False) for c in people] + [(c, True) for c in by_name_for[month]][:len(people) + n_by_name]):
+        cat, insurer, sub, product, pct = PLANS[i % len(PLANS)]
+        net = rnd.choice([18000, 24500, 32000, 56000, 120000])
+        od, tp = (round(net * 0.7), round(net * 0.3)) if cat == 'Motor' else (None, None)
+        posp = POSPS[i % 2] if i % 3 == 0 else 'NA'
+        agreed = 0.5 if posp != 'NA' else None
+        row = dict.fromkeys(INS_HEAD)
+        row.update({'Business Month': label, 'Policy No': 'DP%s%04d' % (month.strftime('%m'), i + 1), 'POSP Name': posp, 'Insurance Company': insurer,
+                    'CAT': cat, 'Client': c['name'], 'PAN': None if named else c['pan'], 'RM': c['rm']['name'], 'Branch': c['rm']['branch'],
+                    'Insurance Sub Type': sub, 'Product Name': product, 'PPT': '10' if cat == 'Life' else '1', 'Policy Term (PT)': 20 if cat == 'Life' else 1,
+                    'Sum Assured': rnd.choice([2500000, 5000000, 10000000]), 'OD Premium': od, 'TP Premium': tp,
+                    'Total Premium': round(net * 1.18, 2), 'Net Premium': net, 'Business Type': rnd.choice(['New', 'New', 'Renewal']),
+                    '% Expect Comm.': pct, 'Actual Comm.%': pct, 'Expect Comm.': round(net * pct, 2), 'Actual Comm.': round(net * pct, 2),
+                    'Agreed % sharing with POSP': agreed, 'POSP Ideal Commission': round(net * pct * agreed, 2) if agreed else None,
+                    'Region': c['rm']['region'], 'Remarks': 'PAN not on the proposal' if named else None})
+        wsi.append([row[h] for h in INS_HEAD])
+    return wbi
+
+
+by_name_for = {MONTH: by_name[3:5], SEP: by_name[7:10]}
+ins_aug = rnd.sample([c for c in clients if c['rm']['type'] == 'RM'], 8)
+ins_sep = rnd.sample([c for c in clients if c['rm']['type'] == 'RM'], 3)
+wb_ins8 = policy_sheet(MONTH, 'Aug-26', ins_aug, 2)
+wb_ins9 = policy_sheet(SEP, 'Sep-26', ins_sep, 3)
+
 os.makedirs(OUT, exist_ok=True)
 save(wb, 'masters.xlsx')
 save(wb_fin, 'ClientMasterReport.xlsx')
 save(wb_mis, 'Master_MIS.xlsx')
 save(wb_mf, 'MFBrokerage_Aug2026.xlsx')
 save(wb_eq, 'Equity_Brokerage_Aug2026.xlsx')
+save(wb_ins8, 'Insurance_Aug2026.xlsx')
+save(wb_mf9, 'MFBrokerage_Sep2026.xlsx')
+save(wb_ins9, 'Insurance_Sep2026.xlsx')
 with open(os.path.join(OUT, 'products.json'), 'w') as f:
     json.dump(products, f, indent=1)
 print('wrote', os.path.relpath(os.path.join(OUT, 'products.json')))

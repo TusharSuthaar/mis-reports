@@ -129,6 +129,12 @@ platforms = {}
 for p in products['platforms']:
     platforms[p['name']] = call('POST', '/api/platforms', {'name': p['name']})['id']
     call('POST', '/api/platforms/%d/terms' % platforms[p['name']], p['terms'])
+scrips = {}
+for sc in products.get('scrips', []):
+    scrips[sc['name']] = call('POST', '/api/preipo/scrips', {'name': sc['name'], 'isin': sc['isin'], 'faceValue': sc['faceValue'],
+                                                            'lotSize': sc['lotSize']})['id']
+    call('POST', '/api/preipo/prices', {'scripId': scrips[sc['name']], 'vendorId': platforms['DEMO UNLISTED'], 'asOf': sc['asOf'],
+                                        'basePrice': sc['basePrice']})
 clients = {}
 
 
@@ -143,7 +149,7 @@ def client(pan):
 
 
 PATHS = {'fd': '/api/fd', 'bonds': '/api/bonds', 'aif': '/api/aif', 'loans': '/api/loans', 'gift': '/api/gift', 'pms': '/api/pms',
-         'pms-payout': '/api/pms/payouts', 'nps': '/api/nps', 'p2p': '/api/p2p'}
+         'pms-payout': '/api/pms/payouts', 'nps': '/api/nps', 'p2p': '/api/p2p', 'preipo': '/api/preipo'}
 counts = {}
 for e in products['entries']:
     body = {k: v for k, v in e['body'].items() if v is not None}
@@ -151,12 +157,18 @@ for e in products['entries']:
         body['partnerId'] = partners[body.pop('partner').upper()]
     if e['kind'] in ('bonds', 'aif'):
         body['platformId'] = platforms[body.pop('platform')]
+    if e['kind'] == 'preipo':
+        body['scripId'] = scrips[body.pop('scrip')]
+        body['vendorId'] = platforms[body.pop('vendor')]
     if e['client']:
         c = client(e['client']['pan'])
         body['clientId'] = c['id']
         body['rmId'] = c['rmId']
-    call('POST', PATHS[e['kind']], body)
+    saved_entry = call('POST', PATHS[e['kind']], body)
     counts[e['kind']] = counts.get(e['kind'], 0) + 1
+    if e.get('augFee'):   # PMS revenue: the AMC's August payout typed for this client's investment (R-85)
+        call('POST', '/api/pms/fees', {'investmentId': saved_entry['id'], 'month': MONTH + '-01', 'amount': e['augFee']})
+        counts['pms revenue'] = counts.get('pms revenue', 0) + 1
 print('  ', counts)
 
 step('Finesse MF brokerage for %s' % MONTH)
@@ -177,6 +189,13 @@ print('   %(trades)s trades, %(clients)s clients (%(clientsNotFound)s not found)
 for m in call('GET', '/api/equity/name-matches?month=%s' % MONTH):
     call('POST', '/api/equity/name-matches', {'month': MONTH, 'partyCode': m['partyCode'], 'clientId': m['clientId']})
 
+step('Insurance policy sheet for %s' % MONTH)
+r = upload('/api/insurance/upload', 'Insurance_Aug2026.xlsx', month=MONTH + '-01')
+print('   %s policies saved, %s found by name, %s not saved' % (r.get('saved'), r.get('byName'), len(r.get('notSaved') or [])))
+# In August every suggestion is the right person (R-100); September keeps its suggestions for a person to confirm.
+for m in call('GET', '/api/insurance/name-matches?month=%s' % MONTH):
+    call('POST', '/api/insurance/%d/confirm-client' % m['policyId'], {'clientId': m['clientId']})
+
 step('Pre-check and process %s' % MONTH)
 period = next(m for m in call('GET', '/api/months') if m['month'] == MONTH)
 ready = call('GET', '/api/months/%d/readiness' % period['periodId'])
@@ -185,4 +204,10 @@ if not ready['ready']:
              % (ready['notInMaster'], ready['missingPercent'], ready['equityNotInClients']))
 r = wait(call('POST', '/api/months/%d/process' % period['periodId'])['jobId'], 'processing')
 print('   %(lines)s lines, net %(net)s, partners %(partners)s, Epsilon %(epsilon)s' % r)
+step('September 2026, left open with clients found by name to confirm')
+r = wait(upload('/api/uploads', 'MFBrokerage_Sep2026.xlsx', month='2026-09')['jobId'], 'September MF upload')
+review = call('GET', '/api/uploads/%d/review' % r['uploadId']) if r.get('uploadId') else {}
+print('   MF file staged, not saved: %s client code(s) found by name to confirm' % review.get('toConfirm'))
+r = upload('/api/insurance/upload', 'Insurance_Sep2026.xlsx', month='2026-09-01')
+print('   insurance: %s policies saved, %s found by name to confirm' % (r.get('saved'), r.get('byName')))
 print('Done. Sign in as %s at the app (http://localhost:5180 with docker compose) and open Dashboard for August 2026.' % user)
