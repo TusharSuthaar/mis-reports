@@ -15,6 +15,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import money.epsilon.brokerage.attribution.service.AttributionService;
@@ -29,6 +30,8 @@ import money.epsilon.brokerage.ingestion.parser.ParsedIncomeFile.Totals;
 import money.epsilon.brokerage.ingestion.parser.StagedIncomeRow;
 import money.epsilon.brokerage.ledger.service.LedgerService;
 import money.epsilon.brokerage.ledger.service.LedgerService.LineInput;
+import money.epsilon.brokerage.mapping.domain.SourceAlias.EntityType;
+import money.epsilon.brokerage.mapping.service.AliasService;
 import money.epsilon.brokerage.period.domain.Period;
 import money.epsilon.brokerage.period.service.PeriodService;
 import money.epsilon.brokerage.period.service.PeriodService.PeriodView;
@@ -62,7 +65,8 @@ public class UploadService {
     static final String SOURCE = FinesseBrokerageParser.SOURCE;
 
     /** How a brokerage code found its client. */
-    enum MatchKind { PAN, GUARDIAN_PAN, NAME, NOT_IN_MASTER }
+    /** NAME: found by its name only, waiting for a person to confirm it (R-100); CONFIRMED: such a match, confirmed. */
+    enum MatchKind { PAN, GUARDIAN_PAN, NAME, CONFIRMED, NOT_IN_MASTER }
 
     private final FinesseBrokerageParser parser;
     private final FinesseClientMasterService finesseClients;
@@ -77,10 +81,11 @@ public class UploadService {
     private final JobService jobs;
     private final ObjectMapper mapper;
     private final PanCipher panCipher;
+    private final AliasService aliases;
 
     UploadService(FinesseBrokerageParser parser, FinesseClientMasterService finesseClients, FileStore files, PeriodService periods,
                   ClientService clients, LedgerService ledger, AttributionService attribution, UploadRepository uploads, JdbcClient jdbc,
-                  AuditService audit, JobService jobs, ObjectMapper mapper, PanCipher panCipher) {
+                  AuditService audit, JobService jobs, ObjectMapper mapper, PanCipher panCipher, AliasService aliases) {
         this.parser = parser;
         this.finesseClients = finesseClients;
         this.files = files;
@@ -94,6 +99,7 @@ public class UploadService {
         this.jobs = jobs;
         this.mapper = mapper;
         this.panCipher = panCipher;
+        this.aliases = aliases;
     }
 
     // ---- 1. upload ---------------------------------------------------------------------------------------------
@@ -144,6 +150,12 @@ public class UploadService {
         Map<MatchKind, Integer> kinds = new java.util.EnumMap<>(MatchKind.class);
         for (StagedIncomeRow r : parsed.rows()) {
             Match m = matcher.match(master.get(r.clientCode()));
+            // A code without its own PAN that someone confirmed before goes to that client, ahead of any guess by name.
+            Code fcode = master.get(r.clientCode());
+            if (m.kind() == MatchKind.NAME || m.kind() == MatchKind.NOT_IN_MASTER && fcode != null && fcode.panHash() == null) {
+                Optional<Long> confirmed = aliases.resolve(SOURCE, EntityType.CLIENT, r.clientCode());
+                if (confirmed.isPresent()) m = new Match(confirmed.get(), MatchKind.CONFIRMED, null);
+            }
             long clientId;
             boolean isNew = false;
             if (m.clientId() != null) {
@@ -254,7 +266,15 @@ public class UploadService {
      * so saving posts the differences into the next open month.
      */
     public record Review(UploadView upload, int codes, int clients, int byPan, int byGuardianPan, int byName, List<NotInMaster> notInMaster,
-                         boolean canSave, boolean correction) {
+                         boolean canSave, boolean correction, List<NameMatch> nameMatches, int toConfirm) {
+    }
+
+    /**
+     * A code found by its name only (no PAN): the client it went to, as a suggestion until confirmed (R-100).
+     * {@code confirmed}: someone accepted it, on this upload or an earlier month's.
+     */
+    public record NameMatch(String code, String nameInFile, long clientId, String clientName, String pan, String rmName, BigDecimal net,
+                            boolean confirmed) {
     }
 
     @Transactional(readOnly = true)
@@ -265,10 +285,54 @@ public class UploadService {
         List<NotInMaster> missing = notInMaster(rows, period);
         int byPan = (int) rows.stream().filter(r -> MatchKind.PAN.name().equals(r.matchKind())).count();
         int byGuardian = (int) rows.stream().filter(r -> MatchKind.GUARDIAN_PAN.name().equals(r.matchKind())).count();
-        int byName = (int) rows.stream().filter(r -> MatchKind.NAME.name().equals(r.matchKind())).count();
+        List<NameMatch> nameMatches = nameMatches(rows);
+        int byName = (int) rows.stream().filter(r -> isByName(r.matchKind())).count();
+        int toConfirm = (int) nameMatches.stream().filter(n -> !n.confirmed()).count();
         int lines = (int) rows.stream().map(Row::clientId).distinct().count();
         return new Review(view(u, period, rows), rows.size(), lines, byPan, byGuardian, byName, missing, u.getStatus() == Upload.Status.STAGED,
-                period.status() == Period.Status.LOCKED);
+                period.status() == Period.Status.LOCKED, nameMatches, toConfirm);
+    }
+
+    private static boolean isByName(String kind) {
+        return MatchKind.NAME.name().equals(kind) || MatchKind.CONFIRMED.name().equals(kind);
+    }
+
+    /** The upload's codes found by name, one per code, those still to confirm first. */
+    private List<NameMatch> nameMatches(List<Row> rows) {
+        List<Row> byName = rows.stream().filter(r -> isByName(r.matchKind())).toList();
+        if (byName.isEmpty()) return List.of();
+        Map<Long, ClientService.ClientView> views = clients.views(byName.stream().map(Row::clientId).distinct().toList());
+        Map<String, List<Row>> byCode = byName.stream().collect(Collectors.groupingBy(Row::code, LinkedHashMap::new, Collectors.toList()));
+        return byCode.values().stream().map(rs -> {
+            Row r = rs.get(0);
+            ClientService.ClientView v = views.get(r.clientId());
+            return new NameMatch(r.code(), r.name(), r.clientId(), v == null ? null : v.name(), v == null ? null : v.pan(), v == null ? null : v.rmName(),
+                    rs.stream().map(Row::net).reduce(BigDecimal.ZERO, BigDecimal::add), MatchKind.CONFIRMED.name().equals(r.matchKind()));
+        }).sorted(Comparator.comparing(NameMatch::confirmed).thenComparing(NameMatch::net, Comparator.reverseOrder())).toList();
+    }
+
+    record NameConfirmed(String code, long clientIdBefore, long clientId) {
+    }
+
+    /**
+     * Confirms which client a code found by its name is (R-100): the one suggested, or another picked instead. The code is
+     * remembered for that client, so later months go there without asking. Audited.
+     */
+    @Transactional
+    public Review confirmName(long uploadId, String code, long clientId) {
+        Upload u = find(uploadId);
+        if (u.getStatus() != Upload.Status.STAGED) throw new RuleViolationException("This upload is already " + u.getStatus().name().toLowerCase());
+        List<Row> rows = rows(uploadId).stream().filter(r -> r.code().equals(code)).toList();
+        if (rows.isEmpty()) throw new NotFoundException("Code " + code + " is not in this upload");
+        if (rows.stream().noneMatch(r -> isByName(r.matchKind()))) throw new RuleViolationException("Code " + code + " was not matched by name");
+        clients.requireExists(clientId);
+        long before = rows.get(0).clientId();
+        jdbc.sql("UPDATE staged_row SET client_id = ?, match_kind = ?, match_note = NULL WHERE upload_id = ? AND client_code = ?")
+                .params(clientId, MatchKind.CONFIRMED.name(), uploadId, code).update();
+        clients.linkCode(SOURCE, code, clientId);
+        aliases.confirm(SOURCE, EntityType.CLIENT, code, clientId);
+        audit.record("UPLOAD", uploadId, "CONFIRM_NAME_MATCH", null, new NameConfirmed(code, before, clientId));
+        return review(uploadId);
     }
 
     /** The upload's clients that have no RM on the month's last day, with why their code found no Master MIS client. */
@@ -316,6 +380,10 @@ public class UploadService {
         Upload u = find(uploadId);
         if (u.getStatus() != Upload.Status.STAGED) throw new RuleViolationException("This upload is already " + u.getStatus().name().toLowerCase());
         PeriodView period = periods.get(u.getPeriodId());
+        long toConfirm = rows(uploadId).stream().filter(r -> MatchKind.NAME.name().equals(r.matchKind())).map(Row::code).distinct().count();
+        if (toConfirm > 0) {
+            throw new RuleViolationException(toConfirm + " client code(s) were found by name only (no PAN). Confirm or change each of them, then save.");
+        }
         if (period.status() == Period.Status.LOCKED) return commitCorrection(u, period);
         Long replaced = null;
         var previous = uploads.findFirstByPeriodIdAndStatus(period.id(), Upload.Status.COMMITTED);

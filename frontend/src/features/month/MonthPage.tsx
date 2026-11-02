@@ -1,3 +1,4 @@
+import { NameMatches } from '../entry/NameMatches';
 import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, errorText } from '../../api/client';
@@ -56,6 +57,9 @@ interface Readiness {
   ready: boolean;
   /** Equity clients of the month not in Clients, as the broker's file has them. */
   equityMissing?: { partyCode: string; name: string | null; pan: string | null; share: number }[];
+  /** Equity party codes and insurance policies whose client was found by name only, waiting for a confirmation (R-100). */
+  equityNameMatches?: { partyCode: string; nameInFile: string | null; clientId: number; clientName: string | null; pan: string | null; rmName: string | null; share: number }[];
+  insuranceNameMatches?: { policyId: number; policyNo: string; insurer: string; nameInFile: string | null; clientId: number; clientName: string | null; pan: string | null; rmName: string | null; expectedComm: number }[];
 }
 
 /** The products entered for a month, in END order, with the Product entries tab each lives on. */
@@ -156,7 +160,8 @@ function MonthWizard({ month, row, canEdit, onChanged }: { month: string; row: M
 
   const masterState: StepState = master.data && master.data.codes === 0 ? 'todo' : 'optional';
   const mfState: StepState = reviewId ? 'todo' : saved ? (row!.notInMaster > 0 ? 'blocked' : 'done') : 'todo';
-  const productsState: StepState = !row ? 'waiting' : r && r.equityNotInClients > 0 ? 'blocked' : 'optional';
+  const nameMatchesWaiting = (r?.equityNameMatches?.length ?? 0) + (r?.insuranceNameMatches?.length ?? 0);
+  const productsState: StepState = !row ? 'waiting' : r && (r.equityNotInClients > 0 || nameMatchesWaiting > 0) ? 'blocked' : 'optional';
   const checkState: StepState = !row || !saved ? 'waiting' : status !== 'OPEN' ? 'done' : r && !r.ready ? 'blocked' : 'todo';
   const endState: StepState = status === 'LOCKED' ? 'done' : status === 'PROCESSED' ? 'todo' : 'waiting';
   const current = masterState === 'todo' ? 1 : mfState !== 'done' ? 2 : status === 'OPEN' ? 4 : 5;
@@ -231,6 +236,28 @@ function MonthWizard({ month, row, canEdit, onChanged }: { month: string; row: M
             {r.equityNotInClients > 0 && (
               <MissingEquity month={month} list={r.equityMissing ?? []} count={r.equityNotInClients} canEdit={canEdit} onAdded={changed} />
             )}
+            <NameMatches
+              title="Equity clients"
+              refLabel="Party code"
+              amountLabel="Share"
+              canEdit={canEdit}
+              rows={(r.equityNameMatches ?? []).map((m) => ({ key: m.partyCode, ref: m.partyCode, nameInFile: m.nameInFile, clientId: m.clientId, clientName: m.clientName, pan: m.pan, rmName: m.rmName, amount: m.share }))}
+              onConfirm={async (row, clientId) => {
+                await api('/api/equity/name-matches', { method: 'POST', body: { month, partyCode: row.ref, clientId } });
+                changed();
+              }}
+            />
+            <NameMatches
+              title="Insurance policies"
+              refLabel="Policy no."
+              amountLabel="Expected commission"
+              canEdit={canEdit}
+              rows={(r.insuranceNameMatches ?? []).map((m) => ({ key: String(m.policyId), ref: m.policyNo, nameInFile: m.nameInFile, clientId: m.clientId, clientName: m.clientName, pan: m.pan, rmName: m.rmName, amount: m.expectedComm }))}
+              onConfirm={async (row, clientId) => {
+                await api(`/api/insurance/${row.key}/confirm-client`, { method: 'POST', body: { clientId } });
+                changed();
+              }}
+            />
             <p className="muted">Monthly files: the equity brokerage report on the Equity tab, the insurance policy sheet on the Insurance tab.</p>
           </>
         )}
@@ -387,6 +414,10 @@ function ProcessStep({ row, r, canEdit, onChanged, recheck }: { row: MonthRow; r
           link: 'Set %',
         },
         { ok: r.equityNotInClients === 0, text: r.equityNotInClients === 0 ? 'Every equity PAN is a client' : `${r.equityNotInClients} equity PAN(s) not in Clients`, to: '/products?tab=EQUITY', link: 'See' },
+        (() => {
+          const waiting = (r.equityNameMatches?.length ?? 0) + (r.insuranceNameMatches?.length ?? 0);
+          return { ok: waiting === 0, text: waiting === 0 ? 'Every client found by name is confirmed' : `${waiting} equity / insurance client(s) found by name only: confirm them in step 3 above`, to: '/products?tab=EQUITY', link: 'Equity tab' };
+        })(),
       ]
     : [];
   const processed = row.status !== 'OPEN';
@@ -640,8 +671,8 @@ function Review({ uploadId, notes, canEdit, onDone }: { uploadId: number; notes:
           <span className="muted">Matched by guardian PAN</span>
           <strong>{r.byGuardianPan.toLocaleString('en-IN')}</strong>
         </div>
-        <div className="stat">
-          <span className="muted">Matched by name (no PAN)</span>
+        <div className={r.toConfirm > 0 ? 'stat danger' : 'stat'}>
+          <span className={r.toConfirm > 0 ? undefined : 'muted'}>Matched by name (no PAN)</span>
           <strong>{r.byName.toLocaleString('en-IN')}</strong>
         </div>
         <div className={r.notInMaster.length > 0 ? 'stat danger' : 'stat'}>
@@ -707,7 +738,20 @@ function Review({ uploadId, notes, canEdit, onDone }: { uploadId: number; notes:
         <p className="ok">Every client is in Master MIS.</p>
       )}
 
+      <NameMatches
+        title="MF client codes"
+        refLabel="Finesse code"
+        amountLabel="Net"
+        canEdit={canEdit && u.status === 'STAGED'}
+        rows={r.nameMatches.map((m) => ({ key: m.code, ref: m.code, nameInFile: m.nameInFile, clientId: m.clientId, clientName: m.clientName, pan: m.pan, rmName: m.rmName, amount: m.net, confirmed: m.confirmed }))}
+        onConfirm={async (row, clientId) => {
+          await api(`/api/uploads/${uploadId}/name-matches`, { method: 'POST', body: { code: row.ref, clientId } });
+          review.reload();
+        }}
+      />
+
       <h3>Save the month</h3>
+      {r.toConfirm > 0 && <p className="warn-note">Confirm the {r.toConfirm} client code(s) found by name above; then the month can be saved.</p>}
       {r.correction && (
         <p className="warn-note">
           {monthLabel(u.month)} is locked. Saving does not change it: the difference for each client is posted into the next open month as
@@ -721,7 +765,7 @@ function Review({ uploadId, notes, canEdit, onDone }: { uploadId: number; notes:
           <div className="upload">
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || r.toConfirm > 0}
               onClick={async () => {
                 const ok = await run(async () => {
                   const res = await api<{ lines: { lines: number; net: number } }>(`/api/uploads/${uploadId}/commit`, { method: 'POST' });

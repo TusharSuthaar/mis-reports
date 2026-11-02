@@ -117,6 +117,23 @@ class InsuranceController {
         service.cancel(id, req.reason());
     }
 
+    /** The month's policies whose client was found by name only, waiting for a confirmation (R-100). */
+    @GetMapping("/name-matches")
+    @PreAuthorize(Roles.MASTER_READ)
+    List<InsuranceService.NameMatch> nameMatches(@RequestParam YearMonth month) {
+        return service.nameMatches(month);
+    }
+
+    public record ConfirmName(@NotNull Long clientId) {
+    }
+
+    /** Confirms the client suggested for a policy found by name, or gives another (R-100). */
+    @PostMapping("/{id}/confirm-client")
+    @PreAuthorize(Roles.MASTER_WRITE)
+    List<InsuranceService.NameMatch> confirmName(@PathVariable long id, @Valid @RequestBody ConfirmName body) {
+        return service.confirmName(id, body.clientId());
+    }
+
     @PostMapping("/upload")
     @PreAuthorize(Roles.MASTER_WRITE)
     UploadResult upload(@RequestParam("file") MultipartFile file, @RequestParam("month") LocalDate month) throws IOException {

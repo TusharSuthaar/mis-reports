@@ -49,6 +49,25 @@ public class AliasService {
         return true;
     }
 
+    /**
+     * Confirms what a file's code or name stands for (R-100): saves the alias, or moves an existing one to this target
+     * (someone corrected an earlier confirmation). Audited either way. @return true if anything changed
+     */
+    @Transactional
+    public boolean confirm(String source, EntityType type, String raw, long targetId) {
+        String key = Text.key(raw);
+        if (key.isEmpty()) throw new IllegalArgumentException("An alias needs a spelling");
+        Optional<SourceAlias> existing = aliases.findBySourceAndEntityTypeAndRawValueNormalized(source, type, key);
+        if (existing.isEmpty()) return remember(source, type, raw, targetId);
+        long before = existing.get().getTargetId();
+        if (before == targetId) return false;
+        aliases.delete(existing.get());
+        aliases.flush();
+        SourceAlias saved = aliases.save(new SourceAlias(source, type, key, targetId, CurrentUser.username()));
+        audit.record("SOURCE_ALIAS", saved.getId(), "UPDATE", new AliasView(source, type, key, before), new AliasView(source, type, key, targetId));
+        return true;
+    }
+
     /** Points every alias of one RM / partner at another (after a merge). @return how many moved */
     @Transactional
     public int retarget(EntityType type, long fromId, long toId) {

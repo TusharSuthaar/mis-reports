@@ -136,6 +136,16 @@ class UploadIT extends IntegrationTestBase {
         assertThat(review.get("byName").asInt()).isEqualTo(1);
         assertThat(review.get("notInMaster")).singleElement()
                 .satisfies(n -> assertThat(n.get("reason").asText()).contains("name matches a Master MIS client with another PAN"));
+        // Found by name only: a suggestion. Saving waits until someone confirms it (R-100).
+        assertThat(review.get("toConfirm").asInt()).isEqualTo(1);
+        assertThat(review.get("nameMatches")).singleElement().satisfies(m -> {
+            assertThat(m.get("code").asText()).isEqualTo(byName);
+            assertThat(m.get("clientId").asLong()).isEqualTo(named);
+            assertThat(m.get("confirmed").asBoolean()).isFalse();
+        });
+        postJson("/api/uploads/" + uploadId + "/commit", Map.of(), admin, 409);
+        JsonNode after = postJson("/api/uploads/" + uploadId + "/name-matches", Map.of("code", byName, "clientId", named), admin, 200);
+        assertThat(after.get("toConfirm").asInt()).isZero();
         postJson("/api/uploads/" + uploadId + "/commit", Map.of(), admin, 200);
         assertThat(jdbc.sql("SELECT net FROM brokerage_line WHERE upload_id = ? AND client_id = ? AND NOT voided").params(uploadId, named)
                 .query(java.math.BigDecimal.class).single()).isEqualByComparingTo("12");
@@ -150,8 +160,11 @@ class UploadIT extends IntegrationTestBase {
         JsonNode review = getJson("/api/uploads/" + uploadId + "/review", admin, 200);
         assertThat(review.get("byName").asInt()).isEqualTo(1);
         assertThat(review.get("byGuardianPan").asInt()).isZero();
+        assertThat(review.get("nameMatches").get(0).get("clientId").asLong()).isEqualTo(minor);
+        // The person checking knows better: this code is ONE's (the guardian), so they pick ONE instead of the name's client.
+        postJson("/api/uploads/" + uploadId + "/name-matches", Map.of("code", code, "clientId", one), admin, 200);
         postJson("/api/uploads/" + uploadId + "/commit", Map.of(), admin, 200);
-        assertThat(jdbc.sql("SELECT net FROM brokerage_line WHERE upload_id = ? AND client_id = ? AND NOT voided").params(uploadId, minor)
+        assertThat(jdbc.sql("SELECT net FROM brokerage_line WHERE upload_id = ? AND client_id = ? AND NOT voided").params(uploadId, one)
                 .query(java.math.BigDecimal.class).single()).isEqualByComparingTo("7");
     }
 
@@ -161,9 +174,20 @@ class UploadIT extends IntegrationTestBase {
         uploadClientMaster(new FinesseFiles.ClientMaster().client(code, "Two  " + tag, null, null).bytes(), admin);   // TWO's name, no PANs
         long uploadId = stage(new FinesseFiles.Brokerage().row(code, "x", start, end, 9).total(9).bytes());
         assertThat(getJson("/api/uploads/" + uploadId + "/review", admin, 200).get("byName").asInt()).isEqualTo(1);
+        postJson("/api/uploads/" + uploadId + "/name-matches", Map.of("code", code, "clientId", two), admin, 200);
         postJson("/api/uploads/" + uploadId + "/commit", Map.of(), admin, 200);
         assertThat(jdbc.sql("SELECT net FROM brokerage_line WHERE upload_id = ? AND client_id = ? AND NOT voided").params(uploadId, two)
                 .query(java.math.BigDecimal.class).single()).isEqualByComparingTo("9");
+
+        // The next file with this code: confirmed once, so it goes to TWO without asking again.
+        long again = stage(new FinesseFiles.Brokerage().row(code, "x", start, end, 11).total(11).bytes());
+        JsonNode second = getJson("/api/uploads/" + again + "/review", admin, 200);
+        assertThat(second.get("toConfirm").asInt()).isZero();
+        assertThat(second.get("nameMatches")).singleElement().satisfies(m -> {
+            assertThat(m.get("clientId").asLong()).isEqualTo(two);
+            assertThat(m.get("confirmed").asBoolean()).isTrue();
+        });
+        postJson("/api/uploads/" + again + "/commit", Map.of(), admin, 200);
     }
 
     @Test

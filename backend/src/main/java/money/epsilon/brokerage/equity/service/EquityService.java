@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -14,6 +15,8 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 import money.epsilon.brokerage.client.service.ClientService;
+import money.epsilon.brokerage.mapping.domain.SourceAlias.EntityType;
+import money.epsilon.brokerage.mapping.service.AliasService;
 import money.epsilon.brokerage.client.service.ClientService.ClientKey;
 import money.epsilon.brokerage.period.domain.Period;
 import money.epsilon.brokerage.period.service.PeriodService;
@@ -39,6 +42,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class EquityService {
 
     static final String AUDIT = "EQUITY_UPLOAD";
+    /** The source of a confirmed party code in remembered matches (R-100). */
+    static final String ALIAS_SOURCE = "EQUITY";
     static final String PARTY = "Party";
     static final String PAN = "PAN";
     static final String NAME = "Name";
@@ -59,14 +64,17 @@ public class EquityService {
     private final PeriodService periods;
     private final AuditService audit;
     private final ChangeWindow months;
+    private final AliasService aliases;
 
-    EquityService(JdbcClient jdbc, PanCipher panCipher, ClientService clients, PeriodService periods, AuditService audit, ChangeWindow months) {
+    EquityService(JdbcClient jdbc, PanCipher panCipher, ClientService clients, PeriodService periods, AuditService audit, ChangeWindow months,
+                  AliasService aliases) {
         this.jdbc = jdbc;
         this.panCipher = panCipher;
         this.clients = clients;
         this.periods = periods;
         this.audit = audit;
         this.months = months;
+        this.aliases = aliases;
     }
 
     /** {@code byPartyCode} / {@code byName}: clients of a report without PANs, found by party code or by exact name. */
@@ -122,23 +130,33 @@ public class EquityService {
         if (replaced != null) jdbc.sql("UPDATE equity_upload SET status = 'REPLACED' WHERE id = ?").param(replaced).update();
         BigDecimal gross = trades.stream().map(Trade::gross).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
         BigDecimal share = trades.stream().map(Trade::share).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
-        // A trade without a PAN: its party code's PAN in the report's summary sheet, else from earlier uploads, else the one client
-        // with exactly its name.
+        // A trade without a PAN: the client its party code was confirmed as (R-100), else its party code's PAN in the report's
+        // summary sheet, else from earlier uploads (never from a name match not confirmed), else the one client with exactly its
+        // name, as a suggestion to confirm.
         Map<String, String> byParty = partyIndex();
         byParty.putAll(filePans);
         Map<String, List<Long>> byName = new HashMap<>();
         for (ClientKey k : clients.keys()) byName.computeIfAbsent(Text.nameKey(k.nameKey()), x -> new ArrayList<>()).add(k.id());
         Map<String, Long> nameClient = new HashMap<>();
+        Map<String, String> matchedBy = new HashMap<>();
         Set<String> viaParty = new java.util.HashSet<>(), viaName = new java.util.HashSet<>();
         List<Trade> resolved = new ArrayList<>();
         for (Trade t : trades) {
-            String knownPan = t.pan() == null && t.party() != null ? byParty.get(t.party()) : null;
-            List<Long> same = t.pan() != null || knownPan != null || t.name() == null ? List.of() : byName.getOrDefault(Text.nameKey(t.name()), List.of());
+            Long confirmed = t.pan() == null && t.party() != null ? aliases.resolve(ALIAS_SOURCE, EntityType.CLIENT, t.party()).orElse(null) : null;
+            String knownPan = t.pan() == null && confirmed == null && t.party() != null ? byParty.get(t.party()) : null;
+            List<Long> same = t.pan() != null || confirmed != null || knownPan != null || t.name() == null ? List.of()
+                    : byName.getOrDefault(Text.nameKey(t.name()), List.of());
             String pan = t.pan();
-            if (knownPan != null) {
+            if (confirmed != null) {
+                matchedBy.put(t.party(), "CONFIRMED");
+                nameClient.put(t.party(), confirmed);
+                pan = clients.pans(List.of(confirmed)).get(confirmed);
+            } else if (knownPan != null) {
+                matchedBy.put(t.party(), "PARTY");
                 viaParty.add(t.party());
                 pan = knownPan;
             } else if (same.size() == 1) {
+                matchedBy.put(t.party(), "NAME");
                 viaName.add(t.party());
                 nameClient.put(t.party(), same.get(0));
                 pan = clients.pans(List.of(same.get(0))).get(same.get(0));
@@ -159,10 +177,10 @@ public class EquityService {
             if (clientId != null) found.add(clientKey(t));
             jdbc.sql("""
                             INSERT INTO equity_trade (upload_id, row_no, party_code, pan_encrypted, pan_hash, client_name, trade_date, exchange, gross,
-                                                      share, client_id)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""")
+                                                      share, client_id, matched_by)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""")
                     .params(uploadId, t.rowNo(), t.party() == null ? "" : t.party(), t.pan() == null ? null : panCipher.encrypt(t.pan()), hash, t.name(), t.date(), t.exchange(),
-                            t.gross(), t.share(), clientId)
+                            t.gross(), t.share(), clientId, t.party() == null ? "PAN" : matchedBy.getOrDefault(t.party(), "PAN"))
                     .update();
         }
         UploadResult result = new UploadResult(uploadId, month, fileName, broker, trades.size(), pans.size(), found.size(), pans.size() - found.size(),
@@ -214,7 +232,7 @@ public class EquityService {
     private Map<String, String> partyIndex() {
         Map<String, String> m = new HashMap<>();
         jdbc.sql("SELECT DISTINCT ON (party_code) party_code, pan_encrypted FROM equity_trade WHERE party_code <> '' AND pan_encrypted IS NOT NULL"
-                        + " ORDER BY party_code, id DESC")
+                        + " AND matched_by <> 'NAME' ORDER BY party_code, id DESC")
                 .query((rs, n) -> m.put(rs.getString(1), panCipher.decrypt(rs.getString(2)))).list();
         return m;
     }
@@ -243,10 +261,14 @@ public class EquityService {
     }
 
     /** The month's equity clients and those of its trades that are not clients yet, without changing anything (R-91). */
-    public record MonthCheck(boolean uploaded, List<Long> clientIds, int notInClients, List<Missing> missing) {
+    public record MonthCheck(boolean uploaded, List<Long> clientIds, int notInClients, List<Missing> missing, List<NameMatch> nameMatches) {
         public MonthCheck(boolean uploaded, List<Long> clientIds, int notInClients) {
-            this(uploaded, clientIds, notInClients, List.of());
+            this(uploaded, clientIds, notInClients, List.of(), List.of());
         }
+    }
+
+    /** A party code found by its name only (no PAN): the client suggested, waiting for a person to confirm it (R-100). */
+    public record NameMatch(String partyCode, String nameInFile, long clientId, String clientName, String pan, String rmName, BigDecimal share) {
     }
 
     /** An equity client of the month not found in Clients: as the broker's file has it, with its share of the month. */
@@ -278,7 +300,15 @@ public class EquityService {
         Map<String, List<Long>> byName = nameIndex();
         boolean fullPan = Roles.canSeeFullPan();
         // Each client not found at upload (by PAN, or without a PAN by party code), looked up again: it may have been added since.
+        // Found by name only, now or at upload, it is a suggestion to confirm (R-100).
         List<Missing> missing = new ArrayList<>();
+        Map<String, Object[]> suggested = new LinkedHashMap<>();
+        jdbc.sql("""
+                        SELECT party_code, min(client_name) AS name, min(client_id) AS client_id, sum(share) AS share FROM equity_trade
+                        WHERE upload_id = ? AND matched_by = 'NAME' GROUP BY party_code ORDER BY sum(share) DESC""")
+                .param(uploadId)
+                .query((rs, n) -> suggested.put(rs.getString("party_code"), new Object[]{rs.getString("name"), rs.getLong("client_id"), rs.getBigDecimal("share")}))
+                .list();
         jdbc.sql("""
                         SELECT pan_hash, min(pan_encrypted) AS pan, min(party_code) AS party, min(client_name) AS name, sum(share) AS share
                         FROM equity_trade WHERE upload_id = ? AND client_id IS NULL
@@ -286,7 +316,9 @@ public class EquityService {
                 .param(uploadId)
                 .query((rs, n) -> {
                     Long id = lookUp(rs.getString("pan_hash"), rs.getString("name"), byHash, byName);
-                    if (id != null) {
+                    if (id != null && rs.getString("pan_hash") == null) {
+                        suggested.put(rs.getString("party"), new Object[]{rs.getString("name"), id, rs.getBigDecimal("share")});
+                    } else if (id != null) {
                         ids.add(id);
                     } else {
                         String pan = rs.getString("pan") == null ? null : panCipher.decrypt(rs.getString("pan"));
@@ -296,7 +328,42 @@ public class EquityService {
                     return null;
                 })
                 .list();
-        return new MonthCheck(true, List.copyOf(ids), missing.size(), missing);
+        suggested.values().forEach(v -> ids.remove((Long) v[1]));
+        Map<Long, ClientService.ClientView> views = clients.views(suggested.values().stream().map(v -> (Long) v[1]).distinct().toList());
+        List<NameMatch> nameMatches = suggested.entrySet().stream().map(e -> {
+            long id = (Long) e.getValue()[1];
+            ClientService.ClientView v = views.get(id);
+            return new NameMatch(e.getKey(), (String) e.getValue()[0], id, v == null ? null : v.name(), v == null ? null : v.pan(),
+                    v == null ? null : v.rmName(), ((BigDecimal) e.getValue()[2]).setScale(2, RoundingMode.HALF_UP));
+        }).toList();
+        return new MonthCheck(true, List.copyOf(ids), missing.size(), missing, nameMatches);
+    }
+
+    record NameConfirmed(YearMonth month, String partyCode, Long clientIdBefore, long clientId) {
+    }
+
+    /**
+     * Confirms which client a party code found by its name is (R-100): the one suggested, or another picked instead. Its
+     * trades of the month go to that client, and the party code is remembered for later reports. A processed month is
+     * processed again (R-98); a locked month is refused. Audited.
+     */
+    @Transactional
+    public MonthCheck confirmName(YearMonth month, String partyCode, long clientId) {
+        this.months.beforeEntryChange(month.atDay(1));
+        Long uploadId = jdbc.sql("SELECT id FROM equity_upload WHERE month = ? AND status = 'ACTIVE'").param(month.atDay(1))
+                .query(Long.class).optional().orElseThrow(() -> new RuleViolationException("No equity report for " + month));
+        clients.requireExists(clientId);
+        Long before = jdbc.sql("SELECT min(client_id) FROM equity_trade WHERE upload_id = ? AND party_code = ? AND (matched_by = 'NAME' OR pan_hash IS NULL)")
+                .params(uploadId, partyCode).query(Long.class).optional().orElse(null);
+        String pan = clients.pans(List.of(clientId)).get(clientId);
+        int updated = jdbc.sql("""
+                        UPDATE equity_trade SET client_id = ?, matched_by = 'CONFIRMED', pan_encrypted = coalesce(?, pan_encrypted), pan_hash = coalesce(?, pan_hash)
+                        WHERE upload_id = ? AND party_code = ? AND (matched_by = 'NAME' OR pan_hash IS NULL)""")
+                .params(clientId, pan == null ? null : panCipher.encrypt(pan), pan == null ? null : panCipher.hash(pan), uploadId, partyCode).update();
+        if (updated == 0) throw new RuleViolationException("Party " + partyCode + " was not found by name in " + month + "'s report");
+        aliases.confirm(ALIAS_SOURCE, EntityType.CLIENT, partyCode, clientId);
+        audit.record(AUDIT, uploadId, "CONFIRM_NAME_MATCH", null, new NameConfirmed(month, partyCode, before, clientId));
+        return check(month);
     }
 
     /**
@@ -322,10 +389,16 @@ public class EquityService {
                 .forEach(p -> {
                     Long id = lookUp(null, p[1], byHash, byName);
                     if (id != null) {
-                        jdbc.sql("UPDATE equity_trade SET client_id = ? WHERE upload_id = ? AND party_code = ? AND pan_hash IS NULL AND client_id IS NULL")
+                        jdbc.sql("UPDATE equity_trade SET client_id = ?, matched_by = 'NAME' WHERE upload_id = ? AND party_code = ? AND pan_hash IS NULL AND client_id IS NULL")
                                 .params(id, uploadId, p[0]).update();
                     }
                 });
+        long toConfirm = jdbc.sql("SELECT count(DISTINCT party_code) FROM equity_trade WHERE upload_id = ? AND matched_by = 'NAME'").param(uploadId)
+                .query(Long.class).single();
+        if (toConfirm > 0) {
+            throw new RuleViolationException(toConfirm + " equity client(s) of " + month + " were found by name only (no PAN). Confirm or change"
+                    + " each of them on the month's equity step, then process.");
+        }
         List<String> missing = jdbc.sql("SELECT DISTINCT pan_encrypted, party_code FROM equity_trade WHERE upload_id = ? AND client_id IS NULL")
                 .param(uploadId)
                 .query((rs, n) -> rs.getString(1) == null ? "party " + rs.getString(2) : "PAN " + PanCipher.mask(panCipher.decrypt(rs.getString(1))))

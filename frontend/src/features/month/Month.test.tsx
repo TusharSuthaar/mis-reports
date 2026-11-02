@@ -29,7 +29,7 @@ const upload: UploadInfo = {
 };
 
 const review: UploadReview = {
-  upload, codes: 2484, clients: 2440, byPan: 2421, byGuardianPan: 59, byName: 5,
+  upload, codes: 2484, clients: 2440, byPan: 2421, byGuardianPan: 59, byName: 5, nameMatches: [], toConfirm: 0,
   notInMaster: [{ clientId: 9, codes: 'FC09999', name: 'CLIENT NOT IN MASTER', pan: 'ABCDE****F', reason: 'PAN not in Master MIS', net: 32.5 }],
   canSave: true, correction: false,
 };
@@ -238,5 +238,44 @@ describe('this month', () => {
     await userEvent.upload(await screen.findByLabelText('Finesse brokerage file'), new File(['x'], 'bad.xlsx'));
     await userEvent.click(screen.getByRole('button', { name: 'Upload brokerage' }));
     expect(await screen.findByText('Rows add up to 100.00 but the Total row says 1.00')).toBeInTheDocument();
+  });
+
+  it('holds the save until each client code found by name only is confirmed, then saves', async () => {
+    document.cookie = 'XSRF-TOKEN=tok';
+    let confirmed: unknown = null;
+    const waiting: UploadReview = {
+      ...review, notInMaster: [], toConfirm: 1,
+      nameMatches: [{ code: 'FC07777', nameInFile: 'BABY RAO', clientId: 77, clientName: 'BABY RAO', pan: null, rmName: 'RM ALPHA', net: 120, confirmed: false }],
+    };
+    const done: UploadReview = { ...waiting, toConfirm: 0, nameMatches: [{ ...waiting.nameMatches[0], confirmed: true }] };
+    let current = waiting;
+    const job: Job<StageResult> = {
+      id: 4, type: 'income-upload', title: 'Uploaded a brokerage file', status: 'DONE', error: null, reference: 'TESTREF1',
+      result: { uploadId: 5, errors: [], warnings: 0, notes: [] },
+    };
+    fakeApi({
+      'GET /api/auth/me': ok(admin),
+      'GET /api/months': ok([]),
+      'GET /api/finesse/client-master': ok(masterLoaded),
+      'POST /api/uploads': () => ({ status: 202, body: { jobId: 4 } }),
+      'GET /api/jobs/4': ok(job),
+      'GET /api/uploads/5/review': () => ({ status: 200, body: current }),
+      'POST /api/uploads/5/name-matches': (init) => {
+        confirmed = JSON.parse(String(init?.body));
+        current = done;
+        return { status: 200, body: done };
+      },
+    });
+    renderAt('/month?m=2026-08');
+    await screen.findByText(/3,237 codes/);
+    await userEvent.upload(screen.getByLabelText('Finesse brokerage file'), new File(['x'], 'aug.xlsx'));
+    await userEvent.click(screen.getByRole('button', { name: 'Upload brokerage' }));
+
+    expect(await screen.findByText(/MF client codes: 1 found by name only/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save August 2026' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    expect(confirmed).toEqual({ code: 'FC07777', clientId: 77 });
+    expect(await screen.findByText('confirmed')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save August 2026' })).toBeEnabled();
   });
 });

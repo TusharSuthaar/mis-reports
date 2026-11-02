@@ -368,7 +368,9 @@ public class AttributionService {
      */
     public record Readiness(long periodId, YearMonth month, String status, boolean mfSaved, int mfClients, boolean equityUploaded,
                             int equityClients, int equityNotInClients, Map<String, Integer> entries, long notInMaster,
-                            List<String> missingPercent, boolean ready, List<money.epsilon.brokerage.equity.service.EquityService.Missing> equityMissing) {
+                            List<String> missingPercent, boolean ready, List<money.epsilon.brokerage.equity.service.EquityService.Missing> equityMissing,
+                            List<money.epsilon.brokerage.equity.service.EquityService.NameMatch> equityNameMatches,
+                            List<money.epsilon.brokerage.insurance.service.InsuranceService.NameMatch> insuranceNameMatches) {
     }
 
     private static final Map<Product, String> PRODUCT_LABEL = Map.of(Product.FD, "FD", Product.BOND, "Bonds", Product.AIF, "AIF",
@@ -393,6 +395,7 @@ public class AttributionService {
         var npsEntries = npses.forLedger(month);
         var p2pEntries = p2ps.forLedger(month);
         var insEntries = insurance.forLedger(month);
+        var insNameMatches = insurance.nameMatches(month);
 
         // Clients split with their own partners (MF and equity) and every client with business this month.
         java.util.Set<Long> splitByShares = new java.util.LinkedHashSet<>(mfClients);
@@ -442,9 +445,10 @@ public class AttributionService {
         entries.put(P2P, p2pEntries.size());
         entries.put(INS, insEntries.size());
         boolean ready = period.status() != Period.Status.LOCKED && !mfClients.isEmpty() && notInMaster == 0 && missing.isEmpty()
-                && eq.notInClients() == 0;
+                && eq.notInClients() == 0 && eq.nameMatches().isEmpty() && insNameMatches.isEmpty();
         return new Readiness(periodId, month, period.status().name(), !mfClients.isEmpty(), mfClients.size(), eq.uploaded(),
-                eq.clientIds().size(), eq.notInClients(), entries, notInMaster, List.copyOf(missing), ready, eq.missing());
+                eq.clientIds().size(), eq.notInClients(), entries, notInMaster, List.copyOf(missing), ready, eq.missing(), eq.nameMatches(),
+                insNameMatches);
     }
 
     /** Voids the month's current split (its figures changed or it is being re-run). */

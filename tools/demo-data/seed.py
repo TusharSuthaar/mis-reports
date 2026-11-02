@@ -163,12 +163,19 @@ step('Finesse MF brokerage for %s' % MONTH)
 r = wait(upload('/api/uploads', 'MFBrokerage_Aug2026.xlsx', month=MONTH)['jobId'], 'MF upload')
 if not r.get('uploadId'):
     sys.exit('MF file not staged: %s' % r.get('errors'))
+# Clients found by name only (no PAN) wait for a person (R-100); in the demo every suggestion is the right person.
+review = call('GET', '/api/uploads/%d/review' % r['uploadId'])
+for m in [m for m in review.get('nameMatches', []) if not m['confirmed']]:
+    call('POST', '/api/uploads/%d/name-matches' % r['uploadId'], {'code': m['code'], 'clientId': m['clientId']})
+print('   %d client code(s) found by name confirmed' % review.get('toConfirm', 0))
 saved = call('POST', '/api/uploads/%d/commit' % r['uploadId'])
 print('   saved %s lines, net %s' % (saved['lines']['lines'], saved['lines']['net']))
 
 step('Equity brokerage report')
 r = upload('/api/equity/upload', 'Equity_Brokerage_Aug2026.xlsx')
 print('   %(trades)s trades, %(clients)s clients (%(clientsNotFound)s not found), franchise share %(shareTotal)s' % r)
+for m in call('GET', '/api/equity/name-matches?month=%s' % MONTH):
+    call('POST', '/api/equity/name-matches', {'month': MONTH, 'partyCode': m['partyCode'], 'clientId': m['clientId']})
 
 step('Pre-check and process %s' % MONTH)
 period = next(m for m in call('GET', '/api/months') if m['month'] == MONTH)

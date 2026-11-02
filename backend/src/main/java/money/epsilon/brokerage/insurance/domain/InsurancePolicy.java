@@ -68,6 +68,8 @@ public class InsurancePolicy {
     private String remarks;
     @Enumerated(EnumType.STRING) private Source source;
     @Column(name = "upload_row") private Integer uploadRow;
+    /** The sheet row had no PAN: the client was found by its name only and waits for a confirmation (R-100). */
+    @Column(name = "matched_by_name") private boolean matchedByName;
     @Enumerated(EnumType.STRING) private Status status;
     @Column(name = "created_by") private String createdBy;
     @Column(name = "created_at") private Instant createdAt;
@@ -161,6 +163,19 @@ public class InsurancePolicy {
         this.clientId = clientId;
         touch();
     }
+
+    public void matchedByName() {
+        this.matchedByName = true;
+    }
+
+    /** Someone confirmed the client (the one found by name, or another): the policy is that client's (R-100). */
+    public void confirmClient(long clientId) {
+        this.clientId = clientId;
+        this.matchedByName = false;
+        touch();
+    }
+
+    public boolean isMatchedByName() { return matchedByName; }
 
     public void cancel() {
         this.status = Status.CANCELLED;
