@@ -57,7 +57,7 @@ public class AliasService {
     @Transactional
     public boolean confirm(String source, EntityType type, String raw, long targetId) {
         String key = Text.key(raw);
-        if (key.isEmpty()) throw new IllegalArgumentException("An alias needs a spelling");
+        if (key.isEmpty()) throw new ValidationException("An alias needs a spelling");
         Optional<SourceAlias> existing = aliases.findBySourceAndEntityTypeAndRawValueNormalized(source, type, key);
         if (existing.isEmpty()) return remember(source, type, raw, targetId);
         long before = existing.get().getTargetId();
