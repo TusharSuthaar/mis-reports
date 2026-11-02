@@ -1,9 +1,11 @@
 -- PROPOSAL (design only, not a migration): one holdings model for every product, built from what the FD, bond, AIF,
--- loan, GIFT City, P2P, NPS, PMS and equity screens record today. Plan: docs/design/db-rework-plan.md.
+-- loan, GIFT City, P2P, NPS, PMS, Unlisted (Pre-IPO), insurance and equity screens record today.
+-- Plan: docs/design/db-rework-plan.md. Checked on PostgreSQL 16 over V1–V42.
 --
 -- asset              one row per holding of one client (PAN): what, where, how much, worth, status, who booked it.
 -- asset_terms        1:1 for fixed-income holdings (FD, bond, P2P, loan): rate, payouts, compounding, tenure, maturity.
--- asset_transaction  what happened to it: purchase, SIP, redemption, AIF drawdown, interest, maturity, loan disbursal.
+-- asset_policy       1:1 for insurance: category, sub type, policy no., business type, premiums, sum assured, term.
+-- asset_transaction  what happened to it: purchase, SIP, redemption, Unlisted buyback, AIF drawdown, interest, maturity.
 -- asset_holder       joint holders, nominees, a minor's guardian, by PAN.
 -- asset_check        the servicing ticks (certificate, on portal, welcome mail…), one row per tick.
 -- asset_snapshot     value per holding per month: AUM by RM / branch / partner over time.
@@ -16,12 +18,12 @@
 
 -- ── Masters ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
--- MF, EQUITY, FD, BOND, AIF, PMS, NPS, P2P, GIFT, LOAN… The family decides which details a holding of it has.
+-- MF, EQUITY, UNLISTED, FD, BOND, AIF, PMS, NPS, P2P, GIFT, LOAN, INSURANCE… The family decides which details a holding of it has.
 CREATE TABLE product_type (
     id          SMALLSERIAL PRIMARY KEY,
     code        VARCHAR(20)  NOT NULL UNIQUE,
     name        VARCHAR(100) NOT NULL,
-    family      VARCHAR(20)  NOT NULL CHECK (family IN ('MARKET', 'FIXED_INCOME', 'COMMITMENT', 'LIABILITY')),
+    family      VARCHAR(20)  NOT NULL CHECK (family IN ('MARKET', 'FIXED_INCOME', 'COMMITMENT', 'POLICY', 'LIABILITY')),
     uses_units  BOOLEAN      NOT NULL,      -- MF, equity, PMS, AIF, bonds: yes; FD, P2P, loan: no
     active      BOOLEAN      NOT NULL DEFAULT TRUE
 );
@@ -35,10 +37,11 @@ CREATE TABLE asset_class (
     UNIQUE (parent_id, name)
 );
 
--- Whoever issues or manages a product: AMC, FD company, bond issuer, AIF / PMS manager, lender, NPS fund manager.
+-- Whoever issues or manages a product: AMC, FD company, bond or unlisted issuer, AIF / PMS manager, lender, NPS fund manager, insurer.
 CREATE TABLE provider (
     id     BIGSERIAL PRIMARY KEY,
-    type   VARCHAR(20)  NOT NULL CHECK (type IN ('AMC', 'FD_COMPANY', 'ISSUER', 'AIF_MANAGER', 'PMS_MANAGER', 'LENDER', 'NPS_MANAGER', 'OTHER')),
+    type   VARCHAR(20)  NOT NULL CHECK (type IN ('AMC', 'FD_COMPANY', 'ISSUER', 'AIF_MANAGER', 'PMS_MANAGER', 'LENDER', 'NPS_MANAGER',
+                                               'INSURER', 'OTHER')),
     name   VARCHAR(200) NOT NULL,
     active BOOLEAN      NOT NULL DEFAULT TRUE
 );
@@ -83,14 +86,16 @@ CREATE TABLE product (
 CREATE INDEX ix_product_type ON product (product_type_id);
 CREATE UNIQUE INDEX ux_product_name ON product (product_type_id, provider_id, lower(name));
 
--- NAV / market price by day, for holdings with units.
+-- NAV / market price by day, for holdings with units. An unlisted share has a base price per vendor (today's preipo_price).
 CREATE TABLE product_price (
-    product_id BIGINT         NOT NULL REFERENCES product (id),
-    price_date DATE           NOT NULL,
-    price      NUMERIC(18, 6) NOT NULL,
-    source     VARCHAR(30)    NOT NULL,            -- AMFI, exchange, platform file, typed
-    PRIMARY KEY (product_id, price_date)
+    id          BIGSERIAL      PRIMARY KEY,
+    product_id  BIGINT         NOT NULL REFERENCES product (id),
+    price_date  DATE           NOT NULL,
+    platform_id BIGINT         REFERENCES intermediary (id),   -- the vendor quoting it; null = the market price
+    price       NUMERIC(18, 6) NOT NULL,
+    source      VARCHAR(30)    NOT NULL                        -- AMFI, exchange, vendor sheet, typed
 );
+CREATE UNIQUE INDEX ux_product_price ON product_price (product_id, price_date, coalesce(platform_id, 0));
 
 -- ── The holding ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -162,11 +167,30 @@ CREATE TABLE asset_terms (
     next_payout_date    DATE
 );
 
--- Everything that moved money or units: today's AIF instalments, PMS / bond purchases, redemptions, payouts.
+-- Insurance (today's insurance_policy): what differs from other holdings. The insurer is product.provider_id, the plan
+-- product.name, the POSP asset.partner_id, the premium paid asset.invested_amount; commission is revenue.
+CREATE TABLE asset_policy (
+    asset_id         BIGINT         PRIMARY KEY REFERENCES asset (id),
+    category         VARCHAR(10)    NOT NULL CHECK (category IN ('LIFE', 'HEALTH', 'MOTOR', 'GENERAL')),
+    sub_type         VARCHAR(100),                  -- Term, Floater, Private car, SME / Fire - Corporate…
+    policy_no        VARCHAR(60)    NOT NULL,
+    business_type    VARCHAR(20)    NOT NULL,       -- NEW, RENEWAL, PORT…, as the policy rules allow per category
+    premium_term     VARCHAR(20),                   -- PPT
+    policy_term      SMALLINT,
+    sum_assured      NUMERIC(18, 2),
+    od_premium       NUMERIC(18, 2),                -- motor: own damage
+    tp_premium       NUMERIC(18, 2),                -- motor: third party
+    total_premium    NUMERIC(18, 2)  NOT NULL,
+    net_premium      NUMERIC(18, 2)  NOT NULL
+);
+CREATE UNIQUE INDEX ux_asset_policy_no ON asset_policy (policy_no);
+
+-- Everything that moved money or units: today's AIF instalments, PMS / bond / unlisted purchases, buybacks (SALE),
+-- redemptions, payouts.
 CREATE TABLE asset_transaction (
     id         BIGSERIAL PRIMARY KEY,
     asset_id   BIGINT         NOT NULL REFERENCES asset (id),
-    type       VARCHAR(20)    NOT NULL CHECK (type IN ('PURCHASE', 'SIP', 'ADDITIONAL', 'DRAWDOWN', 'REDEMPTION', 'SWITCH_IN',
+    type       VARCHAR(20)    NOT NULL CHECK (type IN ('PURCHASE', 'SIP', 'ADDITIONAL', 'DRAWDOWN', 'REDEMPTION', 'SALE', 'SWITCH_IN',
                                                       'SWITCH_OUT', 'INTEREST', 'DIVIDEND', 'MATURITY', 'DISBURSAL', 'REPAYMENT')),
     txn_date   DATE           NOT NULL,
     units      NUMERIC(20, 6),
@@ -213,8 +237,9 @@ CREATE INDEX ix_asset_snapshot_month ON asset_snapshot (month);
 
 -- ── Money ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 
--- One commission earned, for any product (today's gross / TDS / GST / net / invoice / payment columns on nine tables).
--- Usually for one holding; a provider's payout for a period (today's pms_payout) has no client.
+-- One commission earned, for any product (today's gross / TDS / GST / net / invoice / payment columns on fourteen tables,
+-- and pms_fee's monthly PMS revenue). Usually for one holding; a provider's payout for a period (today's pms_payout) has
+-- no client. Insurance keeps what was expected next to what came in.
 CREATE TABLE revenue (
     id                   BIGSERIAL PRIMARY KEY,
     month                DATE           NOT NULL CHECK (extract(day FROM month) = 1),
@@ -227,6 +252,7 @@ CREATE TABLE revenue (
     period_to            DATE,
     basis_amount         NUMERIC(18, 2),                -- what the % applies to
     rate_pct             NUMERIC(7, 4),
+    expected_gross       NUMERIC(18, 2),                -- insurance: net premium × expected %
     gross                NUMERIC(18, 2) NOT NULL,
     tds_pct              NUMERIC(6, 3),
     tds                  NUMERIC(18, 2) NOT NULL DEFAULT 0,
@@ -253,7 +279,8 @@ CREATE INDEX ix_revenue_month ON revenue (month, product_type_id);
 CREATE INDEX ix_revenue_client ON revenue (client_id);
 CREATE UNIQUE INDEX ux_revenue_legacy ON revenue (legacy_product, legacy_id) WHERE legacy_id IS NOT NULL;
 
--- New ledger lines name their revenue; old lines keep their *_entry_id (the ledger is append-only).
+-- New ledger lines name their revenue; old lines keep their eleven product columns (fd_entry_id … insurance_policy_id),
+-- because the ledger is append-only.
 ALTER TABLE brokerage_line ADD COLUMN revenue_id BIGINT;
 
 -- ── Client ──────────────────────────────────────────────────────────────────────────────────────────────────────────

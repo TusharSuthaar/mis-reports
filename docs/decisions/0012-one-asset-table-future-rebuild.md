@@ -6,16 +6,17 @@ to fix the system")
 ## Context
 Every product got its own entry table (`fd_entry`, `bond_entry`, `aif_entry`, `loan_entry`, `gift_entry`, `p2p_entry`,
 `nps_entry`, `pms_investment`, `equity_trade`), each mixing what a client holds with what Epsilon earns on it. The
-schema is now 45 tables, and a client's holdings have to be pieced together from nine modules (R-09). The user finds
+schema is now 50 tables (V42), and a client's holdings have to be pieced together from eleven modules (R-09). The user finds
 this too many tables and wants a simpler model, built around one holdings table, as in their wealth-platform layout
 (112 columns: units, NAV, current value, returns, bond / FD / insurance details).
 
 ## Plan
-The proposed schema is [docs/design/asset-schema.sql](../design/asset-schema.sql) (tested on PostgreSQL 16 over V1–V38):
+The proposed schema is [docs/design/asset-schema.sql](../design/asset-schema.sql) (tested on PostgreSQL 16 over V1–V42):
 - `asset`: one row per holding of one client (PAN), with value and returns as a daily snapshot. Lists, totals and the
   PAN view read it alone.
 - `product` (+ `product_price`): the scheme, FD scheme, bond, fund or strategy, stored once for every holder.
-- `asset_terms` (fixed income: rate, payouts, compounding, tenure, maturity), `asset_transaction` (purchases,
+- `asset_terms` (fixed income: rate, payouts, compounding, tenure, maturity), `asset_policy` (insurance: category,
+  policy no., premiums, sum assured), `asset_transaction` (purchases, Unlisted buybacks,
   drawdowns, redemptions, interest), `asset_holder` (joint holders, nominees, guardian by PAN), `asset_check` (servicing
   ticks), `asset_snapshot` (month-end value, for AUM trends).
 - Masters: product type, asset class, provider, frequency, servicing check. `revenue` for commission on any product;
@@ -41,4 +42,10 @@ Nothing changes: the entry tables, screens and code stay as they are. This is a 
 ## Rejected for now
 - One 112-column table, as given: every row would carry dozens of empty FD / bond / policy columns, and scheme data
   would be repeated on every holding.
-- Doing it now: it touches nine modules, the ledger and the END file; it is planned as its own piece of work.
+- Doing it now: it touches eleven modules, the ledger and the END file; it is planned as its own piece of work.
+
+## Update 2026-11-02
+Brought up to date with main (V39–V42): Unlisted (Pre-IPO), insurance and PMS monthly revenue added five more
+per-product tables and five more ledger source columns since the plan was written. The design now covers them
+(`asset_policy`, vendor prices in `product_price`, buybacks as SALE transactions, `revenue.expected_gross`), and the
+plan's migrations start at V43.
