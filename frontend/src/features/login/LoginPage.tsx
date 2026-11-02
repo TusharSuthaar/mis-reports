@@ -23,7 +23,9 @@ export function LoginPage() {
       await login(username, password);
       navigate(from, { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError && err.status === 401 ? 'Invalid username or password' : 'Sign-in failed. Try again.');
+      // 429: too many wrong passwords (wait, or locked until an administrator unlocks): the server says which (R-101).
+      setError(err instanceof ApiError && err.status === 401 ? 'Invalid username or password'
+        : err instanceof ApiError && err.status === 429 ? err.message : 'Sign-in failed. Try again.');
     } finally {
       setBusy(false);
     }

@@ -32,7 +32,8 @@ the API.
 
 ### Running for other people
 
-Before colleagues use the app from their own computers:
+Before colleagues use the app from their own computers (the full steps, with an HTTPS example, backups and key
+custody: [docs/deployment.md](docs/deployment.md)):
 
 1. Put HTTPS in front of the UI (a company reverse proxy, or nginx with a certificate) and set `MIS_COOKIE_SECURE=true`.
 2. Set `MIS_UI_BIND=0.0.0.0` so the screens listen on the network. Leave the database and the API on `127.0.0.1`.

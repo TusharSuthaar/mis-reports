@@ -29,6 +29,7 @@ checklist asks for it.
 | G-22 | Unexpected errors show only "something went wrong + reference"; every job type has a plain-words title for the Activity screen. | `ActivityIT`, `JobHandler.title()` (compiler) |
 | G-23 | The frontend passes ESLint with no warnings (TypeScript rules, React hooks rules). A deliberate exception says why: `// eslint-disable-next-line <rule> -- reason`; a disable comment that suppresses nothing fails. | CI `npm run lint` |
 | G-24 | CI builds the frontend for production and fails on a high or critical vulnerability in a shipped package; Dependabot proposes dependency updates weekly; on a pull request, a Maven or npm dependency added or changed with a high or critical advisory fails it (GitHub dependency review). | CI (`dependencies` job), `.github/dependabot.yml` |
+| G-25 | Sign-in is limited (R-101): every wrong password goes through `LoginThrottle`, and every sign-in, failure, lock, unlock and sign-out is audited under `USER`. A new way to sign in must use it too. | `SignInLimitIT` |
 
 ## Before you commit
 1. `backend/mvnw-docker.sh verify` and `cd frontend && npm test` are green.

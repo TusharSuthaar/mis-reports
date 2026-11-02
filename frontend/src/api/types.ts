@@ -18,6 +18,10 @@ export interface User {
   active: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Locked after 10 wrong passwords until an ADMIN unlocks (R-101). */
+  locked: boolean;
+  /** A wait after 5+ wrong passwords, if one is running. */
+  waitUntil: string | null;
 }
 
 export interface AuditEntry {
