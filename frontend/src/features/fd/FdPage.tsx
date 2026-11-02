@@ -301,7 +301,7 @@ function FdForm({ month: listMonth, entry, onDone }: { month: string; entry?: Fd
       remarks,
       ...givenBody(given),
     };
-    const ok = await run(() => (entry ? api(`/api/fd/${entry.id}`, { method: 'PUT', body }) : api('/api/fd', { method: 'POST', body })));
+    const ok = await run(() => (entry ? api(`/api/fd/${entry.id}`, { method: 'PUT', body, ifMatch: entry.updatedAt }) : api('/api/fd', { method: 'POST', body })));
     if (ok) onDone();
   }
 

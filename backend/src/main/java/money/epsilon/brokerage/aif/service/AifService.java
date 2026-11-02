@@ -29,8 +29,10 @@ import money.epsilon.brokerage.partner.service.PartnerService;
 import money.epsilon.brokerage.partner.service.PartnerService.PartnerView;
 import money.epsilon.brokerage.platform.audit.AuditService;
 import money.epsilon.brokerage.platform.crypto.PanCipher;
+import money.epsilon.brokerage.platform.dated.ChangeWindow;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.text.Text;
+import money.epsilon.brokerage.platform.web.EditVersion;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
 import money.epsilon.brokerage.sharing.domain.Product;
@@ -57,9 +59,10 @@ public class AifService {
     private final IntermediaryService platforms;
     private final ProductTaxService taxes;
     private final AuditService audit;
+    private final ChangeWindow months;
 
     AifService(AifEntryRepository entries, AifInstalmentRepository instalments, ClientService clients, EmployeeService employees,
-               OrgChartService org, PartnerService partners, IntermediaryService platforms, ProductTaxService taxes, AuditService audit) {
+               OrgChartService org, PartnerService partners, IntermediaryService platforms, ProductTaxService taxes, AuditService audit, ChangeWindow months) {
         this.entries = entries;
         this.instalments = instalments;
         this.clients = clients;
@@ -69,6 +72,7 @@ public class AifService {
         this.platforms = platforms;
         this.taxes = taxes;
         this.audit = audit;
+        this.months = months;
     }
 
     /** Search across all months, newest first (R-77); every part optional. Text: client name, PAN, code, fund name. */
@@ -162,6 +166,7 @@ public class AifService {
     @Transactional
     public AifView create(Long clientId, String newClientName, String newClientPan, Details d) {
         Details details = check(d);
+        months.beforeEntryChange(details.month());
         long client;
         if (clientId != null) {
             clients.requireExists(clientId);
@@ -180,10 +185,13 @@ public class AifService {
     }
 
     @Transactional
-    public AifView update(long id, Details d) {
+    public AifView update(long id, Details d, String ifMatch) {
         AifEntry e = find(id);
+        EditVersion.check(e.getUpdatedAt(), ifMatch);
         if (e.getStatus() == AifEntry.Status.CANCELLED) throw new RuleViolationException("This AIF entry is cancelled");
         Details details = check(d);
+        months.beforeEntryChange(e.getMonth());
+        months.beforeEntryChange(details.month());
         AifView before = get(id);
         e.fill(details, terms(details));
         entries.saveAndFlush(e);
@@ -199,6 +207,7 @@ public class AifService {
     public void cancel(long id, String reason) {
         AifEntry e = find(id);
         if (e.getStatus() == AifEntry.Status.CANCELLED) return;
+        months.beforeEntryChange(e.getMonth());
         AifView before = get(id);
         e.cancel();
         entries.saveAndFlush(e);

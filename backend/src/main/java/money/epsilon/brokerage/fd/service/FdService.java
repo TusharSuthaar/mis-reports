@@ -20,8 +20,10 @@ import money.epsilon.brokerage.partner.service.PartnerService;
 import money.epsilon.brokerage.partner.service.PartnerService.PartnerView;
 import money.epsilon.brokerage.platform.audit.AuditService;
 import money.epsilon.brokerage.platform.crypto.PanCipher;
+import money.epsilon.brokerage.platform.dated.ChangeWindow;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.text.Text;
+import money.epsilon.brokerage.platform.web.EditVersion;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
 import money.epsilon.brokerage.sharing.domain.Product;
@@ -45,9 +47,10 @@ public class FdService {
     private final PartnerService partners;
     private final ProductTaxService taxes;
     private final AuditService audit;
+    private final ChangeWindow months;
 
     FdService(FdEntryRepository entries, ClientService clients, EmployeeService employees, OrgChartService org, PartnerService partners,
-              ProductTaxService taxes, AuditService audit) {
+              ProductTaxService taxes, AuditService audit, ChangeWindow months) {
         this.entries = entries;
         this.clients = clients;
         this.employees = employees;
@@ -55,6 +58,7 @@ public class FdService {
         this.partners = partners;
         this.taxes = taxes;
         this.audit = audit;
+        this.months = months;
     }
 
     @Transactional(readOnly = true)
@@ -169,6 +173,7 @@ public class FdService {
     @Transactional
     public FdView create(Long clientId, String newClientName, String newClientPan, Details d) {
         Details details = check(d);
+        months.beforeEntryChange(details.month());
         long client;
         if (clientId != null) {
             clients.requireExists(clientId);
@@ -186,10 +191,13 @@ public class FdService {
     }
 
     @Transactional
-    public FdView update(long id, Details d) {
+    public FdView update(long id, Details d, String ifMatch) {
         FdEntry e = find(id);
+        EditVersion.check(e.getUpdatedAt(), ifMatch);
         if (e.getStatus() == FdEntry.Status.CANCELLED) throw new RuleViolationException("This FD entry is cancelled");
         Details details = check(d);
+        months.beforeEntryChange(e.getMonth());
+        months.beforeEntryChange(details.month());
         FdView before = get(id);
         e.fill(details, gstPercent(details.month()));
         entries.saveAndFlush(e);
@@ -202,6 +210,7 @@ public class FdService {
     public void cancel(long id, String reason) {
         FdEntry e = find(id);
         if (e.getStatus() == FdEntry.Status.CANCELLED) return;
+        months.beforeEntryChange(e.getMonth());
         FdView before = get(id);
         e.cancel();
         entries.saveAndFlush(e);

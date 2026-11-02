@@ -13,6 +13,7 @@ import money.epsilon.brokerage.aif.domain.AifEntry.Details;
 import money.epsilon.brokerage.aif.service.AifService;
 import money.epsilon.brokerage.aif.service.AifService.AifView;
 import money.epsilon.brokerage.platform.security.Roles;
+import money.epsilon.brokerage.platform.web.EditVersion;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -89,8 +91,9 @@ class AifController {
 
     @PutMapping("/{id}")
     @PreAuthorize(Roles.MASTER_WRITE)
-    AifView update(@PathVariable long id, @Valid @RequestBody AifRequest req) {
-        return service.update(id, req.details());
+    AifView update(@PathVariable long id, @Valid @RequestBody AifRequest req,
+                    @RequestHeader(value = EditVersion.HEADER, required = false) String ifMatch) {
+        return service.update(id, req.details(), ifMatch);
     }
 
     @PostMapping("/{id}/cancel")

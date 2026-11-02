@@ -213,7 +213,8 @@ class ShareIT extends IntegrationTestBase {
         assertThat(getJson("/api/clients/" + clientC + "/partner", admin, 200)).hasSize(3);
     }
 
-    /** Master with partner sheets: SBX sub-broker (MF 80%), RFX referral (MF 0%, others 50%), RFP referral under process. */
+    /** Master with partner sheets: SBX sub-broker (MF 80%), RFX referral (MF 0%, others 50%), RFP referral under process.
+     *  The sub-broker sheet heads its Pre-IPO column "Pre-IPO", the referral sheet "Unlisted": both are read (R-97). */
     byte[] masterWithRateCards(Object pctForC) {
         return new TestWorkbook()
                 .sheet("Master", "Client No", "REGION", "RD", "BRANCH", "RM", "CLIENT NAME", "PAN NO", "Concatenate", "CLIENT TYPE",
@@ -224,7 +225,7 @@ class ShareIT extends IntegrationTestBase {
                 .row(3, "R", "RD", "B", "RM", "CLIENT C " + tag, panC, "", "OFFLINE", "SBX " + tag, "Sub broker", pctForC, 0, null)
                 .sheet("SUB_BROKER", "Sub-Broker", "MF", "Pre-IPO", "Equity", "Insurance")
                 .row("SBX " + tag, 0.8, 0.8, 0.8, 0)
-                .sheet("REFERRAL PARTNER", "Referral Partner", "MF", "Pre-IPO", "Equity", "Insurance")
+                .sheet("REFERRAL PARTNER", "Referral Partner", "MF", "Unlisted", "Equity", "Insurance")   // Pre-IPO under its new name (R-97)
                 .row("RFX " + tag, 0, 0.5, 0.5, 0)
                 .row("RFP " + tag, 0, 0.5, 0.5, 0)
                 .row("*sharing is as per client", null, null, null, null)

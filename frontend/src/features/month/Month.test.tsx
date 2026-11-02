@@ -62,12 +62,10 @@ describe('this month', () => {
         return { status: 200, body: { uploadId: 5, month: '2026-08', lines: { lines: 2440, gross: 1, gst: 1, net: 1000001 }, replacedUploadId: null } };
       },
     });
-    renderAt('/month');
+    renderAt('/month?m=2026-08');
 
     expect(await screen.findByText(/3,237 codes/)).toBeInTheDocument();
-    const monthInput = screen.getByLabelText('Month');
-    await userEvent.clear(monthInput);
-    await userEvent.type(monthInput, '2026-08');
+    expect(screen.getByRole('heading', { name: 'Finesse MF brokerage for August 2026' })).toBeInTheDocument();
     await userEvent.upload(screen.getByLabelText('Finesse brokerage file'), new File(['x'], 'aug.xlsx'));
     await userEvent.click(screen.getByRole('button', { name: 'Upload brokerage' }));
 
@@ -80,7 +78,7 @@ describe('this month', () => {
     expect(screen.getByRole('link', { name: 'Download this list (Excel)' })).toHaveAttribute('href', '/api/uploads/5/not-in-master.xlsx');
 
     await userEvent.click(screen.getByRole('button', { name: 'Save August 2026' }));
-    await screen.findByText('No month uploaded yet.');
+    expect(await screen.findByLabelText('Finesse brokerage file')).toBeInTheDocument();
     expect(committed).toBe(true);
   });
 
@@ -116,10 +114,12 @@ describe('this month', () => {
       'GET /api/months': ok([row]),
       'GET /api/finesse/client-master': ok(masterLoaded),
       'GET /api/uploads/5/review': ok({ ...review, canSave: false }),
+      'GET /api/months/2/readiness': ok({ status: 'OPEN', mfSaved: true, mfClients: 2440, equityUploaded: false, equityClients: 0, equityNotInClients: 0,
+        entries: { FD: 1, INS: 3 }, notInMaster: 4, missingPercent: [], ready: false }),
     });
     renderAt('/month');
-    expect(await screen.findByText('4 not in Master MIS')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Process' })).not.toBeInTheDocument();
+    expect(await screen.findByText(/4 clients are not in Master MIS/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Process/ })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Fix 4 clients, then process' }));
     expect(await screen.findByText('CLIENT NOT IN MASTER')).toBeInTheDocument();
   });
@@ -141,10 +141,13 @@ describe('this month', () => {
         locked = true;
         return { status: 200, body: {} };
       },
+      'GET /api/months/2/readiness': ok({ status: 'PROCESSED', mfSaved: true, mfClients: 2439, equityUploaded: true, equityClients: 43, equityNotInClients: 0,
+        entries: {}, notInMaster: 0, missingPercent: [], ready: true }),
       'GET /api/months/2/summary': ok({
         periodId: 2, month: '2026-08', status: 'PROCESSED', lines: 2439, adjustments: 0, net: 1000000.1,
         subBrokers: 700000, referrals: 50000, epsilon: 250000.1,
-        byPartner: [{ partnerId: 1, partnerName: 'ALPHA WEALTH', role: 'SUB_BROKER', clients: 170, amount: 99000 }],
+        byPartner: [{ partnerId: 1, partnerName: 'ALPHA WEALTH', role: 'SUB_BROKER', clients: 170, amount: 99000 },
+          { partnerId: 3, partnerName: 'ZERO SHARE PARTNER', role: 'REFERRAL', clients: 20, amount: 0 }],
         byBranch: [],
       }),
     });
@@ -154,13 +157,68 @@ describe('this month', () => {
     expect(screen.queryByRole('button', { name: 'Process again' })).not.toBeInTheDocument(); // FINANCE does not process
     expect(screen.queryByLabelText('Finesse brokerage file')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'END file (draft)' })).toHaveAttribute('href', '/api/months/2/end-file');
-    await userEvent.click(screen.getByRole('button', { name: 'Show' }));
+    await userEvent.click(screen.getByRole('button', { name: /Check & process/ }));   // a done step opens on click
     expect(await screen.findByText('2,50,000.10')).toBeInTheDocument();
+    expect(screen.getByText('Paid to 1 partners')).toBeInTheDocument();           // a partner whose share is 0 is not listed
+    expect(screen.queryByText('ZERO SHARE PARTNER')).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Lock' }));
     expect(await screen.findByText('Locked')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Lock' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'END file' })).toHaveAttribute('href', '/api/months/2/end-file');
+  });
+
+  it('opens the next month as a new month: its MF file first, the later steps after it', async () => {
+    const row: MonthRow = {
+      periodId: 2, month: '2026-08', status: 'PROCESSED', saved: { lines: 2439, gross: 1, gst: 1, net: 1 }, savedUpload: { ...upload, status: 'COMMITTED' },
+      pendingUpload: null, processedBy: 'admin', processedAt: null, lockedBy: null, lockedAt: null, notInMaster: 0,
+    };
+    fakeApi({
+      'GET /api/auth/me': ok(admin),
+      'GET /api/months': ok([row]),
+      'GET /api/finesse/client-master': ok(masterLoaded),
+      'GET /api/months/2/readiness': ok({ status: 'PROCESSED', mfSaved: true, mfClients: 2439, equityUploaded: true, equityClients: 43,
+        equityNotInClients: 0, entries: {}, notInMaster: 0, missingPercent: [], ready: true }),
+    });
+    renderAt('/month');
+    expect(await screen.findByRole('link', { name: 'END file (draft)' })).toBeInTheDocument();   // August: processed, at step 5
+    await userEvent.click(screen.getByRole('tab', { name: '+ September 2026' }));
+    expect(await screen.findByRole('heading', { name: 'Finesse MF brokerage for September 2026' })).toBeInTheDocument();
+    expect(screen.getAllByText('Not yet')).toHaveLength(3);                                         // products, process, END
+    expect(screen.queryByRole('link', { name: /END file/ })).not.toBeInTheDocument();
+  });
+
+  it('names the equity client that is not in Clients and adds it from there', async () => {
+    document.cookie = 'XSRF-TOKEN=tok';
+    let added: Record<string, unknown> | null = null;
+    const row: MonthRow = {
+      periodId: 3, month: '2026-09', status: 'OPEN', saved: { lines: 2400, gross: 1, gst: 1, net: 1 }, savedUpload: { ...upload, id: 6, status: 'COMMITTED', month: '2026-09' },
+      pendingUpload: null, processedBy: null, processedAt: null, lockedBy: null, lockedAt: null, notInMaster: 0,
+    };
+    const readiness = (missing: boolean) => ({ status: 'OPEN', mfSaved: true, mfClients: 2400, equityUploaded: true, equityClients: 34,
+      equityNotInClients: missing ? 1 : 0, entries: {}, notInMaster: 0, missingPercent: [], ready: !missing,
+      equityMissing: missing ? [{ partyCode: 'B12345', name: 'NEW EQUITY CLIENT', pan: null, share: 431.5 }] : [] });
+    fakeApi({
+      'GET /api/auth/me': ok(admin),
+      'GET /api/months': ok([row]),
+      'GET /api/finesse/client-master': ok(masterLoaded),
+      'GET /api/employees': ok([{ id: 7, name: 'RM SEVEN', branchName: 'PUNE', status: 'ACTIVE' }]),
+      'GET /api/months/3/readiness': () => ({ status: 200, body: readiness(added === null) }),
+      'POST /api/clients': (init) => {
+        added = JSON.parse(String(init?.body));
+        return { status: 201, body: { id: 99 } };
+      },
+    });
+    renderAt('/month?m=2026-09');
+    expect(await screen.findByText('B12345')).toBeInTheDocument();
+    expect(screen.getByText('NEW EQUITY CLIENT')).toBeInTheDocument();
+    expect(screen.getByText('not in the file')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Add client' }));
+    expect(screen.getByLabelText('Client name')).toHaveValue('NEW EQUITY CLIENT');
+    await userEvent.selectOptions(await screen.findByLabelText('RM'), '7');
+    await userEvent.click(screen.getByRole('button', { name: 'Add to Clients' }));
+    expect(added).toMatchObject({ name: 'NEW EQUITY CLIENT', pan: null, rmId: 7, from: '2026-09-01' });
+    expect(await screen.findByRole('button', { name: 'Process September 2026' })).toBeInTheDocument();   // nothing left to fix
   });
 
   it('shows why a file was not accepted', async () => {

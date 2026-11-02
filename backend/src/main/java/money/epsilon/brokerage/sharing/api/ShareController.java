@@ -79,7 +79,7 @@ class ShareController {
     @PreAuthorize(Roles.MASTER_WRITE)
     void setProductPercent(@PathVariable long id, @Valid @RequestBody SetProductPercentRequest req) {
         if (!service.setProductPercent(id, req.product(), req.percent(), req.from(), req.reason())) {
-            throw new RuleViolationException("That is already the partner's % for " + req.product().heading());
+            throw new RuleViolationException("That is already the partner's % for " + req.product().label());
         }
     }
 

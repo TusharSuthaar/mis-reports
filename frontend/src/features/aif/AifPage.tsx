@@ -244,7 +244,7 @@ function AifForm({ month: startMonth, entry, onDone }: { month: string; entry?: 
       ...givenBody(given),
       instalments: drawdowns.filter((d) => num(d.amount) > 0).map((d) => ({ amount: num(d.amount), paidOn: d.paidOn || null })),
     };
-    const ok = await run(() => (entry ? api(`/api/aif/${entry.id}`, { method: 'PUT', body }) : api('/api/aif', { method: 'POST', body })));
+    const ok = await run(() => (entry ? api(`/api/aif/${entry.id}`, { method: 'PUT', body, ifMatch: entry.updatedAt }) : api('/api/aif', { method: 'POST', body })));
     if (ok) onDone();
   }
 

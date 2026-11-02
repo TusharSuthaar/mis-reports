@@ -50,21 +50,21 @@ public class PeriodService {
     /** The figures of the month changed (lines saved or replaced): it must be processed again. */
     @Transactional
     public void reopen(long id) {
-        Period p = find(id);
+        Period p = findForChange(id);
         if (p.getStatus() == Status.LOCKED) throw new RuleViolationException("A locked month cannot change");
         p.reopen();
     }
 
     @Transactional
     public void markProcessed(long id, String by) {
-        Period p = find(id);
+        Period p = findForChange(id);
         if (p.getStatus() == Status.LOCKED) throw new RuleViolationException("A locked month cannot be processed again");
         p.markProcessed(by);
     }
 
     @Transactional
     public PeriodView lock(long id, String by) {
-        Period p = find(id);
+        Period p = findForChange(id);
         if (p.getStatus() != Status.PROCESSED) throw new RuleViolationException("Process the month before locking it");
         p.lock(by);
         audit.record("PERIOD", id, "LOCK", null, view(p));
@@ -73,13 +73,26 @@ public class PeriodService {
 
     @Transactional
     public PeriodView unlock(long id, String reason) {
-        Period p = find(id);
+        Period p = findForChange(id);
         if (p.getStatus() != Status.LOCKED) throw new RuleViolationException("The month is not locked");
         if (reason == null || reason.isBlank()) throw new IllegalArgumentException("A reason is required to unlock a month");
         PeriodView before = view(p);
         p.unlock();
         audit.record("PERIOD", id, "UNLOCK", before, new Unlock(view(p), reason.trim()));
         return view(p);
+    }
+
+    /**
+     * The month, its row locked until the caller's transaction ends (H-05): a process holds it from start to finish, so a lock,
+     * an unlock or an entry change of the same month waits instead of overwriting it.
+     */
+    @Transactional
+    public PeriodView getForChange(long id) {
+        return view(findForChange(id));
+    }
+
+    private Period findForChange(long id) {
+        return periods.findForChange(id).orElseThrow(() -> new NotFoundException("Period " + id + " not found"));
     }
 
     private Period find(long id) {

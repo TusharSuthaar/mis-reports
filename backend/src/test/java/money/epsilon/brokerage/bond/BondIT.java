@@ -9,9 +9,14 @@ import money.epsilon.brokerage.IntegrationTestBase;
 import money.epsilon.brokerage.ingestion.FinesseFiles;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.mock.web.MockHttpSession;
 
 class BondIT extends IntegrationTestBase {
+
+    @Autowired
+    JdbcClient jdbc;
 
     MockHttpSession admin;
     String tag, pan;
@@ -41,7 +46,7 @@ class BondIT extends IntegrationTestBase {
         m.put("couponPercent", 9.62);
         m.put("payoutFrequency", "QUARTERLY");
         m.put("investmentDate", month);
-        m.put("maturityDate", "2028-05-31");
+        m.put("maturityDate", month.compareTo("2028") < 0 ? "2028-05-31" : java.time.LocalDate.parse(month).plusYears(2).toString());
         m.put("quantity", 1);
         m.put("ratePerUnit", 1014225.66);
         m.put("investmentAmount", 1000000);
@@ -108,5 +113,82 @@ class BondIT extends IntegrationTestBase {
         postJson("/api/platforms", Map.of("name", "platform " + tag), admin, 409);   // same name, any case
         postJson("/api/platforms/" + platform + "/terms", Map.of("gstInclusive", false, "tdsPercent", 5, "ourShare", 100, "from", "2026-09-01"),
                 loginAs("FINANCE"), 403);
+    }
+
+    /** R-98: a LOCKED month refuses its entries (add, change, move in or out, cancel); a PROCESSED month goes back to OPEN. */
+    @Test
+    void aLockedMonthRefusesItsEntriesAndAProcessedMonthReopens() throws Exception {
+        int y = 2400 + (int) (Long.parseLong(tag) % 500);   // months no other test uses
+        String locked = y + "-03-01", processed = y + "-04-01", open = y + "-05-01";
+        month(locked, "LOCKED");
+        month(processed, "PROCESSED");
+        try {
+            lockedMonthChecks(y, locked, processed, open);
+        } finally {
+            // A locked month also refuses dated master changes before it (clients, RMs): leave none behind for other tests.
+            jdbc.sql("UPDATE period SET status = 'OPEN' WHERE month IN (?, ?, ?)")
+                    .params(java.time.LocalDate.parse(locked), java.time.LocalDate.parse(processed), java.time.LocalDate.parse(open)).update();
+        }
+    }
+
+    private void lockedMonthChecks(int y, String locked, String processed, String open) throws Exception {
+        Map<String, Object> body = deal(processed);
+        body.put("newClientName", "LOCK CLIENT " + tag);
+        body.put("newClientPan", pan);
+        long client = postJson("/api/bonds", body, admin, 201).get("clientId").asLong();
+        assertThat(status(processed)).isEqualTo("OPEN");   // its split and END must be made again
+
+        Map<String, Object> inLocked = deal(locked);
+        inLocked.put("clientId", client);
+        assertThat(postJson("/api/bonds", inLocked, admin, 409).toString()).contains("Mar " + y + " is locked");
+
+        Map<String, Object> inOpen = deal(open);
+        inOpen.put("clientId", client);
+        long id = postJson("/api/bonds", inOpen, admin, 201).get("id").asLong();
+        putJson("/api/bonds/" + id, deal(locked), admin, 409);             // moving it into a locked month
+        month(open, "LOCKED");
+        putJson("/api/bonds/" + id, deal(open), admin, 409);               // changing it inside one
+        postJson("/api/bonds/" + id + "/cancel", Map.of("reason", "test"), admin, 409);
+        assertThat(getJson("/api/bonds?from=" + y + "-05&to=" + y + "-05", admin, 200).get(0).get("status").asText()).isEqualTo("ACTIVE");
+    }
+
+    /** R-99: a save carries the version the screen opened (If-Match); a save from an older version is refused. */
+    @Test
+    void aSaveFromAnOlderVersionDoesNotOverwriteSomeoneElsesChange() throws Exception {
+        String month = (2400 + (int) (Long.parseLong(tag) % 500)) + "-06-01";
+        Map<String, Object> body = deal(month);
+        body.put("newClientName", "VERSION CLIENT " + tag);
+        body.put("newClientPan", pan);
+        JsonNode created = postJson("/api/bonds", body, admin, 201);
+        long id = created.get("id").asLong();
+        String opened = created.get("updatedAt").asText();
+
+        Map<String, Object> first = deal(month);
+        first.put("remarks", "first user");
+        String saved = save(id, first, opened, 200).get("updatedAt").asText();
+        Map<String, Object> second = deal(month);
+        second.put("remarks", "second user, from the old screen");
+        assertThat(save(id, second, opened, 409).get("detail").asText()).contains("Someone else saved this entry");
+        assertThat(getJson("/api/bonds?from=" + month.substring(0, 7) + "&to=" + month.substring(0, 7), admin, 200).get(0).get("remarks").asText())
+                .isEqualTo("first user");
+        save(id, second, saved, 200);   // after opening it again
+    }
+
+    private JsonNode save(long id, Map<String, Object> body, String ifMatch, int expected) throws Exception {
+        return body(mvc.perform(withJson(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/bonds/" + id), body)
+                .header("If-Match", ifMatch).session(admin))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().is(expected)).andReturn());
+    }
+
+    private void month(String first, String status) {
+        java.time.LocalDate m = java.time.LocalDate.parse(first);
+        jdbc.sql("""
+                INSERT INTO period (product_type, month, from_date, to_date, status) VALUES ('MF', ?, ?, ?, ?)
+                ON CONFLICT (product_type, month) DO UPDATE SET status = EXCLUDED.status""")
+                .params(m, m, m.plusMonths(1).minusDays(1), status).update();
+    }
+
+    private String status(String first) {
+        return jdbc.sql("SELECT status FROM period WHERE month = ?").param(java.time.LocalDate.parse(first)).query(String.class).single();
     }
 }

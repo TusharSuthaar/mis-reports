@@ -14,7 +14,7 @@ module ownership, guardrails and decision notes. Working on the code: read [CLAU
 Needs Docker Desktop.
 
 ```bash
-cp .env.example .env    # then set the first admin and the two PAN keys (openssl rand -base64 32)
+cp .env.example .env    # then set the first admin, the database password and the two PAN keys (openssl rand -base64 32)
 docker compose up -d --build
 ```
 
@@ -26,6 +26,17 @@ docker compose up -d --build
 
 On first start with an empty user table, the API creates the ADMIN from `MIS_BOOTSTRAP_ADMIN_*`.
 After that those variables are ignored; manage users under **Users**.
+
+All three ports listen on this computer only (`127.0.0.1`), so nobody else on the network can reach the database or
+the API.
+
+### Running for other people
+
+Before colleagues use the app from their own computers:
+
+1. Put HTTPS in front of the UI (a company reverse proxy, or nginx with a certificate) and set `MIS_COOKIE_SECURE=true`.
+2. Set `MIS_UI_BIND=0.0.0.0` so the screens listen on the network. Leave the database and the API on `127.0.0.1`.
+3. Use a long random `MIS_DB_PASSWORD`, and keep `.env` (the PAN keys above all) where only the administrator can read it.
 
 ### Try it with demo data
 

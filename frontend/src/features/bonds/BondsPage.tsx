@@ -263,7 +263,7 @@ function BondForm({ month: listMonth, entry, onDone }: { month: string; entry?: 
       remarks,
       ...givenBody(given),
     };
-    const ok = await run(() => (entry ? api(`/api/bonds/${entry.id}`, { method: 'PUT', body }) : api('/api/bonds', { method: 'POST', body })));
+    const ok = await run(() => (entry ? api(`/api/bonds/${entry.id}`, { method: 'PUT', body, ifMatch: entry.updatedAt }) : api('/api/bonds', { method: 'POST', body })));
     if (ok) onDone();
   }
 

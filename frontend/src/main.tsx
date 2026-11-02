@@ -5,6 +5,16 @@ import { App } from './App';
 import { AuthProvider } from './app/auth';
 import './styles.css';
 
+// The mouse wheel over a number box being typed in (a %, an amount) would change its value: the box lets go instead and the page scrolls.
+document.addEventListener(
+  'wheel',
+  (e) => {
+    const box = document.activeElement;
+    if (box instanceof HTMLInputElement && box.type === 'number' && e.target === box) box.blur();
+  },
+  { passive: true },
+);
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>

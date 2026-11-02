@@ -264,7 +264,7 @@ function GiftForm({ month: listMonth, entry, onDone }: { month: string; entry?: 
       receivedOn: payment === 'RECEIVED' && receivedOn ? receivedOn : null,
       remarks,
     };
-    const ok = await run(() => (entry ? api(`/api/gift/${entry.id}`, { method: 'PUT', body }) : api('/api/gift', { method: 'POST', body })));
+    const ok = await run(() => (entry ? api(`/api/gift/${entry.id}`, { method: 'PUT', body, ifMatch: entry.updatedAt }) : api('/api/gift', { method: 'POST', body })));
     if (ok) onDone();
   }
 

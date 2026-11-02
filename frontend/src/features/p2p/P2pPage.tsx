@@ -26,7 +26,7 @@ export function p2pFigures(brokerage: number, tdsApplied: boolean, tdsPct: numbe
 const thisMonth = () => todayIso().slice(0, 7);
 const PAYMENTS = { PENDING: 'Brokerage not received', RECEIVED: 'Received' };
 
-/** P2P: one row per investment, as in the P2P register; brokerage typed when known (entry only for now). */
+/** P2P: one row per investment, as in the P2P register; brokerage typed when known (R-87). */
 export function P2pPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { user } = useAuth();
   const canEdit = canEditMasters(user?.role);
@@ -57,7 +57,7 @@ export function P2pPage({ embedded = false }: { embedded?: boolean } = {}) {
           </div>
         )}
       </div>
-      <p className="muted">P2P is entry only for now: its brokerage is kept here but not yet in month processing or the END file.</p>
+      <p className="muted">An entry with brokerage counts in its month: the END shows it in the P2P column, shared at the partner's P2P %.</p>
       <ListFilters
         searchHint="Client, PAN, code or platform"
         platformKey="platform"
@@ -206,7 +206,7 @@ function P2pForm({ month: listMonth, entry, onDone }: { month: string; entry?: P
       revSharingStatus: revSharing,
       remarks,
     };
-    const ok = await run(() => (entry ? api(`/api/p2p/${entry.id}`, { method: 'PUT', body }) : api('/api/p2p', { method: 'POST', body })));
+    const ok = await run(() => (entry ? api(`/api/p2p/${entry.id}`, { method: 'PUT', body, ifMatch: entry.updatedAt }) : api('/api/p2p', { method: 'POST', body })));
     if (ok) onDone();
   }
 

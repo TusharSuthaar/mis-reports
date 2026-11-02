@@ -59,6 +59,11 @@ public final class ExcelRow {
         return c == null ? null : values.get(c);
     }
 
+    /** The cell in column {@code column} (0-based) as read, for a header that repeats; null when blank. */
+    public Object valueAt(int column) {
+        return values.get(column);
+    }
+
     /** As text: numbers without trailing zeros, dates as yyyy-MM-dd; blank = "". */
     public String text(String header) {
         Object v = value(header);
