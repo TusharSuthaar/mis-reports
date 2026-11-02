@@ -18,6 +18,7 @@ Files (upload order is the order of a fresh set-up; tools/demo-data/seed.py does
     7 Insurance_Aug2026.xlsx    Products > Insurance upload, month 2026-08 (two rows without PAN, found by name)
     8 MFBrokerage_Sep2026.xlsx  Month close, month 2026-09: a small file, left staged with clients found by name to confirm
     9 Insurance_Sep2026.xlsx    Products > Insurance upload, month 2026-09: three rows found by name, left to confirm
+   10 Equity_Brokerage_Sep2026.xlsx  Products > Equity upload: the report without a PAN column; two parties found by name, left to confirm
 """
 import json
 import math
@@ -484,6 +485,48 @@ ins_sep = rnd.sample([c for c in clients if c['rm']['type'] == 'RM'], 3)
 wb_ins8 = policy_sheet(MONTH, 'Aug-26', ins_aug, 2)
 wb_ins9 = policy_sheet(SEP, 'Sep-26', ins_sep, 3)
 
+# Equity, September: the broker's report in SMC's layout WITHOUT a PAN column (R-89). Each trade finds its client by party code:
+# August's code (its PAN learnt from August's report), else the PAN on the summary sheet, else the client's exact name (to confirm).
+aug_parties = {}
+for r in wb_eq['Sheet1'].iter_rows(min_row=7, values_only=True):
+    if r[2] and r[3]:
+        aug_parties.setdefault(r[2], next(c for c in traders if c['pan'] == r[3]))
+known = rnd.sample(sorted(aug_parties.items()), 12)
+taken = {c['pan'] for c in traders} | {c['pan'] for c in by_name}
+in_summary = rnd.sample([c for c in unique if c['pan'] not in taken], 3)
+taken |= {c['pan'] for c in in_summary}
+eq_by_name = rnd.sample([c for c in unique if c['pan'] not in taken], 2)
+wb_eq9 = openpyxl.Workbook()
+pv = wb_eq9.active
+pv.title = 'Sheet2'
+pv.append(['Sum of Franchise2'])
+pv.append(['Party', 'Name2', 'Total'])
+eq9 = wb_eq9.create_sheet('Sheet1')
+for title in ('DEMO SECURITIES LTD', 'Brokerage Due Report', 'Period : 01/09/2026 To 30/09/2026'):
+    eq9.append([title])
+eq9.append(['Area', 'Other', 'Franchise', 'Name', 'Party', 'Name', 'Date', 'Gross Brokerage', 'Level 1', 'Level 2', 'Level 3', 'Level 4',
+            'Franchise'])
+eq9.append([None, None, None, None, None, None, None, '+ Min.Chrg.', 'Share', 'Share', 'Share', 'Share', 'Share'])
+gross9 = 0.0
+parties9 = [(p, c, 'code') for p, c in known] + [('P%06d' % (990001 + i), c, 'summary') for i, c in enumerate(in_summary)] \
+    + [('P%06d' % (995001 + i), c, 'name') for i, c in enumerate(eq_by_name)]
+for party, c, how in parties9:
+    # The file spells names its own way: one name-only client is in title case with a double space, still the same exact name.
+    shown = c['name'].title().replace(' ', '  ', 1) if (how == 'name' and party.endswith('1')) else c['name']
+    share_sum = 0.0
+    for _ in range(rnd.randint(1, 5)):
+        gross = round(rnd.uniform(40, 6000), 2)
+        share = round(gross * rnd.choice([0.3, 0.4, 0.5, 0.6]), 2)
+        d = SEP + timedelta(days=rnd.randint(0, 29))
+        eq9.append(['MUMFRT', 'MART', 'DEM0001', 'EPSILON MONEY MART', party, shown, d.strftime('%d/%m/%Y'), gross, 0, 0, 0, 0, share])
+        gross9 += gross
+        share_sum += share
+    if how == 'summary':
+        pv.append([party, shown, round(share_sum, 2), c['pan']])   # SMC's pivot: the PAN in a column without a header
+    else:
+        pv.append([party, shown, round(share_sum, 2)])
+eq9.append(['Total', None, None, None, None, None, None, round(gross9, 2)])
+
 os.makedirs(OUT, exist_ok=True)
 save(wb, 'masters.xlsx')
 save(wb_fin, 'ClientMasterReport.xlsx')
@@ -493,6 +536,7 @@ save(wb_eq, 'Equity_Brokerage_Aug2026.xlsx')
 save(wb_ins8, 'Insurance_Aug2026.xlsx')
 save(wb_mf9, 'MFBrokerage_Sep2026.xlsx')
 save(wb_ins9, 'Insurance_Sep2026.xlsx')
+save(wb_eq9, 'Equity_Brokerage_Sep2026.xlsx')
 with open(os.path.join(OUT, 'products.json'), 'w') as f:
     json.dump(products, f, indent=1)
 print('wrote', os.path.relpath(os.path.join(OUT, 'products.json')))

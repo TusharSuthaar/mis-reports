@@ -210,4 +210,7 @@ review = call('GET', '/api/uploads/%d/review' % r['uploadId']) if r.get('uploadI
 print('   MF file staged, not saved: %s client code(s) found by name to confirm' % review.get('toConfirm'))
 r = upload('/api/insurance/upload', 'Insurance_Sep2026.xlsx', month='2026-09-01')
 print('   insurance: %s policies saved, %s found by name to confirm' % (r.get('saved'), r.get('byName')))
+r = upload('/api/equity/upload', 'Equity_Brokerage_Sep2026.xlsx')
+print('   equity (report without PANs): %(trades)s trades, %(byPartyCode)s by party code, %(byName)s found by name to confirm, '
+      '%(clientsNotFound)s not found' % r)
 print('Done. Sign in as %s at the app (http://localhost:5180 with docker compose) and open Dashboard for August 2026.' % user)

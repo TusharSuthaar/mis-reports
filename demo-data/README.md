@@ -15,6 +15,7 @@ developed anywhere — Claude Code cloud sessions included — without real clie
 | `Insurance_Aug2026.xlsx` | insurance team's "Policy level data" sheet | Products → Insurance → upload (2026-08) |
 | `MFBrokerage_Sep2026.xlsx` | a small Finesse MFBrokerage export | Month close → Finesse MF brokerage (2026-09), left unsaved |
 | `Insurance_Sep2026.xlsx` | insurance policy sheet | Products → Insurance → upload (2026-09) |
+| `Equity_Brokerage_Sep2026.xlsx` | broker's report in SMC's layout without a PAN column | Products → Equity (September trades) |
 
 **What is in it:** 5 regions, 9 branches + HEAD OFFICE (house book), 20 RMs; 6 sub-brokers and 20 referral partners with product
 rate cards (one partner pending approval); 2,400 clients (794 with a partner, a few with their own %, a few with a
@@ -28,7 +29,9 @@ of them and its insurance sheet has 2 such policies; the seed confirms those, as
 
 **September 2026 stays open, for trying the confirmations by hand.** Its small MF file is uploaded but not saved: it has 2 codes
 to confirm, and the 3 confirmed in August show as already confirmed (asked once). Its insurance sheet has 3 policies to confirm.
-Month close → September 2026 shows both lists with **Confirm** / **Different client…**. Equity has no name-only cases in the demo.
+Its equity report has no PAN column (R-89): 12 parties are found by their August party code, 3 by the PAN on the summary
+sheet, and 2 only by name, waiting to be confirmed (one is spelt "Asha  Selvaseth", which is still the same exact name).
+Month close → September 2026 shows all three lists with **Confirm** / **Different client…**.
 
 **Why it can't be real:** first names are common ones but every surname is invented (syllable pairs), firm names carry the word "Demo", amounts are random, emails are `@example.com`, phones
 start `90000`, and every PAN has **X as its 4th letter** — the 4th letter of a real PAN is the holder type (P, C, H, F,
