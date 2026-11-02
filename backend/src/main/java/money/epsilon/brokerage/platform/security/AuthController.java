@@ -33,12 +33,14 @@ class AuthController {
     private final AuthenticationManager authenticationManager;
     private final SessionAuthenticationStrategy sessionStrategy;
     private final SecurityContextRepository contextRepository;
+    private final LoginThrottle throttle;
 
     AuthController(AuthenticationManager authenticationManager, SessionAuthenticationStrategy sessionStrategy,
-                   SecurityContextRepository contextRepository) {
+                   SecurityContextRepository contextRepository, LoginThrottle throttle) {
         this.authenticationManager = authenticationManager;
         this.sessionStrategy = sessionStrategy;
         this.contextRepository = contextRepository;
+        this.throttle = throttle;
     }
 
     /** Lets the SPA obtain the XSRF-TOKEN cookie before its first POST. */
@@ -50,14 +52,24 @@ class AuthController {
 
     @PostMapping("/login")
     ResponseEntity<?> login(@Valid @RequestBody LoginRequest req, HttpServletRequest request, HttpServletResponse response) {
+        // The browser's address: nginx passes it on, and only proxies on the internal network are trusted to (R-101).
+        String address = request.getRemoteAddr();
+        var refused = throttle.refusal(req.username(), address);
+        if (refused.isPresent()) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body(ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, refused.get()));
+        }
         Authentication auth;
         try {
             auth = authenticationManager.authenticate(
                     UsernamePasswordAuthenticationToken.unauthenticated(req.username(), req.password()));
         } catch (AuthenticationException e) {
+            throttle.failed(req.username(), address);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, "Invalid username or password"));
         }
+        AppUserPrincipal signedIn = (AppUserPrincipal) auth.getPrincipal();
+        throttle.succeeded(signedIn.id(), signedIn.getUsername(), address);
         request.getSession(true);
         sessionStrategy.onAuthentication(auth, request, response);
         SecurityContext context = SecurityContextHolder.createEmptyContext();

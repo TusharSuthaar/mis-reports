@@ -51,6 +51,10 @@ export function HomePage() {
       <section>
         <h1>Welcome, {user?.displayName}</h1>
         <p className="muted">Signed in as {user?.username} with role {user?.role}.</p>
+        <p className="warn-note">
+          The {user?.role} role has no screens yet: the view of each RM&apos;s and RD&apos;s own clients and brokerage is still to come. Until
+          then, ask an administrator if you need to see something.
+        </p>
       </section>
     );
   }

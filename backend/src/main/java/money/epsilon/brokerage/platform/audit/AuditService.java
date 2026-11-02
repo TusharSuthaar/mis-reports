@@ -36,6 +36,13 @@ public class AuditService {
                 toJson(before), toJson(after), CurrentUser.username(), Instant.now()));
     }
 
+    /** As {@link #record}, for an action no signed-in user stands behind (a sign-in attempt): {@code by} is who it claims to be. */
+    @Transactional
+    public void recordAs(String by, String entity, Object entityId, String action, Object before, Object after) {
+        repository.save(new AuditEntry(entity, entityId == null ? null : entityId.toString(), action,
+                toJson(before), toJson(after), by == null || by.isBlank() ? "unknown" : by.length() > 50 ? by.substring(0, 50) : by, Instant.now()));
+    }
+
     /**
      * The newest audit entry's id (0 when none). Every saved change writes an audit entry, so this number changes whenever
      * anything changes: read-mostly lookups (the org chart) use it to know a remembered answer is still current.

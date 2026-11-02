@@ -41,6 +41,16 @@ public class AppUser {
     @Column(name = "updated_at")
     private Instant updatedAt;
 
+    /** Written only by the sign-in limit and the unlock (R-101), never through this entity. */
+    @Column(name = "failed_logins", insertable = false, updatable = false)
+    private int failedLogins;
+
+    @Column(name = "locked_until", insertable = false, updatable = false)
+    private Instant lockedUntil;
+
+    @Column(name = "locked", insertable = false, updatable = false)
+    private boolean locked;
+
     protected AppUser() {
     }
 
@@ -68,6 +78,9 @@ public class AppUser {
     public boolean isActive() { return active; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public int getFailedLogins() { return failedLogins; }
+    public Instant getLockedUntil() { return lockedUntil; }
+    public boolean isLocked() { return locked; }
 
     void setDisplayName(String displayName) { this.displayName = displayName; }
     void setRole(Role role) { this.role = role; }

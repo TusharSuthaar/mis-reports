@@ -12,6 +12,7 @@ One app (Java + React + PostgreSQL), run with `docker compose up -d --build` (se
 | Add a new file import (a new product, a new master) | [architecture/adding-an-import.md](architecture/adding-an-import.md) | 3 min |
 | Find out what happened / what failed (logs, references, Activity) | [architecture/logging.md](architecture/logging.md) | 3 min |
 | Work in a Claude Code cloud session, or try the app with made-up data | [cloud-sessions.md](cloud-sessions.md) · [demo-data](../demo-data/README.md) | 2 min |
+| Run it for colleagues: HTTPS, network, keys, backups, accounts | [deployment.md](deployment.md) | 6 min |
 | Know *why* something is the way it is | [decisions/](decisions/) — one page each | 1 min each |
 
 ## The rules for these docs

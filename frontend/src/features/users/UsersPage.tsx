@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, errorText } from '../../api/client';
+import { useSubmit } from '../../api/useSubmit';
 import { ROLES, type Role, type User } from '../../api/types';
 import { useAuth } from '../../app/auth';
 import { SidePanel } from '../../components/SidePanel';
@@ -47,7 +48,11 @@ export function UsersPage() {
                 <td>{u.username}</td>
                 <td>{u.displayName}</td>
                 <td>{u.role}</td>
-                <td>{u.active ? 'Active' : <span className="muted">Inactive</span>}</td>
+                <td>
+                  {u.active ? 'Active' : <span className="muted">Inactive</span>}
+                  {u.locked && <span className="badge warn">locked: wrong passwords</span>}
+                  {!u.locked && u.waitUntil && <span className="badge">waiting after wrong passwords</span>}
+                </td>
                 <td>{formatDateTime(u.updatedAt)}</td>
               </tr>
             ))}
@@ -61,6 +66,7 @@ export function UsersPage() {
       )}
       {panel?.mode === 'edit' && (
         <SidePanel title={panel.user.username} onClose={close}>
+          {(panel.user.locked || panel.user.waitUntil) && <UnlockUser user={panel.user} onSaved={saved} />}
           <EditUserForm user={panel.user} onSaved={saved} />
           <ResetPasswordForm user={panel.user} />
         </SidePanel>
@@ -72,7 +78,7 @@ export function UsersPage() {
 function NewUserForm({ onSaved }: { onSaved: () => void }) {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [role, setRole] = useState<Role>('RM');
+  const [role, setRole] = useState<Role>('HO');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -101,7 +107,7 @@ function NewUserForm({ onSaved }: { onSaved: () => void }) {
         Role
         <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
           {ROLES.map((r) => (
-            <option key={r}>{r}</option>
+            <option key={r} value={r}>{NO_SCREENS_YET.includes(r) ? `${r} (no screens yet)` : r}</option>
           ))}
         </select>
       </label>
@@ -145,7 +151,7 @@ function EditUserForm({ user, onSaved }: { user: User; onSaved: () => void }) {
         Role
         <select value={role} onChange={(e) => setRole(e.target.value as Role)} disabled={isSelf}>
           {ROLES.map((r) => (
-            <option key={r}>{r}</option>
+            <option key={r} value={r}>{NO_SCREENS_YET.includes(r) ? `${r} (no screens yet)` : r}</option>
           ))}
         </select>
       </label>
@@ -187,5 +193,28 @@ function ResetPasswordForm({ user }: { user: User }) {
         Set password
       </button>
     </form>
+  );
+}
+
+
+/** Roles that can sign in but have no screens until the RM / RD view exists (audit L-03). */
+const NO_SCREENS_YET: Role[] = ['RM', 'RD'];
+
+/** A user stopped by wrong passwords (R-101): unlocking lets them sign in again at once. */
+function UnlockUser({ user, onSaved }: { user: User; onSaved: () => void }) {
+  const { busy, error, run } = useSubmit();
+  return (
+    <div className="card-block">
+      <p className="warn-note" style={{ marginTop: 0 }}>
+        {user.locked
+          ? `${user.username} is locked after 10 wrong passwords.`
+          : `${user.username} must wait after wrong passwords (until ${formatDateTime(user.waitUntil!)}).`}{' '}
+        Check with them that it was them before unlocking.
+      </p>
+      <button type="button" disabled={busy} onClick={async () => { if (await run(() => api(`/api/users/${user.id}/unlock`, { method: 'POST' }))) onSaved(); }}>
+        Unlock
+      </button>
+      {error && <p className="error">{error}</p>}
+    </div>
   );
 }

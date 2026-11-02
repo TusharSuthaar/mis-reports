@@ -37,7 +37,8 @@ class SecurityConfig {
 
     @Bean
     SecurityFilterChain api(HttpSecurity http, CookieCsrfTokenRepository csrfTokens,
-                            SecurityContextRepository contextRepository, AppUserRepository users) throws Exception {
+                            SecurityContextRepository contextRepository, AppUserRepository users,
+                                    money.epsilon.brokerage.platform.audit.AuditService audit) throws Exception {
         http
                 .securityContext(c -> c.securityContextRepository(contextRepository))
                 .csrf(c -> c.csrfTokenRepository(csrfTokens).csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler()))
@@ -49,6 +50,12 @@ class SecurityConfig {
                         .anyRequest().denyAll())
                 .exceptionHandling(e -> e.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
                 .logout(l -> l.logoutUrl("/api/auth/logout")
+                        // Sign-outs are in the audit log next to sign-ins (L-04).
+                        .addLogoutHandler((request, response, auth) -> {
+                            if (auth != null && auth.getPrincipal() instanceof AppUserPrincipal p) {
+                                audit.recordAs(p.getUsername(), "USER", p.id(), "SIGN_OUT", null, null);
+                            }
+                        })
                         .logoutSuccessHandler(new HttpStatusReturningLogoutSuccessHandler(HttpStatus.NO_CONTENT)))
                 .formLogin(f -> f.disable())
                 .httpBasic(b -> b.disable())

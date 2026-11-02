@@ -88,11 +88,11 @@ class UserAdminIT extends IntegrationTestBase {
 
         mvc.perform(withJson(post("/api/users/" + id + "/password"), Map.of("password", newPassword)).session(loginAdmin()))
                 .andExpect(status().isNoContent());
+        assertThat(latestAudit(id).get("action").asText()).isEqualTo("PASSWORD_RESET");   // before sign-ins add their own (R-101)
 
         login(name, newPassword);
         mvc.perform(withJson(post("/api/auth/login"), Map.of("username", name, "password", PASSWORD)))
                 .andExpect(status().isUnauthorized());
-        assertThat(latestAudit(id).get("action").asText()).isEqualTo("PASSWORD_RESET");
     }
 
     @Test

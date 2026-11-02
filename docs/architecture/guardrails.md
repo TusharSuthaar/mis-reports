@@ -27,6 +27,7 @@ checklist asks for it.
 | G-20 | Log only through SLF4J: JSON lines with requestId, user, module, action. No `System.out` / `printStackTrace`. | `GuardrailsTest.nothingPrintsToTheConsole`, `JsonLogFormatterTest` |
 | G-21 | No full PAN in logs or error records (the formatter masks PAN-shaped text as a safety net); query strings are never logged. | `JsonLogFormatterTest`, `ActivityIT`, review |
 | G-22 | Unexpected errors show only "something went wrong + reference"; every job type has a plain-words title for the Activity screen. | `ActivityIT`, `JobHandler.title()` (compiler) |
+| G-23 | Sign-in is limited (R-101): every wrong password goes through `LoginThrottle`, and every sign-in, failure, lock, unlock and sign-out is audited under `USER`. A new way to sign in must use it too. | `SignInLimitIT` |
 
 ## Before you commit
 1. `backend/mvnw-docker.sh verify` and `cd frontend && npm test` are green.

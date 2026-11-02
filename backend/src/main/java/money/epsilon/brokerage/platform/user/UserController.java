@@ -43,6 +43,12 @@ class UserController {
         return service.update(id, req.displayName(), req.role(), req.active());
     }
 
+    /** Lets a user locked out by wrong passwords sign in again (R-101). */
+    @PostMapping("/{id}/unlock")
+    UserView unlock(@PathVariable long id) {
+        return service.unlock(id);
+    }
+
     @PostMapping("/{id}/password")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void resetPassword(@PathVariable long id, @Valid @RequestBody ResetPasswordRequest req) {

@@ -31,6 +31,8 @@ logging:
       console: ${MIS_LOG_FORMAT:money.epsilon.brokerage.platform.logging.JsonLogFormatter}
 
 server:
+  # Behind nginx: the browser's address comes from X-Forwarded-For, trusted only from internal-network proxies (R-101).
+  forward-headers-strategy: native
   servlet:
     session:
       timeout: 8h

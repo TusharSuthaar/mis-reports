@@ -74,6 +74,19 @@ public class UserService {
         PasswordPolicy.check(password, user.getUsername());
         user.setPasswordHash(passwordEncoder.encode(password));
         audit.record(AUDIT_ENTITY, id, "PASSWORD_RESET", null, null);
+        // A new password from an administrator also lifts a lock from wrong passwords (R-101).
+        if (user.isLocked() || user.getFailedLogins() > 0) unlock(id);
+    }
+
+    /** Lifts the sign-in limit after wrong passwords (R-101): the user can sign in again at once. Audited. */
+    @Transactional
+    public UserView unlock(long id) {
+        AppUser user = find(id);
+        UserView before = UserView.of(user);
+        repository.clearSignInLimit(id);
+        UserView after = UserView.of(find(id));
+        audit.record(AUDIT_ENTITY, id, "UNLOCK", before, after);
+        return after;
     }
 
     /** Creates the first ADMIN; does nothing if any user already exists. */
@@ -98,12 +111,14 @@ public class UserService {
     }
 
     /** Safe to return and to audit: never contains the password hash. */
+    /** {@code locked}: after wrong passwords, until an administrator unlocks; {@code waitUntil}: a wait after wrong passwords. */
     public record UserView(Long id, String username, String displayName, Role role, Long employeeId,
-                           boolean active, Instant createdAt, Instant updatedAt) {
+                           boolean active, Instant createdAt, Instant updatedAt, boolean locked, Instant waitUntil) {
 
         static UserView of(AppUser u) {
+            Instant wait = u.getLockedUntil() != null && u.getLockedUntil().isAfter(Instant.now()) ? u.getLockedUntil() : null;
             return new UserView(u.getId(), u.getUsername(), u.getDisplayName(), u.getRole(), u.getEmployeeId(),
-                    u.isActive(), u.getCreatedAt(), u.getUpdatedAt());
+                    u.isActive(), u.getCreatedAt(), u.getUpdatedAt(), u.isLocked(), wait);
         }
     }
 }

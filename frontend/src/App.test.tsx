@@ -63,6 +63,41 @@ describe('login', () => {
   });
 });
 
+describe('sign-in limit (R-101)', () => {
+  it('says how long to wait after too many wrong passwords', async () => {
+    document.cookie = 'XSRF-TOKEN=tok123';
+    fakeApi({
+      'GET /api/auth/me': () => ({ status: 401 }),
+      'POST /api/auth/login': () => ({ status: 429, body: { detail: 'Too many wrong passwords. Try again in 2 minutes.' } }),
+    });
+    renderAt('/');
+    await userEvent.type(await screen.findByLabelText('Username'), 'ravi');
+    await userEvent.type(screen.getByLabelText('Password'), 'any-password-1');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too many wrong passwords. Try again in 2 minutes.');
+  });
+
+  it('shows a locked user to the administrator, who unlocks it', async () => {
+    document.cookie = 'XSRF-TOKEN=tok123';
+    const ravi = { id: 2, username: 'ravi', displayName: 'Ravi', role: 'HO', employeeId: null, active: true,
+      createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z', locked: true, waitUntil: null };
+    let unlocked = false;
+    fakeApi({
+      'GET /api/auth/me': () => ({ status: 200, body: admin }),
+      'GET /api/users': () => ({ status: 200, body: [{ ...ravi, locked: !unlocked }] }),
+      'POST /api/users/2/unlock': () => {
+        unlocked = true;
+        return { status: 200, body: { ...ravi, locked: false } };
+      },
+    });
+    renderAt('/users');
+    expect(await screen.findByText('locked: wrong passwords')).toBeInTheDocument();
+    await userEvent.click(screen.getByText('ravi'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Unlock' }));
+    expect(unlocked).toBe(true);
+  });
+});
+
 describe('expired login', () => {
   it('goes back to sign-in with a message when the server says the login ended', async () => {
     fakeApi({
