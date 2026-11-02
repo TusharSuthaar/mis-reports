@@ -135,7 +135,7 @@ public class AttributionService {
     /** Splits every active line of the month and marks it PROCESSED. */
     @Transactional
     public RunResult process(long periodId) {
-        PeriodView period = periods.get(periodId);
+        PeriodView period = periods.getForChange(periodId);   // held until the split is saved (H-05)
         if (period.status() == Period.Status.LOCKED) throw new RuleViolationException(period.month() + " is locked");
         List<ActiveLine> mfLines = ledger.activeLines(periodId, MF);
         if (mfLines.isEmpty()) throw new RuleViolationException("Nothing to split: save " + period.month() + " first");

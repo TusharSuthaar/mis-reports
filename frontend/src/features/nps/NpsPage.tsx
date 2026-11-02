@@ -251,7 +251,7 @@ function NpsForm({ month: listMonth, entry, onDone }: { month: string; entry?: N
       receivedOn: receivedOn || null,
       remarks,
     };
-    const ok = await run(() => (entry ? api(`/api/nps/${entry.id}`, { method: 'PUT', body }) : api('/api/nps', { method: 'POST', body })));
+    const ok = await run(() => (entry ? api(`/api/nps/${entry.id}`, { method: 'PUT', body, ifMatch: entry.updatedAt }) : api('/api/nps', { method: 'POST', body })));
     if (ok) onDone();
   }
 

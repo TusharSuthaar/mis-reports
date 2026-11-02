@@ -256,7 +256,7 @@ function P2pForm({ month: listMonth, entry, onDone }: { month: string; entry?: P
       revSharingStatus: revSharing,
       remarks,
     };
-    const ok = await run(() => (entry ? api(`/api/p2p/${entry.id}`, { method: 'PUT', body }) : api('/api/p2p', { method: 'POST', body })));
+    const ok = await run(() => (entry ? api(`/api/p2p/${entry.id}`, { method: 'PUT', body, ifMatch: entry.updatedAt }) : api('/api/p2p', { method: 'POST', body })));
     if (ok) onDone();
   }
 

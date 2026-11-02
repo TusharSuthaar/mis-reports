@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
 import money.epsilon.brokerage.platform.security.Roles;
+import money.epsilon.brokerage.platform.web.EditVersion;
 import money.epsilon.brokerage.pms.domain.PmsInvestment;
 import money.epsilon.brokerage.pms.domain.PmsPayout;
 import money.epsilon.brokerage.pms.service.PmsService;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -84,8 +86,9 @@ class PmsController {
 
     @PutMapping("/{id}")
     @PreAuthorize(Roles.MASTER_WRITE)
-    InvestmentView update(@PathVariable long id, @Valid @RequestBody InvestmentRequest req) {
-        return service.update(id, req.details());
+    InvestmentView update(@PathVariable long id, @Valid @RequestBody InvestmentRequest req,
+                    @RequestHeader(value = EditVersion.HEADER, required = false) String ifMatch) {
+        return service.update(id, req.details(), ifMatch);
     }
 
     @PostMapping("/{id}/cancel")

@@ -41,12 +41,14 @@ async function csrfToken(): Promise<string> {
   return token ?? '';
 }
 
-export async function api<T>(path: string, options: { method?: Method; body?: unknown } = {}): Promise<T> {
+/** {@code ifMatch}: the entry's updatedAt as the form opened it; the server refuses the save if someone saved since (R-99). */
+export async function api<T>(path: string, options: { method?: Method; body?: unknown; ifMatch?: string | null } = {}): Promise<T> {
   const method = options.method ?? 'GET';
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (method !== 'GET') headers['X-XSRF-TOKEN'] = await csrfToken();
   const isForm = options.body instanceof FormData;
   if (options.body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
+  if (options.ifMatch) headers['If-Match'] = options.ifMatch;
 
   const res = await fetch(path, {
     method,

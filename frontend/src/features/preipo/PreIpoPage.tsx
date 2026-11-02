@@ -64,6 +64,8 @@ export interface PreIpoDeal {
   dealSheet: DealSheet;
   remarks: string | null;
   status: 'ACTIVE' | 'CANCELLED';
+  /** Sent back on a save so a change by someone else since is not overwritten (R-99). */
+  updatedAt: string | null;
 }
 
 interface Scrip {
@@ -440,7 +442,7 @@ function DealForm({ kind, entry, onDone }: { kind: PreIpoKind; entry?: PreIpoDea
       dealSheet: sheet,
       remarks,
     };
-    const ok = await run(() => (entry ? api(`/api/preipo/${entry.id}`, { method: 'PUT', body }) : api('/api/preipo', { method: 'POST', body })));
+    const ok = await run(() => (entry ? api(`/api/preipo/${entry.id}`, { method: 'PUT', body, ifMatch: entry.updatedAt }) : api('/api/preipo', { method: 'POST', body })));
     if (ok) onDone();
   }
 

@@ -19,6 +19,7 @@ import money.epsilon.brokerage.period.domain.Period;
 import money.epsilon.brokerage.period.service.PeriodService;
 import money.epsilon.brokerage.platform.audit.AuditService;
 import money.epsilon.brokerage.platform.crypto.PanCipher;
+import money.epsilon.brokerage.platform.dated.ChangeWindow;
 import money.epsilon.brokerage.platform.excel.ExcelFile;
 import money.epsilon.brokerage.platform.excel.ExcelRow;
 import money.epsilon.brokerage.platform.security.CurrentUser;
@@ -57,13 +58,15 @@ public class EquityService {
     private final ClientService clients;
     private final PeriodService periods;
     private final AuditService audit;
+    private final ChangeWindow months;
 
-    EquityService(JdbcClient jdbc, PanCipher panCipher, ClientService clients, PeriodService periods, AuditService audit) {
+    EquityService(JdbcClient jdbc, PanCipher panCipher, ClientService clients, PeriodService periods, AuditService audit, ChangeWindow months) {
         this.jdbc = jdbc;
         this.panCipher = panCipher;
         this.clients = clients;
         this.periods = periods;
         this.audit = audit;
+        this.months = months;
     }
 
     /** {@code byPartyCode} / {@code byName}: clients of a report without PANs, found by party code or by exact name. */
@@ -112,6 +115,7 @@ public class EquityService {
         periods.list("MF").stream().filter(p -> p.month().equals(month) && p.status() == Period.Status.LOCKED).findFirst().ifPresent(p -> {
             throw new RuleViolationException(month + " is locked: its equity brokerage cannot be replaced");
         });
+        this.months.beforeEntryChange(month.atDay(1));   // a processed month must be processed again (R-98)
 
         Map<String, Long> byPanHash = panIndex();
         Long replaced = jdbc.sql("SELECT id FROM equity_upload WHERE month = ? AND status = 'ACTIVE'").param(month.atDay(1)).query(Long.class).optional().orElse(null);

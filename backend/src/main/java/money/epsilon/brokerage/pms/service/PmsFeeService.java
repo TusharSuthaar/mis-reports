@@ -16,6 +16,7 @@ import money.epsilon.brokerage.org.service.EmployeeService;
 import money.epsilon.brokerage.partner.service.PartnerService;
 import money.epsilon.brokerage.platform.audit.AuditService;
 import money.epsilon.brokerage.platform.crypto.PanCipher;
+import money.epsilon.brokerage.platform.dated.ChangeWindow;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.text.Text;
 import money.epsilon.brokerage.platform.web.NotFoundException;
@@ -42,15 +43,17 @@ public class PmsFeeService {
     private final EmployeeService employees;
     private final PartnerService partners;
     private final AuditService audit;
+    private final ChangeWindow months;
 
     PmsFeeService(PmsFeeRepository fees, PmsInvestmentRepository investments, ClientService clients, EmployeeService employees,
-                  PartnerService partners, AuditService audit) {
+                  PartnerService partners, AuditService audit, ChangeWindow months) {
         this.fees = fees;
         this.investments = investments;
         this.clients = clients;
         this.employees = employees;
         this.partners = partners;
         this.audit = audit;
+        this.months = months;
     }
 
     @Transactional(readOnly = true)
@@ -65,6 +68,7 @@ public class PmsFeeService {
     public FeeView create(long investmentId, LocalDate month, BigDecimal amount, String remarks) {
         PmsInvestment inv = investment(investmentId);
         if (inv.getStatus() != PmsInvestment.Status.ACTIVE) throw new RuleViolationException("This PMS investment is cancelled");
+        months.beforeEntryChange(month(month));
         PmsFee fee = new PmsFee(investmentId);
         fee.set(month(month), amount(amount), Text.clean(remarks));
         fees.saveAndFlush(fee);
@@ -77,6 +81,8 @@ public class PmsFeeService {
     public FeeView update(long id, LocalDate month, BigDecimal amount, String remarks) {
         PmsFee fee = find(id);
         if (fee.getStatus() == PmsFee.Status.CANCELLED) throw new RuleViolationException("This PMS revenue entry is cancelled");
+        months.beforeEntryChange(fee.getMonth());
+        months.beforeEntryChange(month(month));
         FeeView before = views(List.of(fee)).get(0);
         fee.set(month(month), amount(amount), Text.clean(remarks));
         fees.saveAndFlush(fee);
@@ -89,6 +95,7 @@ public class PmsFeeService {
     public void cancel(long id, String reason) {
         PmsFee fee = find(id);
         if (fee.getStatus() == PmsFee.Status.CANCELLED) return;
+        months.beforeEntryChange(fee.getMonth());
         FeeView before = views(List.of(fee)).get(0);
         fee.cancel();
         fees.saveAndFlush(fee);

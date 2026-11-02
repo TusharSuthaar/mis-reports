@@ -10,4 +10,6 @@ public interface PmsFeeRepository extends JpaRepository<PmsFee, Long> {
     List<PmsFee> findByMonthOrderByIdAsc(LocalDate month);
 
     List<PmsFee> findByMonthBetweenOrderByMonthDescIdDesc(LocalDate from, LocalDate to);
+
+    List<PmsFee> findByInvestmentId(long investmentId);
 }

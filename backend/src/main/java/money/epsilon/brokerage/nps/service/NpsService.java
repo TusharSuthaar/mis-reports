@@ -22,8 +22,10 @@ import money.epsilon.brokerage.partner.service.PartnerService;
 import money.epsilon.brokerage.partner.service.PartnerService.PartnerView;
 import money.epsilon.brokerage.platform.audit.AuditService;
 import money.epsilon.brokerage.platform.crypto.PanCipher;
+import money.epsilon.brokerage.platform.dated.ChangeWindow;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.text.Text;
+import money.epsilon.brokerage.platform.web.EditVersion;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
 import money.epsilon.brokerage.sharing.domain.Product;
@@ -47,9 +49,10 @@ public class NpsService {
     private final PartnerService partners;
     private final ProductTaxService taxes;
     private final AuditService audit;
+    private final ChangeWindow months;
 
     NpsService(NpsEntryRepository entries, ClientService clients, EmployeeService employees, OrgChartService org, PartnerService partners,
-               ProductTaxService taxes, AuditService audit) {
+               ProductTaxService taxes, AuditService audit, ChangeWindow months) {
         this.entries = entries;
         this.clients = clients;
         this.employees = employees;
@@ -57,6 +60,7 @@ public class NpsService {
         this.partners = partners;
         this.taxes = taxes;
         this.audit = audit;
+        this.months = months;
     }
 
     /** {@code received}: true = revenue received, false = revenue not received yet, null = all. */
@@ -107,6 +111,7 @@ public class NpsService {
     @Transactional
     public NpsView create(Long clientId, String newClientName, String newClientPan, NpsEntry.Details d) {
         NpsEntry.Details details = check(d);
+        months.beforeEntryChange(details.month());
         long client;
         if (clientId != null) {
             clients.requireExists(clientId);
@@ -124,10 +129,13 @@ public class NpsService {
     }
 
     @Transactional
-    public NpsView update(long id, NpsEntry.Details d) {
+    public NpsView update(long id, NpsEntry.Details d, String ifMatch) {
         NpsEntry e = find(id);
+        EditVersion.check(e.getUpdatedAt(), ifMatch);
         if (e.getStatus() == NpsEntry.Status.CANCELLED) throw new RuleViolationException("This NPS entry is cancelled");
         NpsEntry.Details details = check(d);
+        months.beforeEntryChange(e.getMonth());
+        months.beforeEntryChange(details.month());
         NpsView before = get(id);
         e.fill(details, gstPercent(details.month()));
         entries.saveAndFlush(e);
@@ -140,6 +148,7 @@ public class NpsService {
     public void cancel(long id, String reason) {
         NpsEntry e = find(id);
         if (e.getStatus() == NpsEntry.Status.CANCELLED) return;
+        months.beforeEntryChange(e.getMonth());
         NpsView before = get(id);
         e.cancel();
         entries.saveAndFlush(e);

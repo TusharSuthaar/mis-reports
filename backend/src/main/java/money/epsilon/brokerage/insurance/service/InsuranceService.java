@@ -30,10 +30,12 @@ import money.epsilon.brokerage.partner.service.PartnerService.PartnerInput;
 import money.epsilon.brokerage.partner.service.PartnerService.PartnerView;
 import money.epsilon.brokerage.platform.audit.AuditService;
 import money.epsilon.brokerage.platform.crypto.PanCipher;
+import money.epsilon.brokerage.platform.dated.ChangeWindow;
 import money.epsilon.brokerage.platform.excel.ExcelFile;
 import money.epsilon.brokerage.platform.excel.ExcelRow;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.text.Text;
+import money.epsilon.brokerage.platform.web.EditVersion;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
 import org.springframework.stereotype.Service;
@@ -68,9 +70,10 @@ public class InsuranceService {
     private final PartnerService partners;
     private final PanCipher panCipher;
     private final AuditService audit;
+    private final ChangeWindow months;
 
     InsuranceService(InsurancePolicyRepository policies, ClientService clients, EmployeeService employees, OrgChartService org,
-                     PartnerService partners, PanCipher panCipher, AuditService audit) {
+                     PartnerService partners, PanCipher panCipher, AuditService audit, ChangeWindow months) {
         this.policies = policies;
         this.clients = clients;
         this.employees = employees;
@@ -78,6 +81,7 @@ public class InsuranceService {
         this.partners = partners;
         this.panCipher = panCipher;
         this.audit = audit;
+        this.months = months;
     }
 
     // ---- list --------------------------------------------------------------------------------------------------------
@@ -168,6 +172,7 @@ public class InsuranceService {
     @Transactional
     public PolicyView create(Long clientId, String newClientName, String newClientPan, Long rmId, PolicyInput in) {
         LocalDate month = month(in.month());
+        months.beforeEntryChange(month);
         long client;
         if (clientId != null) {
             clients.requireExists(clientId);
@@ -188,9 +193,12 @@ public class InsuranceService {
 
     /** {@code clientId} moves the policy to another client (it was mapped wrongly); null keeps it. */
     @Transactional
-    public PolicyView update(long id, Long clientId, Long rmId, PolicyInput in) {
+    public PolicyView update(long id, Long clientId, Long rmId, PolicyInput in, String ifMatch) {
         InsurancePolicy p = find(id);
+        EditVersion.check(p.getUpdatedAt(), ifMatch);
         if (p.getStatus() == InsurancePolicy.Status.CANCELLED) throw new RuleViolationException("This policy is cancelled");
+        months.beforeEntryChange(p.getMonth());
+        months.beforeEntryChange(month(in.month()));
         PolicyView before = get(id);
         if (clientId != null && !clientId.equals(p.getClientId())) {
             clients.requireExists(clientId);
@@ -207,6 +215,7 @@ public class InsuranceService {
     public void cancel(long id, String reason) {
         InsurancePolicy p = find(id);
         if (p.getStatus() == InsurancePolicy.Status.CANCELLED) return;
+        months.beforeEntryChange(p.getMonth());
         PolicyView before = get(id);
         p.cancel();
         policies.saveAndFlush(p);
@@ -315,6 +324,7 @@ public class InsuranceService {
     @Transactional
     public UploadResult upload(byte[] content, String fileName, LocalDate monthDay) {
         LocalDate month = month(monthDay);
+        months.beforeEntryChange(month);
         LocalDate lastDay = month.plusMonths(1).minusDays(1);
         List<Unmapped> notSaved = new ArrayList<>();
         Map<String, Long> byPanHash = new HashMap<>();

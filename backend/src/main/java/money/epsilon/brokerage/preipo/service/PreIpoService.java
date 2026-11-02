@@ -22,8 +22,10 @@ import money.epsilon.brokerage.partner.service.PartnerService;
 import money.epsilon.brokerage.partner.service.PartnerService.PartnerView;
 import money.epsilon.brokerage.platform.audit.AuditService;
 import money.epsilon.brokerage.platform.crypto.PanCipher;
+import money.epsilon.brokerage.platform.dated.ChangeWindow;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.text.Text;
+import money.epsilon.brokerage.platform.web.EditVersion;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
 import money.epsilon.brokerage.preipo.domain.PreIpoEntry;
@@ -55,9 +57,10 @@ public class PreIpoService {
     private final IntermediaryService platforms;
     private final ProductTaxService taxes;
     private final AuditService audit;
+    private final ChangeWindow months;
 
     PreIpoService(PreIpoEntryRepository entries, PreIpoScripRepository scrips, ClientService clients, EmployeeService employees,
-                  OrgChartService org, PartnerService partners, IntermediaryService platforms, ProductTaxService taxes, AuditService audit) {
+                  OrgChartService org, PartnerService partners, IntermediaryService platforms, ProductTaxService taxes, AuditService audit, ChangeWindow months) {
         this.entries = entries;
         this.scrips = scrips;
         this.clients = clients;
@@ -67,6 +70,7 @@ public class PreIpoService {
         this.platforms = platforms;
         this.taxes = taxes;
         this.audit = audit;
+        this.months = months;
     }
 
     /**
@@ -151,6 +155,7 @@ public class PreIpoService {
     @Transactional
     public PreIpoView create(Long clientId, String newClientName, String newClientPan, Details d) {
         Details details = check(d);
+        months.beforeEntryChange(details.month());
         long client;
         if (clientId != null) {
             clients.requireExists(clientId);
@@ -168,10 +173,13 @@ public class PreIpoService {
     }
 
     @Transactional
-    public PreIpoView update(long id, Details d) {
+    public PreIpoView update(long id, Details d, String ifMatch) {
         PreIpoEntry e = find(id);
+        EditVersion.check(e.getUpdatedAt(), ifMatch);
         if (e.getStatus() == PreIpoEntry.Status.CANCELLED) throw new RuleViolationException("This Unlisted deal is cancelled");
         Details details = check(d);
+        months.beforeEntryChange(e.getMonth());
+        months.beforeEntryChange(details.month());
         PreIpoView before = get(id);
         e.fill(details, gstPercent(details));
         entries.saveAndFlush(e);
@@ -184,6 +192,7 @@ public class PreIpoService {
     public void cancel(long id, String reason) {
         PreIpoEntry e = find(id);
         if (e.getStatus() == PreIpoEntry.Status.CANCELLED) return;
+        months.beforeEntryChange(e.getMonth());
         PreIpoView before = get(id);
         e.cancel();
         entries.saveAndFlush(e);

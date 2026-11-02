@@ -1107,4 +1107,6 @@ export interface InsurancePolicy {
   uploadRow: number | null;
   status: 'ACTIVE' | 'CANCELLED';
   createdBy: string;
+  /** Sent back on a save so a change by someone else since is not overwritten (R-99). */
+  updatedAt: string | null;
 }

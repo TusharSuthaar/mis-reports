@@ -345,7 +345,7 @@ function PolicyForm({ policy, onDone, choices }: { policy?: InsurancePolicy; onD
       pospComm: !noPosp && typePosp && pospTyped !== '' ? num(pospTyped) : null,
       remarks,
     };
-    const ok = await run(() => (policy ? api(`/api/insurance/${policy.id}`, { method: 'PUT', body }) : api('/api/insurance', { method: 'POST', body })));
+    const ok = await run(() => (policy ? api(`/api/insurance/${policy.id}`, { method: 'PUT', body, ifMatch: policy.updatedAt }) : api('/api/insurance', { method: 'POST', body })));
     if (ok) onDone();
   }
 

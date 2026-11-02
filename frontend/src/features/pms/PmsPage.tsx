@@ -288,7 +288,7 @@ function InvestmentForm({ month: listMonth, entry, onDone }: { month: string; en
       redeemedOn: holding === 'REDEEMED' ? redeemedOn || null : null,
       remarks,
     };
-    const ok = await run(() => (entry ? api(`/api/pms/${entry.id}`, { method: 'PUT', body }) : api('/api/pms', { method: 'POST', body })));
+    const ok = await run(() => (entry ? api(`/api/pms/${entry.id}`, { method: 'PUT', body, ifMatch: entry.updatedAt }) : api('/api/pms', { method: 'POST', body })));
     if (ok) onDone();
   }
 
