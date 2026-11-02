@@ -82,11 +82,8 @@ public class PreIpoService {
     public List<PreIpoView> search(Filter f) {
         LocalDate from = f.from() == null ? LocalDate.of(2000, 1, 1) : f.from().atDay(1);
         LocalDate to = f.to() == null ? LocalDate.of(2999, 12, 1) : f.to().atDay(1);
-        List<PreIpoEntry> found = entries.findByMonthBetweenOrderByMonthDescDealDateDescIdDesc(from, to).stream()
-                .filter(e -> f.includeCancelled() || e.getStatus() == PreIpoEntry.Status.ACTIVE)
+        List<PreIpoEntry> found = entries.search(from, to, f.includeCancelled(), PreIpoEntry.Status.ACTIVE, f.rmId(), f.partnerId()).stream()
                 .filter(e -> f.kind() == null || f.kind() == e.getKind())
-                .filter(e -> f.rmId() == null || f.rmId().equals(e.getRmId()))
-                .filter(e -> f.partnerId() == null || f.partnerId().equals(e.getPartnerId()))
                 .filter(e -> f.vendorId() == null || f.vendorId().equals(e.getVendorId()))
                 .filter(e -> f.billing() == null || f.billing() == e.getBillingStatus())
                 .toList();

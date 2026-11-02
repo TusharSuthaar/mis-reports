@@ -95,10 +95,7 @@ public class InsuranceService {
     public List<PolicyView> search(Filter f) {
         LocalDate from = f.from() == null ? LocalDate.of(2000, 1, 1) : f.from().atDay(1);
         LocalDate to = f.to() == null ? LocalDate.of(2999, 12, 1) : f.to().atDay(1);
-        List<InsurancePolicy> found = policies.findByMonthBetweenOrderByMonthDescIdDesc(from, to).stream()
-                .filter(p -> f.includeCancelled() || p.getStatus() == InsurancePolicy.Status.ACTIVE)
-                .filter(p -> f.rmId() == null || f.rmId().equals(p.getRmId()))
-                .filter(p -> f.pospId() == null || f.pospId().equals(p.getPospId()))
+        List<InsurancePolicy> found = policies.search(from, to, f.includeCancelled(), InsurancePolicy.Status.ACTIVE, f.rmId(), f.pospId()).stream()
                 .filter(p -> f.category() == null || f.category() == p.getCategory())
                 .filter(p -> f.insurer() == null || f.insurer().isBlank() || Text.key(p.getInsurer()).equals(Text.key(f.insurer())))
                 .toList();

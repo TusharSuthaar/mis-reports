@@ -73,10 +73,7 @@ public class NpsService {
     public List<NpsView> search(Filter f) {
         LocalDate from = f.from() == null ? LocalDate.of(2000, 1, 1) : f.from().atDay(1);
         LocalDate to = f.to() == null ? LocalDate.of(2999, 12, 1) : f.to().atDay(1);
-        List<NpsEntry> found = entries.findByMonthBetweenOrderByMonthDescIdDesc(from, to).stream()
-                .filter(e -> f.includeCancelled() || e.getStatus() == NpsEntry.Status.ACTIVE)
-                .filter(e -> f.rmId() == null || f.rmId().equals(e.getRmId()))
-                .filter(e -> f.partnerId() == null || f.partnerId().equals(e.getPartnerId()))
+        List<NpsEntry> found = entries.search(from, to, f.includeCancelled(), NpsEntry.Status.ACTIVE, f.rmId(), f.partnerId()).stream()
                 .filter(e -> f.pop() == null || f.pop().isBlank() || Text.key(e.getPop()).equals(Text.key(f.pop())))
                 .filter(e -> f.received() == null || (f.received() ? e.getReceivedOn() != null
                         : e.getReceivedOn() == null && e.getRevenue().signum() > 0))

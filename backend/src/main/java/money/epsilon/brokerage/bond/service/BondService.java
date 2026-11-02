@@ -84,10 +84,7 @@ public class BondService {
     public List<BondView> search(Filter f) {
         LocalDate from = f.from() == null ? LocalDate.of(2000, 1, 1) : f.from().atDay(1);
         LocalDate to = f.to() == null ? LocalDate.of(2999, 12, 1) : f.to().atDay(1);
-        List<BondEntry> found = entries.findByMonthBetweenOrderByMonthDescInvestmentDateDescIdDesc(from, to).stream()
-                .filter(e -> f.includeCancelled() || e.getStatus() == BondEntry.Status.ACTIVE)
-                .filter(e -> f.rmId() == null || f.rmId().equals(e.getRmId()))
-                .filter(e -> f.partnerId() == null || f.partnerId().equals(e.getPartnerId()))
+        List<BondEntry> found = entries.search(from, to, f.includeCancelled(), BondEntry.Status.ACTIVE, f.rmId(), f.partnerId()).stream()
                 .filter(e -> f.platformId() == null || f.platformId().equals(e.getPlatformId()))
                 .filter(e -> f.payment() == null || f.payment() == e.getPaymentStatus())
                 .toList();

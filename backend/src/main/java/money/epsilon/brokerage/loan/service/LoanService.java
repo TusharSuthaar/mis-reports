@@ -75,10 +75,7 @@ public class LoanService {
     public List<LoanView> search(Filter f) {
         LocalDate from = f.from() == null ? LocalDate.of(2000, 1, 1) : f.from().atDay(1);
         LocalDate to = f.to() == null ? LocalDate.of(2999, 12, 1) : f.to().atDay(1);
-        List<LoanEntry> found = entries.findByMonthBetweenOrderByMonthDescDisbursalDateDescIdDesc(from, to).stream()
-                .filter(e -> f.includeCancelled() || e.getStatus() == LoanEntry.Status.ACTIVE)
-                .filter(e -> f.rmId() == null || f.rmId().equals(e.getRmId()))
-                .filter(e -> f.partnerId() == null || f.partnerId().equals(e.getPartnerId()))
+        List<LoanEntry> found = entries.search(from, to, f.includeCancelled(), LoanEntry.Status.ACTIVE, f.rmId(), f.partnerId()).stream()
                 .filter(e -> f.payment() == null || f.payment() == e.getPaymentStatus())
                 .filter(e -> f.lender() == null || f.lender().isBlank() || Text.key(e.getLender()).equals(Text.key(f.lender())))
                 .toList();

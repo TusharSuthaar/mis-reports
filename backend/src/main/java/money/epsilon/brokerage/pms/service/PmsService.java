@@ -85,10 +85,7 @@ public class PmsService {
     public List<InvestmentView> search(Filter f) {
         LocalDate from = f.from() == null ? LocalDate.of(2000, 1, 1) : f.from().atDay(1);
         LocalDate to = f.to() == null ? LocalDate.of(2999, 12, 1) : f.to().atDay(1);
-        List<PmsInvestment> found = investments.findByMonthBetweenOrderByMonthDescIdDesc(from, to).stream()
-                .filter(e -> f.includeCancelled() || e.getStatus() == PmsInvestment.Status.ACTIVE)
-                .filter(e -> f.rmId() == null || f.rmId().equals(e.getRmId()))
-                .filter(e -> f.partnerId() == null || f.partnerId().equals(e.getPartnerId()))
+        List<PmsInvestment> found = investments.search(from, to, f.includeCancelled(), PmsInvestment.Status.ACTIVE, f.rmId(), f.partnerId()).stream()
                 .filter(e -> f.amc() == null || f.amc().isBlank() || Text.key(e.getAmc()).equals(Text.key(f.amc())))
                 .toList();
         List<InvestmentView> views = views(found);
