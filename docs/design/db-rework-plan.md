@@ -7,18 +7,18 @@ Target schema: [asset-schema.sql](asset-schema.sql).
 
 | | Today | After |
 |---|---|---|
-| A client's holdings | 9 entry tables, one per product (`fd_entry` … `pms_investment`) | `asset` (+ `asset_terms` for fixed income, `asset_transaction`, `asset_holder`, `asset_check`, `asset_snapshot`), one row per holding per PAN |
-| The security held | typed into each entry (FD company, bond name, fund) | `product` + `product_price`, stored once |
-| Commission, GST, TDS, invoice | columns on each entry table | `revenue`, one row per commission earned, any product |
-| Where a ledger line came from | 6 nullable columns on `brokerage_line` | one `revenue_id` |
-| Backend modules for products | `fd`, `bond`, `aif`, `loan`, `gift`, `p2p`, `nps`, `pms` | `holding` (assets, products, masters) and `revenue` |
+| A client's holdings | 12 entry tables, one per product (`fd_entry` … `pms_investment`, `preipo_entry`, `insurance_policy`) | `asset` (+ `asset_terms` for fixed income, `asset_policy` for insurance, `asset_transaction`, `asset_holder`, `asset_check`, `asset_snapshot`), one row per holding per PAN |
+| The security held | typed into each entry (FD company, bond name, fund), or `preipo_scrip` + `preipo_price` for Unlisted | `product` + `product_price` (per vendor where it has one), stored once |
+| Commission, GST, TDS, invoice | columns on each entry table, plus `pms_fee` and `pms_payout` | `revenue`, one row per commission earned, any product |
+| Where a ledger line came from | 11 nullable columns on `brokerage_line`, one per product source | one `revenue_id` |
+| Backend modules for products | `fd`, `bond`, `aif`, `loan`, `gift`, `p2p`, `nps`, `pms`, `preipo`, `insurance` | `holding` (assets, products, masters) and `revenue` |
 | Screens | one per product | one holding form with a section per product type; per-product Excel exports kept |
 | A new product | new table, module, screen, ledger column | new `product_type` row and products |
 
-**Table count:** 45 today → 50 (10 entry tables removed; 5 masters, 8 holdings tables, `revenue` and `client_contact`
-added); columns 677 → 502. Mobile, e-mail and address move to `client_contact`, servicing ticks become rows in
-`asset_check`. Left out until a screen needs them: goals, ARN / DP masters, insurance policy details. Checked by
-building the whole after-state on PostgreSQL 16.
+**Table count:** 50 today (V42) → 51 (15 per-product tables removed; 5 masters, 9 holdings tables, `revenue` and
+`client_contact` added); columns 791 → 527; enforced foreign keys 46 → 70. Mobile, e-mail and address move to
+`client_contact`, servicing ticks become rows in `asset_check`. Left out until a screen needs them: goals, ARN / DP
+masters. Checked by building the whole after-state on PostgreSQL 16 over V1–V42.
 
 ## Stays as it is
 Clients and PANs (`client`, `client_external_id`, `client_former_pan`, `client_rm_assignment`), org, partners, sharing,
@@ -34,7 +34,7 @@ trade by trade). The ledger, splits and audit log stay append-only.
 | Keeps | Every saved, processed and locked month, audit history | Only what the source files can rebuild |
 | Loses | Nothing | Hand-typed entries not in a file, audit history, locked months as they were sent |
 | Effort / risk | Larger, low risk: old and new run side by side | Smaller, but only safe if the live data can be thrown away |
-| Flyway | New migrations V40+ | History reset (breaks the "never edit an applied migration" rule) |
+| Flyway | New migrations from the next free version (V43 today) | History reset (breaks the "never edit an applied migration" rule) |
 
 B is only acceptable if the office confirms nothing in the live database is needed beyond what files can reload.
 
@@ -45,16 +45,16 @@ Each phase is its own branch, migration and tests; the app works after every pha
 | # | Phase | Migration | Done when |
 |---|---|---|---|
 | 0 | **Decide** the 5 open points below | — | answers recorded as rule rows / decision notes |
-| 1 | **Masters**: product types, asset classes, providers, frequencies, servicing checks; Masters → Asset masters screen | V39 | masters editable, audited, retire-not-delete |
-| 2 | **Holdings tables**: `product`, `product_price`, `asset`, `asset_terms`, `asset_transaction`, `asset_holder`, `asset_check`, `asset_snapshot`, `client_contact`; new `holding` module | V40 | empty tables, service + API, guardrail and architecture tests pass |
-| 3 | **Backfill holdings**: products from distinct FD companies / bonds / funds; one asset per entry, with `legacy_product` + `legacy_id`; AIF instalments → `asset_transaction` | V41 + one-off job | reconciliation report: count and amount per product per month, old = new to the rupee |
+| 1 | **Masters**: product types, asset classes, providers, frequencies, servicing checks; Masters → Asset masters screen | V43 | masters editable, audited, retire-not-delete |
+| 2 | **Holdings tables**: `product`, `product_price`, `asset`, `asset_terms`, `asset_transaction`, `asset_holder`, `asset_check`, `asset_snapshot`, `asset_policy`, `client_contact`; new `holding` module | V44 | empty tables, service + API, guardrail and architecture tests pass |
+| 3 | **Backfill holdings**: products from distinct FD companies / bonds / funds, Unlisted scrips and insurance plans; vendor prices → `product_price`; one asset per entry or policy, with `legacy_product` + `legacy_id`; AIF instalments → DRAWDOWN, Unlisted buybacks → SALE transactions | V45 + one-off job | reconciliation report: count and amount per product per month, old = new to the rupee |
 | 4 | **Reads switch**: client Holdings tab, product lists and Excel exports read `asset`; entry screens write both (dual write) | — | same screens, same exports (compare files), all tests green |
-| 5 | **Revenue**: `revenue` table, backfilled from the entry tables; new ledger lines carry `revenue_id`; attribution and END file read one revenue service | V42 | END file for **every** past month identical before/after (byte compare); locked months untouched |
+| 5 | **Revenue**: `revenue` table, backfilled from the entry tables, `pms_fee`, `pms_payout` and insurance commissions (expected and actual); new ledger lines carry `revenue_id`; attribution and END file read one revenue service | V46 | END file for **every** past month identical before/after (byte compare); locked months untouched |
 | 6 | **One entry screen** writes `asset` + `revenue` only; dual write ends | — | old entry screens removed |
-| 7 | **Retire**: entry tables renamed `legacy_*`, read-only, then dropped after two locked months with no differences; 8 product modules removed; docs and rules updated | V43, V44 | 10 tables and 8 modules gone; `modules.md`, `business-rules.md` match |
+| 7 | **Retire**: entry tables renamed `legacy_*`, read-only, then dropped after two locked months with no differences; 10 product modules removed; docs and rules updated | V47, V48 | 15 tables and 10 modules gone; `modules.md`, `business-rules.md` match |
 
 **Old ledger lines are never updated** (append-only): they keep their old `*_entry_id`, and a mapping
-(`revenue.legacy_product` + `legacy_id`) lets reports resolve both old and new lines. The six old columns go only when
+(`revenue.legacy_product` + `legacy_id`) lets reports resolve both old and new lines. The eleven old columns go only when
 no line uses them, which may be never for locked months — then they stay, unused by new code.
 
 ## Open points (phase 0)
