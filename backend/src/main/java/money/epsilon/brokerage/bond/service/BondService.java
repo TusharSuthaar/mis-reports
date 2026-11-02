@@ -34,6 +34,7 @@ import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
 import money.epsilon.brokerage.sharing.domain.Product;
 import money.epsilon.brokerage.tax.service.ProductTaxService;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -83,10 +84,7 @@ public class BondService {
     public List<BondView> search(Filter f) {
         LocalDate from = f.from() == null ? LocalDate.of(2000, 1, 1) : f.from().atDay(1);
         LocalDate to = f.to() == null ? LocalDate.of(2999, 12, 1) : f.to().atDay(1);
-        List<BondEntry> found = entries.findByMonthBetweenOrderByMonthDescInvestmentDateDescIdDesc(from, to).stream()
-                .filter(e -> f.includeCancelled() || e.getStatus() == BondEntry.Status.ACTIVE)
-                .filter(e -> f.rmId() == null || f.rmId().equals(e.getRmId()))
-                .filter(e -> f.partnerId() == null || f.partnerId().equals(e.getPartnerId()))
+        List<BondEntry> found = entries.search(from, to, f.includeCancelled(), BondEntry.Status.ACTIVE, f.rmId(), f.partnerId()).stream()
                 .filter(e -> f.platformId() == null || f.platformId().equals(e.getPlatformId()))
                 .filter(e -> f.payment() == null || f.payment() == e.getPaymentStatus())
                 .toList();
@@ -183,7 +181,7 @@ public class BondService {
             clients.requireExists(clientId);
             client = clientId;
         } else {
-            if (newClientName == null || newClientName.isBlank()) throw new IllegalArgumentException("Pick the client or enter a new client's name");
+            if (newClientName == null || newClientName.isBlank()) throw new ValidationException("Pick the client or enter a new client's name");
             client = clients.addByHand(newClientName, newClientPan, details.rmId(), details.month(), "Bond entry");
         }
         BondEntry e = new BondEntry(client);
@@ -227,18 +225,18 @@ public class BondService {
     }
 
     private Details check(Details d) {
-        if (d.month() == null) throw new IllegalArgumentException("Choose the month");
+        if (d.month() == null) throw new ValidationException("Choose the month");
         LocalDate month = d.month().withDayOfMonth(1);
         employees.requireEmployedOn(d.rmId(), month);
         if (d.partnerId() != null) partners.get(d.partnerId());
         platforms.get(d.platformId());
-        if (d.bondName() == null || d.bondName().isBlank()) throw new IllegalArgumentException("Enter the bond name");
-        if (d.investmentDate() == null) throw new IllegalArgumentException("Enter the investment date");
+        if (d.bondName() == null || d.bondName().isBlank()) throw new ValidationException("Enter the bond name");
+        if (d.investmentDate() == null) throw new ValidationException("Enter the investment date");
         if (d.maturityDate() != null && d.maturityDate().isBefore(d.investmentDate())) {
-            throw new IllegalArgumentException("The maturity / sell date must be after the investment date");
+            throw new ValidationException("The maturity / sell date must be after the investment date");
         }
-        if (d.quantity() == null || d.quantity().signum() <= 0) throw new IllegalArgumentException("Enter the quantity");
-        if (d.investmentAmount() == null || d.investmentAmount().signum() <= 0) throw new IllegalArgumentException("Enter the investment amount");
+        if (d.quantity() == null || d.quantity().signum() <= 0) throw new ValidationException("Enter the quantity");
+        if (d.investmentAmount() == null || d.investmentAmount().signum() <= 0) throw new ValidationException("Enter the investment amount");
         // Accrued interest may be negative: a deal between the record date and the coupon date pays the buyer back.
         requirePercent(d.markupPercent(), "Mark-up");
         if (d.tdsApplied()) requirePercent(d.tdsPercent(), "TDS");
@@ -251,8 +249,8 @@ public class BondService {
     }
 
     private static void requirePercent(BigDecimal value, String what) {
-        if (value == null) throw new IllegalArgumentException("Enter the " + what.toLowerCase() + " %");
-        if (value.signum() < 0 || value.compareTo(new BigDecimal("100")) > 0) throw new IllegalArgumentException(what + " % must be between 0 and 100");
+        if (value == null) throw new ValidationException("Enter the " + what.toLowerCase() + " %");
+        if (value.signum() < 0 || value.compareTo(new BigDecimal("100")) > 0) throw new ValidationException(what + " % must be between 0 and 100");
     }
 
     private BondEntry find(long id) {

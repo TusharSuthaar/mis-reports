@@ -16,6 +16,7 @@ import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.text.Text;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,7 +63,7 @@ public class PartnerService {
 
     @Transactional
     public PartnerView create(PartnerInput in) {
-        if (in.type() == null) throw new IllegalArgumentException("Partner type is required");
+        if (in.type() == null) throw new ValidationException("Partner type is required");
         String name = Text.required(in.name(), "Partner name");
         if (partners.findByTypeAndNameIgnoreCase(in.type(), name).isPresent()) {
             throw new RuleViolationException(label(in.type()) + " '" + name + "' already exists");
@@ -126,7 +127,7 @@ public class PartnerService {
             String gstin = Text.clean(in.gstin());
             if (gstin != null) {
                 gstin = gstin.toUpperCase(Locale.ROOT);
-                if (!GSTIN.matcher(gstin).matches()) throw new IllegalArgumentException("GSTIN must be 15 characters like 27ABCDE1234F1Z5");
+                if (!GSTIN.matcher(gstin).matches()) throw new ValidationException("GSTIN must be 15 characters like 27ABCDE1234F1Z5");
             }
             p.setGstin(gstin);
         }

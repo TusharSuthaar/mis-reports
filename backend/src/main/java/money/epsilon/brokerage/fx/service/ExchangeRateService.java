@@ -10,6 +10,7 @@ import money.epsilon.brokerage.platform.audit.AuditService;
 import money.epsilon.brokerage.platform.security.CurrentUser;
 import money.epsilon.brokerage.platform.text.Text;
 import money.epsilon.brokerage.platform.time.BusinessCalendar;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,8 +70,8 @@ public class ExchangeRateService {
     @Transactional
     public Rate setByHand(String currency, LocalDate day, BigDecimal rate, String reason) {
         String cur = check(currency);
-        if (day == null) throw new IllegalArgumentException("Choose the day");
-        if (rate == null || rate.signum() <= 0) throw new IllegalArgumentException("Enter a rate above 0");
+        if (day == null) throw new ValidationException("Choose the day");
+        if (rate == null || rate.signum() <= 0) throw new ValidationException("Enter a rate above 0");
         Optional<Rate> before = find(cur, day);
         jdbc.sql("""
                         INSERT INTO exchange_rate (currency, day, rate, rate_date, source, reason, changed_by) VALUES (?, ?, ?, ?, 'MANUAL', ?, ?)
@@ -104,7 +105,7 @@ public class ExchangeRateService {
 
     private static String check(String currency) {
         String c = currency == null ? "" : currency.trim().toUpperCase();
-        if (!CURRENCIES.contains(c)) throw new IllegalArgumentException("Only USD rates are kept for now");
+        if (!CURRENCIES.contains(c)) throw new ValidationException("Only USD rates are kept for now");
         return c;
     }
 }

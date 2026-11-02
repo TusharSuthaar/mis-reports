@@ -25,6 +25,7 @@ import money.epsilon.brokerage.pms.domain.PmsFee;
 import money.epsilon.brokerage.pms.domain.PmsInvestment;
 import money.epsilon.brokerage.pms.repository.PmsFeeRepository;
 import money.epsilon.brokerage.pms.repository.PmsInvestmentRepository;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -132,12 +133,12 @@ public class PmsFeeService {
     }
 
     private static LocalDate month(LocalDate month) {
-        if (month == null) throw new IllegalArgumentException("Choose the month the payout was received");
+        if (month == null) throw new ValidationException("Choose the month the payout was received");
         return month.withDayOfMonth(1);
     }
 
     private static BigDecimal amount(BigDecimal amount) {
-        if (amount == null || amount.signum() == 0) throw new IllegalArgumentException("Enter the PMS revenue for the month");
+        if (amount == null || amount.signum() == 0) throw new ValidationException("Enter the PMS revenue for the month");
         return amount;
     }
 

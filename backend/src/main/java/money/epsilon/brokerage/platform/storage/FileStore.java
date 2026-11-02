@@ -1,4 +1,5 @@
 package money.epsilon.brokerage.platform.storage;
+import money.epsilon.brokerage.platform.web.ValidationException;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -47,7 +48,7 @@ public class FileStore {
     /** @throws IllegalArgumentException unless {@code token} names a file in {@code area} */
     public void checkToken(String area, String token) {
         if (token == null || !token.startsWith(area + "/") || token.contains("..")) {
-            throw new IllegalArgumentException("Unknown file token; upload the file again");
+            throw new ValidationException("Unknown file token; upload the file again");
         }
     }
 

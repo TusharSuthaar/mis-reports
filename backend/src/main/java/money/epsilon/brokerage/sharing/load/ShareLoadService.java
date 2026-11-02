@@ -29,6 +29,7 @@ import money.epsilon.brokerage.sharing.load.SharePlan.NewPartner;
 import money.epsilon.brokerage.sharing.load.SharePlan.Unmatched;
 import money.epsilon.brokerage.sharing.service.ShareService;
 import money.epsilon.brokerage.sharing.service.ShareService.ShareView;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -102,7 +103,7 @@ public class ShareLoadService {
 
     @Transactional(readOnly = true)
     public Preview preview(byte[] content, String fileName, LocalDate from) {
-        if (from == null) throw new IllegalArgumentException("Choose the date the changes count from");
+        if (from == null) throw new ValidationException("Choose the date the changes count from");
         String token = files.save(STORE_AREA, content, ".xlsx");
         Result read = MasterShareReader.read(content);
         if (read.error() != null) {
@@ -178,13 +179,13 @@ public class ShareLoadService {
 
     /** Used by {@link ShareLoadJob}, inside its transaction. */
     LoadResult apply(String token, String fileName, LocalDate from) {
-        if (from == null) throw new IllegalArgumentException("A start date is required");
+        if (from == null) throw new ValidationException("A start date is required");
         JobProgress progress = JobProgress.current();
         progress.steps(4);
         progress.step("Reading the Master MIS", 0);
         byte[] content = files.read(STORE_AREA, token);
         Result read = MasterShareReader.read(content);
-        if (read.error() != null) throw new IllegalArgumentException(read.error());
+        if (read.error() != null) throw new ValidationException(read.error());
         String reason = "Master MIS " + fileName;
         MasterClientPlan cp = clientPlan(read, clients.matchKeys(), from);
         progress.step("Adding clients and setting their RM", cp.newClients.size() + cp.rmChanges.size());

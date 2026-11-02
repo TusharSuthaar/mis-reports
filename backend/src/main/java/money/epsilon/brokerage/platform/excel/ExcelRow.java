@@ -1,4 +1,5 @@
 package money.epsilon.brokerage.platform.excel;
+import money.epsilon.brokerage.platform.web.ValidationException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -82,7 +83,7 @@ public final class ExcelRow {
         try {
             return new BigDecimal(s);
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Row " + rowNumber + ": '" + s + "' in " + header + " is not an amount");
+            throw new ValidationException("Row " + rowNumber + ": '" + s + "' in " + header + " is not an amount");
         }
     }
 
@@ -103,7 +104,7 @@ public final class ExcelRow {
                 // try the next format
             }
         }
-        throw new IllegalArgumentException(what + ": '" + text + "' is not a date (use 2026-04-01 or 01-04-2026)");
+        throw new ValidationException(what + ": '" + text + "' is not a date (use 2026-04-01 or 01-04-2026)");
     }
 
     private static DateTimeFormatter pattern(String p) {

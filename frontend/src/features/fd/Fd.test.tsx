@@ -1,3 +1,4 @@
+import { defaultFromMonth } from '../../components/ListFilters';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -119,7 +120,7 @@ describe('fd screen', () => {
     expect(String(sent!.month)).toMatch(/-01$/);
   });
 
-  it('lists all months by default and sends the filters to the server and the Excel download', async () => {
+  it('lists the last 3 months by default (All months on request) and sends the filters to the server and the Excel download', async () => {
     const fetchMock = fakeApi({
       'GET /api/auth/me': ok(me('HO')),
       'GET /api/fd': ok([]),
@@ -130,7 +131,10 @@ describe('fd screen', () => {
     renderAt('/fd');
     expect(await screen.findByText('No FDs match.')).toBeInTheDocument();
     const firstList = fetchMock.mock.calls.map((c) => String(c[0])).find((u) => u.includes('/api/fd') && !u.includes('suggestions'));
-    expect(firstList).toMatch(/\/api\/fd$/);   // no month: every month
+    expect(firstList).toBe(`/api/fd?from=${defaultFromMonth()}`);   // no month chosen: the last 3 months (R-77)
+    await userEvent.click(screen.getByRole('button', { name: 'All months' }));
+    await waitFor(() => expect(fetchMock.mock.calls.map((c) => String(c[0])).filter((u) => u.startsWith('/api/fd')).pop()).toBe('/api/fd'));
+    expect(screen.getByText(/Showing all months/)).toBeInTheDocument();
 
     await userEvent.selectOptions(screen.getByLabelText('RM'), '1');
     await userEvent.selectOptions(screen.getByLabelText('Platform'), 'J M Finance');
@@ -144,7 +148,8 @@ describe('fd screen', () => {
     expect(screen.getByRole('link', { name: 'Download Excel' }).getAttribute('href')).toContain('/api/fd/export.xlsx?');
     expect(screen.getByRole('link', { name: 'Download Excel' }).getAttribute('href')).toContain('rmId=1');
     await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
-    expect(screen.getByRole('link', { name: 'Download Excel' }).getAttribute('href')).toBe('/api/fd/export.xlsx');
+    // Back to the default window, for the Excel download too.
+    expect(screen.getByRole('link', { name: 'Download Excel' }).getAttribute('href')).toBe(`/api/fd/export.xlsx?from=${defaultFromMonth()}`);
   });
 
   it('finds an existing client by code and takes the RM from the client', async () => {

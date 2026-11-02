@@ -14,6 +14,7 @@ import money.epsilon.brokerage.bond.service.BondService;
 import money.epsilon.brokerage.bond.service.BondService.BondView;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.web.EditVersion;
+import money.epsilon.brokerage.platform.web.ProductListFilters;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -41,6 +42,7 @@ class BondController {
         this.service = service;
     }
 
+    @ProductListFilters
     @GetMapping
     @PreAuthorize(Roles.MASTER_READ)
     List<BondView> list(@RequestParam(required = false) YearMonth from, @RequestParam(required = false) YearMonth to,
@@ -69,6 +71,7 @@ class BondController {
         return Map.of("pendingPayments", service.pendingPayments());
     }
 
+    @ProductListFilters
     @GetMapping("/export.xlsx")
     @PreAuthorize(Roles.MASTER_READ)
     ResponseEntity<byte[]> export(@RequestParam(required = false) YearMonth from, @RequestParam(required = false) YearMonth to,

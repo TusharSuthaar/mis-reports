@@ -8,6 +8,7 @@ import money.epsilon.brokerage.platform.audit.AuditService;
 import money.epsilon.brokerage.platform.security.CurrentUser;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -104,7 +105,7 @@ public class UserService {
     private static String normaliseUsername(String username) {
         String name = username == null ? "" : username.trim().toLowerCase(Locale.ROOT);
         if (!USERNAME.matcher(name).matches()) {
-            throw new IllegalArgumentException(
+            throw new ValidationException(
                     "Username must be 3-50 characters: letters, digits, '.', '_' or '-', starting with a letter or digit");
         }
         return name;

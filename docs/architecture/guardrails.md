@@ -30,6 +30,9 @@ checklist asks for it.
 | G-23 | The frontend passes ESLint with no warnings (TypeScript rules, React hooks rules). A deliberate exception says why: `// eslint-disable-next-line <rule> -- reason`; a disable comment that suppresses nothing fails. | CI `npm run lint` |
 | G-24 | CI builds the frontend for production and fails on a high or critical vulnerability in a shipped package; Dependabot proposes dependency updates weekly; on a pull request, a Maven or npm dependency added or changed with a high or critical advisory fails it (GitHub dependency review). | CI (`dependencies` job), `.github/dependabot.yml` |
 | G-25 | Sign-in is limited (R-101): every wrong password goes through `LoginThrottle`, and every sign-in, failure, lock, unlock and sign-out is audited under `USER`. A new way to sign in must use it too. | `SignInLimitIT` |
+| G-26 | A message about invalid input that the user should read is a `ValidationException` (400, shown as written); a plain `IllegalArgumentException` is only for checks that cannot fail on user input, and its wording never reaches the screen (logged, reference only). | `GuardrailsTest.ownMessagesForInvalidInputAreValidationExceptions`, `ActivityIT.theAppsOwnInputMessagesAreShownButALibrarysWordingIsNot` |
+| G-27 | A product list or export is marked `@ProductListFilters`: it takes the shared list filters plus its own parameters and refuses any other with a 400 that lists the known ones. | `ProductListFiltersIT` |
+| G-28 | A hand-entered product reaches month processing only through its own `LineSource` (ledger module): attribution names no product module, so a new product adds a source, never a branch in processing. | `ArchitectureTest`, `MonthLifecycleIT` and each product's processing test |
 
 ## Before you commit
 1. `backend/mvnw-docker.sh verify` and `cd frontend && npm test` are green.

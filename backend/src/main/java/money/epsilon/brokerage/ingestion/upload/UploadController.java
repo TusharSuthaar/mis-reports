@@ -14,6 +14,7 @@ import money.epsilon.brokerage.ingestion.upload.UploadService.CommitResult;
 import money.epsilon.brokerage.ingestion.upload.UploadService.MonthView;
 import money.epsilon.brokerage.ingestion.upload.UploadService.Review;
 import money.epsilon.brokerage.platform.security.Roles;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -48,7 +49,7 @@ class UploadController {
         try {
             ym = YearMonth.parse(month);
         } catch (DateTimeParseException e) {
-            throw new IllegalArgumentException("Month must look like 2026-08");
+            throw new ValidationException("Month must look like 2026-08");
         }
         return Map.of("jobId", service.start(f, ym));
     }

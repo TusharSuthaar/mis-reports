@@ -30,6 +30,7 @@ import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
 import money.epsilon.brokerage.sharing.domain.Product;
 import money.epsilon.brokerage.tax.service.ProductTaxService;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -72,10 +73,7 @@ public class P2pService {
     public List<P2pView> search(Filter f) {
         LocalDate from = f.from() == null ? LocalDate.of(2000, 1, 1) : f.from().atDay(1);
         LocalDate to = f.to() == null ? LocalDate.of(2999, 12, 1) : f.to().atDay(1);
-        List<P2pEntry> found = entries.findByMonthBetweenOrderByMonthDescIdDesc(from, to).stream()
-                .filter(e -> f.includeCancelled() || e.getStatus() == P2pEntry.Status.ACTIVE)
-                .filter(e -> f.rmId() == null || f.rmId().equals(e.getRmId()))
-                .filter(e -> f.partnerId() == null || f.partnerId().equals(e.getPartnerId()))
+        List<P2pEntry> found = entries.search(from, to, f.includeCancelled(), P2pEntry.Status.ACTIVE, f.rmId(), f.partnerId()).stream()
                 .filter(e -> f.platform() == null || f.platform().isBlank() || Text.key(e.getPlatform()).equals(Text.key(f.platform())))
                 .filter(e -> f.received() == null || (f.received() ? e.getReceivedOn() != null
                         : e.getReceivedOn() == null && e.getGross().signum() > 0))
@@ -125,7 +123,7 @@ public class P2pService {
             clients.requireExists(clientId);
             client = clientId;
         } else {
-            if (newClientName == null || newClientName.isBlank()) throw new IllegalArgumentException("Pick the client or enter a new client's name");
+            if (newClientName == null || newClientName.isBlank()) throw new ValidationException("Pick the client or enter a new client's name");
             client = clients.addByHand(newClientName, newClientPan, details.rmId(), details.month(), "P2P entry");
         }
         P2pEntry e = new P2pEntry(client);
@@ -164,19 +162,19 @@ public class P2pService {
     }
 
     private P2pEntry.Details check(P2pEntry.Details d) {
-        if (d.month() == null) throw new IllegalArgumentException("Choose the month");
+        if (d.month() == null) throw new ValidationException("Choose the month");
         LocalDate month = d.month().withDayOfMonth(1);
         employees.requireEmployedOn(d.rmId(), month);
         if (d.partnerId() != null) partners.get(d.partnerId());
-        if (Text.clean(d.platform()) == null) throw new IllegalArgumentException("Enter the partner (platform, e.g. INDIA MONEY MART)");
-        if (Text.clean(d.scheme()) == null) throw new IllegalArgumentException("Enter the P2P scheme (e.g. YEARLY)");
-        if (d.amount() != null && d.amount().signum() <= 0) throw new IllegalArgumentException("The amount invested must be more than 0");
+        if (Text.clean(d.platform()) == null) throw new ValidationException("Enter the partner (platform, e.g. INDIA MONEY MART)");
+        if (Text.clean(d.scheme()) == null) throw new ValidationException("Enter the P2P scheme (e.g. YEARLY)");
+        if (d.amount() != null && d.amount().signum() <= 0) throw new ValidationException("The amount invested must be more than 0");
         if (d.roiPercent() != null && (d.roiPercent().signum() < 0 || d.roiPercent().compareTo(new BigDecimal("100")) > 0)) {
-            throw new IllegalArgumentException("ROI % must be between 0 and 100");
+            throw new ValidationException("ROI % must be between 0 and 100");
         }
-        if (d.brokerage() != null && d.brokerage().signum() < 0) throw new IllegalArgumentException("The brokerage cannot be negative");
+        if (d.brokerage() != null && d.brokerage().signum() < 0) throw new ValidationException("The brokerage cannot be negative");
         if (d.tdsApplied() && (d.tdsPercent() == null || d.tdsPercent().signum() < 0 || d.tdsPercent().compareTo(new BigDecimal("100")) > 0)) {
-            throw new IllegalArgumentException("TDS % must be between 0 and 100");
+            throw new ValidationException("TDS % must be between 0 and 100");
         }
         return new P2pEntry.Details(month, d.rmId(), d.partnerId(), Text.clean(d.mobile()), Text.clean(d.email()), Text.clean(d.address()),
                 Text.clean(d.platform()), Text.clean(d.scheme()), d.roiPercent(), d.amount(), d.fundsInitiatedOn(), d.startDate(), d.quarterEndDate(),

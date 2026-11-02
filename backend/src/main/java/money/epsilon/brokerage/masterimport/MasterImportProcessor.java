@@ -28,6 +28,7 @@ import money.epsilon.brokerage.platform.dated.Timeline;
 import money.epsilon.brokerage.platform.text.Text;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Component;
 
 /**
@@ -109,7 +110,7 @@ class MasterImportProcessor {
         Optional<BranchView> existing = branches.findByName(name);
         String regionName = row.get("Region");
         if (existing.isEmpty()) {
-            if (regionName == null) throw new IllegalArgumentException("Region is required for a new branch");
+            if (regionName == null) throw new ValidationException("Region is required for a new branch");
             branches.create(name, regionId(regionName), required(row.date("From"), "From is required for a new branch"), reason);
             return Outcome.CREATED;
         }
@@ -223,7 +224,7 @@ class MasterImportProcessor {
     }
 
     private static LocalDate required(Optional<LocalDate> date, String message) {
-        return date.orElseThrow(() -> new IllegalArgumentException(message));
+        return date.orElseThrow(() -> new ValidationException(message));
     }
 
     static EmployeeType employeeType(String s) {
@@ -231,17 +232,17 @@ class MasterImportProcessor {
         return switch (Text.compact(s)) {
             case "RM" -> EmployeeType.RM;
             case "HOUSE" -> EmployeeType.HOUSE;
-            default -> throw new IllegalArgumentException("Type must be RM or HOUSE, not '" + s + "'");
+            default -> throw new ValidationException("Type must be RM or HOUSE, not '" + s + "'");
         };
     }
 
     static PartnerType partnerType(String s) {
-        if (s == null) throw new IllegalArgumentException("Partner type is required");
+        if (s == null) throw new ValidationException("Partner type is required");
         return switch (Text.compact(s)) {
             case "SUBBROKER" -> PartnerType.SUB_BROKER;
             case "REFERRAL", "REFERRALPARTNER" -> PartnerType.REFERRAL;
             case "POSP" -> PartnerType.POSP;
-            default -> throw new IllegalArgumentException("Partner type must be SUB_BROKER, REFERRAL or POSP, not '" + s + "'");
+            default -> throw new ValidationException("Partner type must be SUB_BROKER, REFERRAL or POSP, not '" + s + "'");
         };
     }
 
@@ -251,7 +252,7 @@ class MasterImportProcessor {
             case "ACTIVE" -> PartnerStatus.ACTIVE;
             case "INACTIVE" -> PartnerStatus.INACTIVE;
             case "PENDING" -> PartnerStatus.PENDING;
-            default -> throw new IllegalArgumentException("Status must be ACTIVE, PENDING or INACTIVE, not '" + s + "'");
+            default -> throw new ValidationException("Status must be ACTIVE, PENDING or INACTIVE, not '" + s + "'");
         };
     }
 

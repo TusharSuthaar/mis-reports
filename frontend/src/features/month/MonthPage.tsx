@@ -59,7 +59,8 @@ interface Readiness {
   equityMissing?: { partyCode: string; name: string | null; pan: string | null; share: number }[];
   /** Equity party codes and insurance policies whose client was found by name only, waiting for a confirmation (R-100). */
   equityNameMatches?: { partyCode: string; nameInFile: string | null; clientId: number; clientName: string | null; pan: string | null; rmName: string | null; share: number }[];
-  insuranceNameMatches?: { policyId: number; policyNo: string; insurer: string; nameInFile: string | null; clientId: number; clientName: string | null; pan: string | null; rmName: string | null; expectedComm: number }[];
+  /** Hand-entered entries (insurance today) whose client was found by name only, by product. */
+  entryNameMatches?: { product: string; label: string; match: { entryId: number; ref: string; nameInFile: string | null; clientId: number; clientName: string | null; pan: string | null; rmName: string | null; amount: number } }[];
 }
 
 /** The products entered for a month, in END order, with the Product entries tab each lives on. */
@@ -160,7 +161,7 @@ function MonthWizard({ month, row, canEdit, onChanged }: { month: string; row: M
 
   const masterState: StepState = master.data && master.data.codes === 0 ? 'todo' : 'optional';
   const mfState: StepState = reviewId ? 'todo' : saved ? (row!.notInMaster > 0 ? 'blocked' : 'done') : 'todo';
-  const nameMatchesWaiting = (r?.equityNameMatches?.length ?? 0) + (r?.insuranceNameMatches?.length ?? 0);
+  const nameMatchesWaiting = (r?.equityNameMatches?.length ?? 0) + (r?.entryNameMatches?.length ?? 0);
   const productsState: StepState = !row ? 'waiting' : r && (r.equityNotInClients > 0 || nameMatchesWaiting > 0) ? 'blocked' : 'optional';
   const checkState: StepState = !row || !saved ? 'waiting' : status !== 'OPEN' ? 'done' : r && !r.ready ? 'blocked' : 'todo';
   const endState: StepState = status === 'LOCKED' ? 'done' : status === 'PROCESSED' ? 'todo' : 'waiting';
@@ -252,7 +253,7 @@ function MonthWizard({ month, row, canEdit, onChanged }: { month: string; row: M
               refLabel="Policy no."
               amountLabel="Expected commission"
               canEdit={canEdit}
-              rows={(r.insuranceNameMatches ?? []).map((m) => ({ key: String(m.policyId), ref: m.policyNo, nameInFile: m.nameInFile, clientId: m.clientId, clientName: m.clientName, pan: m.pan, rmName: m.rmName, amount: m.expectedComm }))}
+              rows={(r.entryNameMatches ?? []).filter((e) => e.product === 'INS').map(({ match: m }) => ({ key: String(m.entryId), ref: m.ref, nameInFile: m.nameInFile, clientId: m.clientId, clientName: m.clientName, pan: m.pan, rmName: m.rmName, amount: m.amount }))}
               onConfirm={async (row, clientId) => {
                 await api(`/api/insurance/${row.key}/confirm-client`, { method: 'POST', body: { clientId } });
                 changed();
@@ -416,7 +417,7 @@ function ProcessStep({ row, r, canEdit, onChanged, recheck }: { row: MonthRow; r
         },
         { ok: r.equityNotInClients === 0, text: r.equityNotInClients === 0 ? 'Every equity PAN is a client' : `${r.equityNotInClients} equity PAN(s) not in Clients`, to: '/products?tab=EQUITY', link: 'See' },
         (() => {
-          const waiting = (r.equityNameMatches?.length ?? 0) + (r.insuranceNameMatches?.length ?? 0);
+          const waiting = (r.equityNameMatches?.length ?? 0) + (r.entryNameMatches?.length ?? 0);
           return { ok: waiting === 0, text: waiting === 0 ? 'Every client found by name is confirmed' : `${waiting} equity / insurance client(s) found by name only: confirm them in step 3 above`, to: '/products?tab=EQUITY', link: 'Equity tab' };
         })(),
       ]

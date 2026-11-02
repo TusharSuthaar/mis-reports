@@ -32,6 +32,7 @@ import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
 import money.epsilon.brokerage.sharing.domain.Product;
 import money.epsilon.brokerage.tax.service.ProductTaxService;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -74,10 +75,7 @@ public class GiftService {
     public List<GiftView> search(Filter f) {
         LocalDate from = f.from() == null ? LocalDate.of(2000, 1, 1) : f.from().atDay(1);
         LocalDate to = f.to() == null ? LocalDate.of(2999, 12, 1) : f.to().atDay(1);
-        List<GiftEntry> found = entries.findByMonthBetweenOrderByMonthDescIdDesc(from, to).stream()
-                .filter(e -> f.includeCancelled() || e.getStatus() == GiftEntry.Status.ACTIVE)
-                .filter(e -> f.rmId() == null || f.rmId().equals(e.getRmId()))
-                .filter(e -> f.partnerId() == null || f.partnerId().equals(e.getPartnerId()))
+        List<GiftEntry> found = entries.search(from, to, f.includeCancelled(), GiftEntry.Status.ACTIVE, f.rmId(), f.partnerId()).stream()
                 .filter(e -> f.payment() == null || f.payment() == e.getPaymentStatus())
                 .filter(e -> f.fund() == null || f.fund().isBlank() || Text.key(e.getFund()).equals(Text.key(f.fund())))
                 .toList();
@@ -147,7 +145,7 @@ public class GiftService {
             clients.requireExists(clientId);
             client = clientId;
         } else {
-            if (newClientName == null || newClientName.isBlank()) throw new IllegalArgumentException("Pick the client or enter a new client's name");
+            if (newClientName == null || newClientName.isBlank()) throw new ValidationException("Pick the client or enter a new client's name");
             client = clients.addByHand(newClientName, newClientPan, details.rmId(), details.month(), "GIFT City entry");
         }
         GiftEntry e = new GiftEntry(client);
@@ -186,21 +184,21 @@ public class GiftService {
     }
 
     private Details check(Details d) {
-        if (d.month() == null) throw new IllegalArgumentException("Choose the month");
+        if (d.month() == null) throw new ValidationException("Choose the month");
         LocalDate month = d.month().withDayOfMonth(1);
         employees.requireEmployedOn(d.rmId(), month);
         if (d.partnerId() != null) partners.get(d.partnerId());
-        if (Text.clean(d.fund()) == null) throw new IllegalArgumentException("Enter the fund / partner (e.g. DSP GIFT CITY)");
-        if (d.amountUsd() == null && d.amountInr() == null) throw new IllegalArgumentException("Enter the amount in USD or in rupees");
-        if (d.amountUsd() != null && d.amountUsd().signum() <= 0) throw new IllegalArgumentException("The USD amount must be more than 0");
-        if (d.amountInr() != null && d.amountInr().signum() <= 0) throw new IllegalArgumentException("The rupee amount must be more than 0");
-        if (d.fxRate() != null && d.fxRate().signum() <= 0) throw new IllegalArgumentException("The exchange rate must be more than 0");
-        if (d.brokerage() != null && d.brokerage().signum() < 0) throw new IllegalArgumentException("The brokerage cannot be negative");
+        if (Text.clean(d.fund()) == null) throw new ValidationException("Enter the fund / partner (e.g. DSP GIFT CITY)");
+        if (d.amountUsd() == null && d.amountInr() == null) throw new ValidationException("Enter the amount in USD or in rupees");
+        if (d.amountUsd() != null && d.amountUsd().signum() <= 0) throw new ValidationException("The USD amount must be more than 0");
+        if (d.amountInr() != null && d.amountInr().signum() <= 0) throw new ValidationException("The rupee amount must be more than 0");
+        if (d.fxRate() != null && d.fxRate().signum() <= 0) throw new ValidationException("The exchange rate must be more than 0");
+        if (d.brokerage() != null && d.brokerage().signum() < 0) throw new ValidationException("The brokerage cannot be negative");
         if (d.tdsApplied() && (d.tdsPercent() == null || d.tdsPercent().signum() < 0 || d.tdsPercent().compareTo(new BigDecimal("100")) > 0)) {
-            throw new IllegalArgumentException("TDS % must be between 0 and 100");
+            throw new ValidationException("TDS % must be between 0 and 100");
         }
         if (d.paymentStatus() != GiftEntry.PaymentStatus.RECEIVED && d.receivedOn() != null) {
-            throw new IllegalArgumentException("A received date needs the payment status Received");
+            throw new ValidationException("A received date needs the payment status Received");
         }
         return new Details(month, d.rmId(), d.partnerId(), Text.clean(d.mobile()), Text.clean(d.email()), Text.clean(d.address()),
                 Text.clean(d.fund()), d.amountUsd(), d.fxRate(), d.fxRateDate(), Text.clean(d.fxSource()), d.amountInr(), d.onPortal(), d.trxnStatus(), d.brokerage(), d.tdsApplied(),

@@ -44,16 +44,12 @@ client  ←  mapping (confirmed client matches follow a merge)  ←  ingestion, 
 org  ←  partner, client, sharing, attribution, reporting
 client  ←  ingestion, sharing, attribution, reporting
 period / ledger  ←  ingestion, attribution, reporting
-attribution  ←  ingestion (void a month's split), reporting (read-only view)
+ledger (LineSource)  ←  fd, bond, aif, loan, gift, preipo, pms, nps, p2p, insurance: each provides its month's lines (M-03)
+attribution  ←  ingestion (void a month's split), reporting (read-only view); it finds every LineSource and names no product
 sharing (Product)  ←  tax
-client, org, partner, tax  ←  fd  ←  attribution (FD lines), reporting (FD labels)
-client, org, partner, tax  ←  loan  ←  attribution (loan lines), reporting (loan labels)
-client, org, partner, tax  ←  pms
-client, org, partner, tax  ←  nps
-client, org, partner, tax  ←  p2p
-client, period  ←  equity  ←  attribution (equity lines)
-client, org, partner, tax  ←  gift  ←  attribution (GIFT City lines), reporting (GIFT City labels)
-client, org, partner, tax, intermediary  ←  bond  ←  attribution (bond lines), reporting (bond labels)
-client, org, partner, tax, intermediary  ←  aif  ←  attribution (AIF lines), reporting (AIF labels)
+client, org, partner, tax, ledger  ←  fd, loan, pms, nps, p2p, gift  ←  reporting (END labels)
+client, org, partner, tax, ledger, intermediary  ←  bond, aif, preipo  ←  reporting (END labels)
+client, org, partner, ledger  ←  insurance
+client, period  ←  equity  ←  attribution (equity lines: the broker's report, not entries)
 ```
 No cycles between modules (checked by `ArchitectureTest`).

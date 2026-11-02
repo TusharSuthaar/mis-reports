@@ -13,6 +13,7 @@ import money.epsilon.brokerage.equity.service.EquityService.UploadResult;
 import money.epsilon.brokerage.equity.service.EquityService.UploadView;
 import money.epsilon.brokerage.platform.importing.UploadedFile;
 import money.epsilon.brokerage.platform.security.Roles;
+import money.epsilon.brokerage.platform.web.ProductListFilters;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -47,6 +48,7 @@ class EquityController {
     }
 
     /** Client-months; the shared product-list filters (payment, platform…) do not apply to equity and are ignored. */
+    @ProductListFilters
     @GetMapping
     @PreAuthorize(Roles.MASTER_READ)
     List<ClientMonth> list(@RequestParam(required = false) YearMonth from, @RequestParam(required = false) YearMonth to,

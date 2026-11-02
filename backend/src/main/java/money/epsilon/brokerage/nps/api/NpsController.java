@@ -12,6 +12,7 @@ import money.epsilon.brokerage.nps.service.NpsService;
 import money.epsilon.brokerage.nps.service.NpsService.NpsView;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.web.EditVersion;
+import money.epsilon.brokerage.platform.web.ProductListFilters;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -39,6 +40,7 @@ class NpsController {
         this.service = service;
     }
 
+    @ProductListFilters
     @GetMapping
     @PreAuthorize(Roles.MASTER_READ)
     List<NpsView> list(@RequestParam(required = false) YearMonth from, @RequestParam(required = false) YearMonth to,
@@ -73,6 +75,7 @@ class NpsController {
         return service.pops();
     }
 
+    @ProductListFilters
     @GetMapping("/export.xlsx")
     @PreAuthorize(Roles.MASTER_READ)
     ResponseEntity<byte[]> export(@RequestParam(required = false) YearMonth from, @RequestParam(required = false) YearMonth to,

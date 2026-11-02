@@ -6,10 +6,25 @@ import { useLoad } from '../api/useLoad';
 /** The filter keys a product list understands (R-77); they live in the page address, so a refresh or a shared link keeps them. */
 export const FILTER_KEYS = ['from', 'to', 'q', 'rmId', 'partnerId', 'platform', 'platformId', 'lender', 'fund', 'amc', 'pop', 'payment', 'includeCancelled'] as const;
 
-/** The current filters as a query string for the list / Excel endpoints ("" when none). */
+/** Page-address marker for "every month" (a screen choice only: never sent to the server). */
+const ALL_MONTHS = 'months';
+
+/** The first month of the default window: this month and the two before (R-77, audit M-04). */
+export function defaultFromMonth(today: Date = new Date()): string {
+  const d = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** No month chosen and "All months" not asked for: the list shows the last 3 months. */
+function windowed(params: URLSearchParams): boolean {
+  return !params.get('from') && !params.get('to') && params.get(ALL_MONTHS) !== 'all';
+}
+
+/** The current filters as a query string for the list / Excel endpoints; without chosen months, the last 3 months (R-77). */
 export function useFilterQuery(): string {
   const [params] = useSearchParams();
   const q = new URLSearchParams();
+  if (windowed(params)) q.set('from', defaultFromMonth());
   for (const k of FILTER_KEYS) {
     const v = params.get(k);
     if (v) q.set(k, v);
@@ -62,7 +77,8 @@ export function ListFilters({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
 
-  const active = FILTER_KEYS.some((k) => params.get(k));
+  const active = FILTER_KEYS.some((k) => params.get(k)) || params.get(ALL_MONTHS) === 'all';
+  const lastThree = windowed(params);
   const rms = (employees.data ?? []).filter((e) => e.status === 'ACTIVE');
   const sharePartners = (partners.data ?? []).filter((p) => p.type === 'SUB_BROKER' || p.type === 'REFERRAL');
 
@@ -145,12 +161,30 @@ export function ListFilters({
             // Only the filters go: the tab and any open pop-up stay.
             const next = new URLSearchParams(params);
             FILTER_KEYS.forEach((k) => next.delete(k));
+            next.delete(ALL_MONTHS);
             setParams(next, { replace: true });
           }}
         >
           Clear filters
         </button>
       )}
+      <p className="muted window-note">
+        {lastThree ? (
+          <>
+            Showing the last 3 months (from {defaultFromMonth()}).{' '}
+            <button type="button" className="link" onClick={() => set(ALL_MONTHS, 'all')}>
+              All months
+            </button>
+          </>
+        ) : params.get(ALL_MONTHS) === 'all' && !params.get('from') && !params.get('to') ? (
+          <>
+            Showing all months.{' '}
+            <button type="button" className="link" onClick={() => set(ALL_MONTHS, '')}>
+              Last 3 months
+            </button>
+          </>
+        ) : null}
+      </p>
     </div>
   );
 }

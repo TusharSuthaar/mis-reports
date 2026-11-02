@@ -101,8 +101,10 @@ public class EndFileService {
         Set<Long> rmChanged = clients.clientsWithRmChangeIn(p.fromDate(), p.toDate());
         Map<Long, YearMonth> monthOfPeriod = periods.list(MF).stream().collect(Collectors.toMap(PeriodView::id, PeriodView::month));
 
+        // In line order: rows the sort below finds equal keep it, so the same split always gives the same file.
         List<EndRow> rows = jdbc.sql("""
-                        SELECT * FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""")
+                        SELECT * FROM v_line_split WHERE period_id = ? AND product_type IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ORDER BY line_id""")
                 .params(periodId, MF, FD, BOND, AIF, LOAN, GIFT, EQUITY, PREIPO, PMS, NPS, P2P, INS)
                 .query((rs, n) -> {
                     boolean fd = FD.equals(rs.getString("product_type"));

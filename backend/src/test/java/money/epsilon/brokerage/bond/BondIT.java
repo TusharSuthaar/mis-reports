@@ -88,7 +88,7 @@ class BondIT extends IntegrationTestBase {
         JsonNode audit = getJson("/api/audit?entity=BOND_ENTRY&entityId=" + id + "&size=5", admin, 200).get("items").get(0);
         assertThat(audit.toString()).doesNotContain(pan);
 
-        byte[] xlsx = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/bonds/export.xlsx?month=2026-07").session(admin))
+        byte[] xlsx = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/bonds/export.xlsx?from=2026-07&to=2026-07").session(admin))
                 .andReturn().getResponse().getContentAsByteArray();
         try (var wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(xlsx))) {
             boolean found = false;

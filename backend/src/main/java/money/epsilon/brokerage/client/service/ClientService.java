@@ -28,6 +28,7 @@ import money.epsilon.brokerage.platform.text.Text;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.PageResponse;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
@@ -79,7 +80,7 @@ public class ClientService {
     @Transactional(readOnly = true)
     public PageResponse<ClientView> page(String q, boolean needsRm, Long rmId, String attention, int page, int size) {
         String only = attention == null ? "" : attention;
-        if (!only.isEmpty() && !only.equals("SHARED_PAN") && !only.equals("NO_PAN")) throw new IllegalArgumentException("Unknown list: " + attention);
+        if (!only.isEmpty() && !only.equals("SHARED_PAN") && !only.equals("NO_PAN")) throw new ValidationException("Unknown list: " + attention);
         String query = Text.clean(q) == null ? "" : Text.clean(q).toLowerCase();
         String panHash = "";
         try {
@@ -419,7 +420,7 @@ public class ClientService {
     public void changePan(long clientId, String pan, String reason, boolean takeFromOther) {
         Client c = find(clientId);
         String normalised = PanCipher.normalise(pan);
-        if (normalised == null) throw new IllegalArgumentException("Enter the PAN");
+        if (normalised == null) throw new ValidationException("Enter the PAN");
         String hash = panCipher.hash(normalised);
         if (hash.equals(c.getPanHash())) throw new RuleViolationException(c.getName() + " already has this PAN");
         List<Long> others = jdbc.sql("SELECT id FROM client WHERE pan_hash = ? AND id <> ?").params(hash, clientId).query(Long.class).list();
@@ -525,7 +526,7 @@ public class ClientService {
     /** {@link #changeRm} for several clients at once: all of them or none. */
     @Transactional
     public int changeRmForAll(Collection<Long> clientIds, long rmId, LocalDate from, String reason) {
-        if (clientIds.isEmpty()) throw new IllegalArgumentException("Choose at least one client");
+        if (clientIds.isEmpty()) throw new ValidationException("Choose at least one client");
         for (Long id : clientIds) changeRm(id, rmId, from, reason);
         return clientIds.size();
     }

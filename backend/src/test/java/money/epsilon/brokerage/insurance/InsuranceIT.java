@@ -160,8 +160,9 @@ class InsuranceIT extends IntegrationTestBase {
         JsonNode waiting = java.util.stream.StreamSupport.stream(getJson("/api/insurance/name-matches?month=2026-08", admin, 200).spliterator(), false)
                 .filter(x -> x.get("policyNo").asText().equals("S6-" + tag)).findFirst().orElseThrow();
         assertThat(waiting.get("clientName").asText()).isEqualTo("SHEET CLIENT " + tag);
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> insurance.forLedger(java.time.YearMonth.of(2026, 8)))
-                .hasMessageContaining("found by name only");
+        // Month processing waits for it: the insurance line source reports it as waiting (the gate in AttributionService.process).
+        var insSource = lineSources.stream().filter(src -> src.product().equals("INS")).findFirst().orElseThrow();
+        assertThat(insSource.nameMatches(java.time.YearMonth.of(2026, 8))).anySatisfy(m -> assertThat(m.ref()).isEqualTo("S6-" + tag));
         JsonNode left = postJson("/api/insurance/" + waiting.get("policyId").asLong() + "/confirm-client",
                 Map.of("clientId", waiting.get("clientId").asLong()), admin, 200);
         assertThat(left.toString()).doesNotContain("S6-" + tag);
@@ -204,5 +205,5 @@ class InsuranceIT extends IntegrationTestBase {
     }
 
     @org.springframework.beans.factory.annotation.Autowired
-    money.epsilon.brokerage.insurance.service.InsuranceService insurance;
+    java.util.List<money.epsilon.brokerage.ledger.service.LineSource> lineSources;
 }

@@ -27,6 +27,7 @@ import money.epsilon.brokerage.platform.dated.Timeline;
 import money.epsilon.brokerage.platform.text.Text;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -104,7 +105,7 @@ public class EmployeeService {
         if (employees.findByEmpCodeIgnoreCase(code).isPresent()) {
             throw new RuleViolationException("Emp code '" + code + "' already exists");
         }
-        if (type == null) throw new IllegalArgumentException("Type is required (RM or HOUSE)");
+        if (type == null) throw new ValidationException("Type is required (RM or HOUSE)");
         Employee e = employees.save(new Employee(code, Text.required(name, "Name"), type, joinedOn));
         EmployeeView view = view(e, null);
         audit.record(AUDIT_EMPLOYEE, e.getId(), "CREATE", null, view);
@@ -171,7 +172,7 @@ public class EmployeeService {
     public EmployeeView exit(long id, LocalDate lastDay, String reason, Long replacedBy) {
         Employee e = find(id);
         if (e.getExitedOn() != null) throw new RuleViolationException(e.getName() + " already exited on " + e.getExitedOn().format(Timeline.DISPLAY));
-        if (lastDay == null) throw new IllegalArgumentException("Exit date is required");
+        if (lastDay == null) throw new ValidationException("Exit date is required");
         if (e.getJoinedOn() != null && lastDay.isBefore(e.getJoinedOn())) throw new RuleViolationException("Exit date is before the joining date");
         String replacementName = null;
         if (replacedBy != null) {

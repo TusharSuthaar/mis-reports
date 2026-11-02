@@ -8,6 +8,7 @@ import money.epsilon.brokerage.platform.audit.AuditService;
 import money.epsilon.brokerage.platform.security.CurrentUser;
 import money.epsilon.brokerage.platform.text.Text;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,7 +39,7 @@ public class AliasService {
     @Transactional
     public boolean remember(String source, EntityType type, String raw, long targetId) {
         String key = Text.key(raw);
-        if (key.isEmpty()) throw new IllegalArgumentException("An alias needs a spelling");
+        if (key.isEmpty()) throw new ValidationException("An alias needs a spelling");
         Optional<SourceAlias> existing = aliases.findBySourceAndEntityTypeAndRawValueNormalized(source, type, key);
         if (existing.isPresent()) {
             if (existing.get().getTargetId() == targetId) return false;

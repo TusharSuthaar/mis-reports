@@ -35,6 +35,7 @@ import money.epsilon.brokerage.sharing.domain.Product;
 import money.epsilon.brokerage.sharing.repository.BranchPartnerRepository;
 import money.epsilon.brokerage.sharing.repository.ClientPartnerShareRepository;
 import money.epsilon.brokerage.sharing.repository.PartnerProductShareRepository;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -200,7 +201,7 @@ public class ShareService {
     @Transactional
     public boolean setProductPercent(long partnerId, Product product, BigDecimal percent, LocalDate from, String reason) {
         partners.get(partnerId);
-        if (product == null) throw new IllegalArgumentException("Choose a product");
+        if (product == null) throw new ValidationException("Choose a product");
         window.beforeChange(from);
         BigDecimal fraction = toFraction(percent);
         DatedHistory.Outcome outcome = DatedHistory.setFrom(
@@ -298,8 +299,8 @@ public class ShareService {
 
     /** Percent (0–100) → stored fraction. */
     static BigDecimal toFraction(BigDecimal percent) {
-        if (percent == null) throw new IllegalArgumentException("Sharing % is required");
-        if (percent.signum() < 0 || percent.compareTo(HUNDRED) > 0) throw new IllegalArgumentException("Sharing % must be between 0 and 100");
+        if (percent == null) throw new ValidationException("Sharing % is required");
+        if (percent.signum() < 0 || percent.compareTo(HUNDRED) > 0) throw new ValidationException("Sharing % must be between 0 and 100");
         return percent.divide(HUNDRED, 6, RoundingMode.HALF_UP);
     }
 

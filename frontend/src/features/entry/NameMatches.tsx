@@ -3,7 +3,7 @@ import type { ClientRow, Page } from '../../api/types';
 import { useLoad } from '../../api/useLoad';
 import { useSubmit } from '../../api/useSubmit';
 import { Amount } from '../../components/Amount';
-import { matchClients } from '../fd/FdPage';
+import { matchClients } from './ClientAndRm';
 
 /** One client found by its name only (no PAN): what the file says and the client suggested (R-100). */
 export interface NameMatchRow {

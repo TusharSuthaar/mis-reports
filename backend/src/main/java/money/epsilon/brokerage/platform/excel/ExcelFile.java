@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import money.epsilon.brokerage.platform.text.Text;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
@@ -48,7 +49,7 @@ public final class ExcelFile implements AutoCloseable {
         try {
             return new ExcelFile(WorkbookFactory.create(new ByteArrayInputStream(content)));
         } catch (IOException | RuntimeException e) {
-            throw new IllegalArgumentException(UNREADABLE, e);
+            throw new ValidationException(UNREADABLE, e);
         }
     }
 

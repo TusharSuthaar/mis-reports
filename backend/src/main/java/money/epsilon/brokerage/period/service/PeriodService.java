@@ -10,6 +10,7 @@ import java.time.Instant;
 import money.epsilon.brokerage.platform.audit.AuditService;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -75,7 +76,7 @@ public class PeriodService {
     public PeriodView unlock(long id, String reason) {
         Period p = findForChange(id);
         if (p.getStatus() != Status.LOCKED) throw new RuleViolationException("The month is not locked");
-        if (reason == null || reason.isBlank()) throw new IllegalArgumentException("A reason is required to unlock a month");
+        if (reason == null || reason.isBlank()) throw new ValidationException("A reason is required to unlock a month");
         PeriodView before = view(p);
         p.unlock();
         audit.record("PERIOD", id, "UNLOCK", before, new Unlock(view(p), reason.trim()));

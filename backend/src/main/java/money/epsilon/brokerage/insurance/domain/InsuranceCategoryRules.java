@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import money.epsilon.brokerage.insurance.domain.InsurancePolicy.BusinessType;
 import money.epsilon.brokerage.insurance.domain.InsurancePolicy.Category;
+import money.epsilon.brokerage.platform.web.ValidationException;
 
 /**
  * What each kind of insurance has and needs when typed on the screen (R-96), as the policy sheet fills it in: its sub
@@ -76,15 +77,15 @@ public final class InsuranceCategoryRules {
     public static void checkScreen(InsurancePolicy.Details d) {
         Rule r = RULES.get(d.category());
         if (!r.businessTypes().contains(d.businessType())) {
-            throw new IllegalArgumentException(r.label() + " policies are " + String.join(" / ", r.businessTypes().stream().map(InsuranceCategoryRules::label).toList())
+            throw new ValidationException(r.label() + " policies are " + String.join(" / ", r.businessTypes().stream().map(InsuranceCategoryRules::label).toList())
                     + ", not " + label(d.businessType()));
         }
-        if (d.subType() == null) throw new IllegalArgumentException("Choose the " + r.subTypeLabel().toLowerCase());
-        if (r.sumRequired() && d.sumAssured() == null) throw new IllegalArgumentException("Enter the " + r.sumLabel().toLowerCase());
-        if (d.ppt() == null) throw new IllegalArgumentException("Enter the " + r.pptLabel().toLowerCase());
-        if (r.termRequired() && d.policyTerm() == null) throw new IllegalArgumentException("Enter the policy term (years)");
+        if (d.subType() == null) throw new ValidationException("Choose the " + r.subTypeLabel().toLowerCase());
+        if (r.sumRequired() && d.sumAssured() == null) throw new ValidationException("Enter the " + r.sumLabel().toLowerCase());
+        if (d.ppt() == null) throw new ValidationException("Enter the " + r.pptLabel().toLowerCase());
+        if (r.termRequired() && d.policyTerm() == null) throw new ValidationException("Enter the policy term (years)");
         if (r.premium() == Premium.OD_TP && d.odPremium() == null && d.tpPremium() == null) {
-            throw new IllegalArgumentException("Enter the OD premium, the TP premium or both");
+            throw new ValidationException("Enter the OD premium, the TP premium or both");
         }
     }
 

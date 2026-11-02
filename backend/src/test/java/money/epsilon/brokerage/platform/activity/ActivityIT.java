@@ -68,6 +68,19 @@ class ActivityIT extends IntegrationTestBase {
     }
 
     @Test
+    void theAppsOwnInputMessagesAreShownButALibrarysWordingIsNot() throws Exception {
+        MockHttpSession admin = loginAdmin();
+        MvcResult own = mvc.perform(get(TestJobHandlers.INVALID_PATH).session(admin)).andExpect(status().isBadRequest()).andReturn();
+        assertThat(body(own).get("detail").asText()).isEqualTo("Enter the deposit date");
+
+        MvcResult lib = mvc.perform(get(TestJobHandlers.LIBRARY_PATH).session(admin)).andExpect(status().isBadRequest()).andReturn();
+        String reference = lib.getResponse().getHeader(RequestContext.HEADER);
+        assertThat(body(lib).get("detail").asText()).contains(reference).doesNotContain("enum").doesNotContain("FdEntry");
+        assertThat(jdbc.sql("SELECT message FROM error_log WHERE reference = :r").param("r", reference).query(String.class).single())
+                .contains("No enum constant");
+    }
+
+    @Test
     void anUnexpectedErrorShowsOnlyTheReferenceAndIsKeptMasked() throws Exception {
         MockHttpSession admin = loginAdmin();
         MvcResult result = mvc.perform(get(TestJobHandlers.BOOM_PATH).session(admin))

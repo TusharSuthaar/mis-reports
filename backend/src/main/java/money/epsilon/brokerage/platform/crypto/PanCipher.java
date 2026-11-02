@@ -1,4 +1,5 @@
 package money.epsilon.brokerage.platform.crypto;
+import money.epsilon.brokerage.platform.web.ValidationException;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -42,7 +43,7 @@ public class PanCipher {
     public static String normalise(String pan) {
         if (pan == null || pan.isBlank()) return null;
         String p = pan.trim().toUpperCase(Locale.ROOT);
-        if (!PAN.matcher(p).matches()) throw new IllegalArgumentException("PAN must look like ABCDE1234F");
+        if (!PAN.matcher(p).matches()) throw new ValidationException("PAN must look like ABCDE1234F");
         return p;
     }
 

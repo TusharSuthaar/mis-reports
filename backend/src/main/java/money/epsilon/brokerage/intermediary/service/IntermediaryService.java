@@ -16,6 +16,7 @@ import money.epsilon.brokerage.platform.text.Text;
 import money.epsilon.brokerage.platform.time.BusinessCalendar;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
+import money.epsilon.brokerage.platform.web.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -107,9 +108,9 @@ public class IntermediaryService {
     }
 
     private static BigDecimal percent(BigDecimal v, String what, boolean positive) {
-        if (v == null) throw new IllegalArgumentException(what + " % is required");
+        if (v == null) throw new ValidationException(what + " % is required");
         if (v.signum() < 0 || (positive && v.signum() == 0) || v.compareTo(HUNDRED) > 0) {
-            throw new IllegalArgumentException(what + " % must be " + (positive ? "above 0" : "0 or more") + " and at most 100");
+            throw new ValidationException(what + " % must be " + (positive ? "above 0" : "0 or more") + " and at most 100");
         }
         return v.stripTrailingZeros();
     }
