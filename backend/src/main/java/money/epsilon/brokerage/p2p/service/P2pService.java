@@ -22,8 +22,10 @@ import money.epsilon.brokerage.partner.service.PartnerService;
 import money.epsilon.brokerage.partner.service.PartnerService.PartnerView;
 import money.epsilon.brokerage.platform.audit.AuditService;
 import money.epsilon.brokerage.platform.crypto.PanCipher;
+import money.epsilon.brokerage.platform.dated.ChangeWindow;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.text.Text;
+import money.epsilon.brokerage.platform.web.EditVersion;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
 import money.epsilon.brokerage.sharing.domain.Product;
@@ -47,9 +49,10 @@ public class P2pService {
     private final PartnerService partners;
     private final ProductTaxService taxes;
     private final AuditService audit;
+    private final ChangeWindow months;
 
     P2pService(P2pEntryRepository entries, ClientService clients, EmployeeService employees, OrgChartService org, PartnerService partners,
-               ProductTaxService taxes, AuditService audit) {
+               ProductTaxService taxes, AuditService audit, ChangeWindow months) {
         this.entries = entries;
         this.clients = clients;
         this.employees = employees;
@@ -57,6 +60,7 @@ public class P2pService {
         this.partners = partners;
         this.taxes = taxes;
         this.audit = audit;
+        this.months = months;
     }
 
     /** {@code received}: true = brokerage received, false = brokerage not received yet, null = all. */
@@ -115,6 +119,7 @@ public class P2pService {
     @Transactional
     public P2pView create(Long clientId, String newClientName, String newClientPan, P2pEntry.Details d) {
         P2pEntry.Details details = check(d);
+        months.beforeEntryChange(details.month());
         long client;
         if (clientId != null) {
             clients.requireExists(clientId);
@@ -132,10 +137,13 @@ public class P2pService {
     }
 
     @Transactional
-    public P2pView update(long id, P2pEntry.Details d) {
+    public P2pView update(long id, P2pEntry.Details d, String ifMatch) {
         P2pEntry e = find(id);
+        EditVersion.check(e.getUpdatedAt(), ifMatch);
         if (e.getStatus() == P2pEntry.Status.CANCELLED) throw new RuleViolationException("This P2P entry is cancelled");
         P2pEntry.Details details = check(d);
+        months.beforeEntryChange(e.getMonth());
+        months.beforeEntryChange(details.month());
         P2pView before = get(id);
         e.fill(details, gstPercent(details.month()));
         entries.saveAndFlush(e);
@@ -148,6 +156,7 @@ public class P2pService {
     public void cancel(long id, String reason) {
         P2pEntry e = find(id);
         if (e.getStatus() == P2pEntry.Status.CANCELLED) return;
+        months.beforeEntryChange(e.getMonth());
         P2pView before = get(id);
         e.cancel();
         entries.saveAndFlush(e);
@@ -250,5 +259,28 @@ public class P2pService {
                           BigDecimal gross, boolean tdsApplied, BigDecimal tdsPercent, BigDecimal tds, BigDecimal gstPercent, BigDecimal gst,
                           BigDecimal net, BigDecimal invoice, String paymentNote, LocalDate receivedOn, String revSharingStatus, String remarks,
                           P2pEntry.Status status, String createdBy, Instant createdAt, String updatedBy, Instant updatedAt) {
+    }
+
+    /** The month's active P2P entries with brokerage, as processing needs them (R-87): gross = invoice, gst, net = brokerage excl. GST. */
+    @Transactional(readOnly = true)
+    public List<P2pForLedger> forLedger(YearMonth month) {
+        return entries.findByMonthOrderByIdAsc(month.atDay(1)).stream()
+                .filter(e -> e.getStatus() == P2pEntry.Status.ACTIVE && e.getGross() != null && e.getGross().signum() != 0)
+                .map(e -> new P2pForLedger(e.getId(), e.getClientId(), e.getPartnerId(), e.getInvoice(), e.getGst(), e.getGross()))
+                .toList();
+    }
+
+    public record P2pForLedger(long p2pEntryId, long clientId, Long partnerId, BigDecimal gross, BigDecimal gst, BigDecimal net) {
+    }
+
+    /** What the END shows for each P2P line: platform and scheme, and the amount invested as AUM. */
+    @Transactional(readOnly = true)
+    public Map<Long, P2pLabel> labels(java.util.Collection<Long> ids) {
+        Map<Long, P2pLabel> result = new HashMap<>();
+        entries.findAllById(ids).forEach(e -> result.put(e.getId(), new P2pLabel(e.getPlatform() + (e.getScheme() == null ? "" : " · " + e.getScheme()), e.getAmount())));
+        return result;
+    }
+
+    public record P2pLabel(String item, BigDecimal amount) {
     }
 }

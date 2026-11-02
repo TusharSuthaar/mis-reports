@@ -19,19 +19,22 @@ import money.epsilon.brokerage.fd.service.FdService;
 import money.epsilon.brokerage.gift.service.GiftService;
 import money.epsilon.brokerage.ingestion.finesse.FinesseBrokerageParser;
 import money.epsilon.brokerage.ingestion.finesse.FinesseClientMasterService;
+import money.epsilon.brokerage.insurance.service.InsuranceService;
 import money.epsilon.brokerage.loan.domain.LoanEntry;
 import money.epsilon.brokerage.loan.service.LoanService;
 import money.epsilon.brokerage.nps.service.NpsService;
 import money.epsilon.brokerage.p2p.service.P2pService;
 import money.epsilon.brokerage.pms.domain.PmsInvestment;
 import money.epsilon.brokerage.pms.service.PmsService;
+import money.epsilon.brokerage.preipo.domain.PreIpoEntry;
+import money.epsilon.brokerage.preipo.service.PreIpoService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Everything one PAN holds (R-09). The PAN is the client's own; under it come the client itself, any other record still
  * carrying that PAN (until merged), and minors whose Finesse code has it as guardian PAN and no PAN of their own (R-03).
- * Their FD, bond, AIF, loan, GIFT City, PMS, NPS and P2P entries (cancelled left out), plus equity brokerage matched by
+ * Their FD, bond, AIF, loan, GIFT City, PMS, NPS, P2P, Unlisted and insurance entries (cancelled left out), plus equity matched by
  * the PAN or a former PAN, so trades not yet linked to a client record show too. A client without a PAN: itself only.
  */
 @Service
@@ -62,9 +65,12 @@ public class ClientHoldingsService {
     private final NpsService nps;
     private final P2pService p2p;
     private final EquityService equity;
+    private final PreIpoService unlisted;
+    private final InsuranceService insurance;
 
     ClientHoldingsService(ClientService clients, FinesseClientMasterService finesse, FdService fd, BondService bonds, AifService aif,
-                          LoanService loans, GiftService gift, PmsService pms, NpsService nps, P2pService p2p, EquityService equity) {
+                          LoanService loans, GiftService gift, PmsService pms, NpsService nps, P2pService p2p, EquityService equity,
+                          PreIpoService unlisted, InsuranceService insurance) {
         this.clients = clients;
         this.finesse = finesse;
         this.fd = fd;
@@ -76,6 +82,8 @@ public class ClientHoldingsService {
         this.nps = nps;
         this.p2p = p2p;
         this.equity = equity;
+        this.unlisted = unlisted;
+        this.insurance = insurance;
     }
 
     @Transactional(readOnly = true)
@@ -112,6 +120,11 @@ public class ClientHoldingsService {
         nps.forClients(ids).forEach(e -> rows.add(new Row("NPS", "NPS", e.id(), e.clientId(), e.clientName(), e.month(), e.pop(), e.amount(), e.revenue())));
         p2p.forClients(ids).forEach(e -> rows.add(new Row("P2P", "P2P", e.id(), e.clientId(), e.clientName(), e.month(),
                 e.platform() + " · " + e.scheme(), e.amount(), e.gross())));
+        unlisted.forClients(ids).forEach(e -> rows.add(new Row("Unlisted", "PREIPO", e.id(), e.clientId(), e.clientName(), e.month(),
+                (e.kind() == PreIpoEntry.Kind.BUYBACK ? "Buyback · " : "") + e.scripName() + " · " + e.quantity().stripTrailingZeros().toPlainString() + " shares",
+                e.amount(), e.gross())));
+        insurance.forClients(ids).forEach(e -> rows.add(new Row("Insurance", "INS", e.id(), e.clientId(), e.clientName(), e.month(),
+                e.insurer() + " · " + e.productName() + " · " + e.policyNo(), e.netPremium(), e.expectedComm())));
         equity.forPans(panHashes, ids).forEach(m -> rows.add(new Row("Equity", "EQUITY", null, m.clientId(), m.clientName(), m.month(),
                 m.partyCode() + " · " + m.trades() + (m.trades() == 1 ? " trade" : " trades") + " · " + m.exchanges(), null, m.share())));
         rows.sort(Comparator.comparing(Row::month).reversed().thenComparing(Row::product));

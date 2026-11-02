@@ -12,6 +12,8 @@ public interface P2pEntryRepository extends JpaRepository<P2pEntry, Long> {
     /** Newest first: for suggestions (platforms, schemes). */
     List<P2pEntry> findTop500ByStatusOrderByIdDesc(P2pEntry.Status status);
 
+    List<P2pEntry> findByMonthOrderByIdAsc(LocalDate month);
+
     /** Every entry of these clients, all months, newest first (the client page's holdings). */
     List<P2pEntry> findByClientIdInOrderByMonthDescIdDesc(java.util.Collection<Long> clientIds);
 }

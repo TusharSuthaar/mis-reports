@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 import money.epsilon.brokerage.client.service.ClientService;
 import money.epsilon.brokerage.org.service.EmployeeService;
@@ -20,12 +21,16 @@ import money.epsilon.brokerage.partner.service.PartnerService;
 import money.epsilon.brokerage.partner.service.PartnerService.PartnerView;
 import money.epsilon.brokerage.platform.audit.AuditService;
 import money.epsilon.brokerage.platform.crypto.PanCipher;
+import money.epsilon.brokerage.platform.dated.ChangeWindow;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.text.Text;
+import money.epsilon.brokerage.platform.web.EditVersion;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
+import money.epsilon.brokerage.pms.domain.PmsFee;
 import money.epsilon.brokerage.pms.domain.PmsInvestment;
 import money.epsilon.brokerage.pms.domain.PmsPayout;
+import money.epsilon.brokerage.pms.repository.PmsFeeRepository;
 import money.epsilon.brokerage.pms.repository.PmsInvestmentRepository;
 import money.epsilon.brokerage.pms.repository.PmsPayoutRepository;
 import money.epsilon.brokerage.sharing.domain.Product;
@@ -51,9 +56,12 @@ public class PmsService {
     private final PartnerService partners;
     private final ProductTaxService taxes;
     private final AuditService audit;
+    private final PmsFeeRepository fees;
+    private final ChangeWindow months;
 
     PmsService(PmsInvestmentRepository investments, PmsPayoutRepository payouts, ClientService clients, EmployeeService employees,
-               OrgChartService org, PartnerService partners, ProductTaxService taxes, AuditService audit) {
+               OrgChartService org, PartnerService partners, ProductTaxService taxes, AuditService audit, PmsFeeRepository fees,
+               ChangeWindow months) {
         this.investments = investments;
         this.payouts = payouts;
         this.clients = clients;
@@ -62,6 +70,8 @@ public class PmsService {
         this.partners = partners;
         this.taxes = taxes;
         this.audit = audit;
+        this.fees = fees;
+        this.months = months;
     }
 
     // ---- investments ------------------------------------------------------------------------------------------
@@ -137,10 +147,13 @@ public class PmsService {
     }
 
     @Transactional
-    public InvestmentView update(long id, PmsInvestment.Details d) {
+    public InvestmentView update(long id, PmsInvestment.Details d, String ifMatch) {
         PmsInvestment e = findInvestment(id);
+        EditVersion.check(e.getUpdatedAt(), ifMatch);
         if (e.getStatus() == PmsInvestment.Status.CANCELLED) throw new RuleViolationException("This PMS entry is cancelled");
         PmsInvestment.Details details = check(d);
+        // The partner is read from the investment for every month of its PMS revenue (R-98).
+        if (!Objects.equals(e.getPartnerId(), details.partnerId())) feeMonths(id).forEach(months::beforeEntryChange);
         InvestmentView before = get(id);
         e.fill(details);
         investments.saveAndFlush(e);
@@ -153,10 +166,17 @@ public class PmsService {
     public void cancel(long id, String reason) {
         PmsInvestment e = findInvestment(id);
         if (e.getStatus() == PmsInvestment.Status.CANCELLED) return;
+        feeMonths(id).forEach(months::beforeEntryChange);   // its PMS revenue leaves those months (R-98)
         InvestmentView before = get(id);
         e.cancel();
         investments.saveAndFlush(e);
         audit.record(AUDIT_INVESTMENT, id, "CANCEL", auditView(before), Map.of("reason", Text.clean(reason) == null ? "" : Text.clean(reason)));
+    }
+
+    /** The months that have active PMS revenue on the investment. */
+    private Set<LocalDate> feeMonths(long investmentId) {
+        return fees.findByInvestmentId(investmentId).stream().filter(f -> f.getStatus() == PmsFee.Status.ACTIVE)
+                .map(PmsFee::getMonth).collect(Collectors.toCollection(TreeSet::new));
     }
 
     private PmsInvestment.Details check(PmsInvestment.Details d) {

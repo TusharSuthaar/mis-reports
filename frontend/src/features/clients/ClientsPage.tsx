@@ -462,7 +462,7 @@ const RELATION_LABEL: Record<HoldingMember['relation'], string> = { THIS: 'this 
 
 /**
  * Everything the client's PAN holds (R-09): this record, any other record with the same PAN and minors mapped to it by
- * guardian PAN, across FD, bonds, AIF, loans, GIFT City, PMS, NPS, P2P and equity.
+ * guardian PAN, across FD, bonds, AIF, loans, GIFT City, PMS, NPS, P2P, Unlisted, insurance and equity.
  */
 function Holdings({ clientId }: { clientId: number }) {
   const { data } = useLoad<ClientHoldings>(`/api/clients/${clientId}/holdings`);
@@ -484,7 +484,7 @@ function Holdings({ clientId }: { clientId: number }) {
         {!several && data.members[0]?.pan == null && 'This record has no PAN, so only its own entries show.'}
       </p>
       {data.rows.length === 0 ? (
-        <div className="empty">No FD, bond, AIF, loan, GIFT City, PMS, NPS, P2P or equity holdings under this PAN.</div>
+        <div className="empty">No FD, bond, AIF, loan, GIFT City, PMS, NPS, P2P, Unlisted, insurance or equity holdings under this PAN.</div>
       ) : (
         <>
           <p className="muted">

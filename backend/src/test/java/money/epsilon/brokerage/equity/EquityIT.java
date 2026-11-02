@@ -72,4 +72,47 @@ class EquityIT extends IntegrationTestBase {
         // Trades of two months in one file are refused.
         upload(new EquityFiles().trade("P" + tag, pan, "EQ CLIENT", d1, "N", 1, 1).trade("P" + tag, pan, "EQ CLIENT", d1.plusMonths(1), "N", 1, 1).bytes(), 409);
     }
+
+    @Test
+    void aReportWithoutPansFindsClientsByPartyCodeThenByName() throws Exception {
+        long t = Long.parseLong(tag);
+        String pan = FinesseFiles.pan(t * 10 + 6), named = FinesseFiles.pan(t * 10 + 7), inSheet = FinesseFiles.pan(t * 10 + 8);
+        postJson("/api/clients", Map.of("name", "PARTY CLIENT " + tag, "pan", pan, "rmId", rm, "from", "2026-01-01"), admin, 201);
+        postJson("/api/clients", Map.of("name", "NAMED CLIENT " + tag, "pan", named, "rmId", rm, "from", "2026-01-01"), admin, 201);
+        postJson("/api/clients", Map.of("name", "SHEET CLIENT " + tag, "pan", inSheet, "rmId", rm, "from", "2026-01-01"), admin, 201);
+        int y = 2400 + (int) (t % 500);
+        // An earlier month with PANs: the party code learns its PAN.
+        upload(new EquityFiles().trade("Q" + tag, pan, "PARTY CLIENT", LocalDate.of(y, 4, 2), "N", 10, 8).bytes(), 200);
+        JsonNode sep = upload(new EquityFiles()
+                .tradeWithoutPan("Q" + tag, "PARTY CLIENT", LocalDate.of(y, 5, 3), 100, 80)            // known party code
+                .tradeWithoutPan("R" + tag, "Named  Client " + tag, LocalDate.of(y, 5, 4), 50, 40)    // new code: exact name
+                .tradeWithoutPan("S" + tag, "NOBODY " + tag, LocalDate.of(y, 5, 5), 10, 6)             // neither
+                .tradeWithoutPan("T" + tag, "SPELT OTHERWISE", LocalDate.of(y, 5, 6), 20, 15)        // PAN on the summary sheet
+                .summaryPan("T" + tag, "SPELT OTHERWISE", inSheet)
+                .bytesWithoutPan(), 200);
+        assertThat(sep.get("trades").asInt()).isEqualTo(4);
+        assertThat(sep.get("byPartyCode").asInt()).isEqualTo(2);
+        assertThat(sep.get("byName").asInt()).isEqualTo(1);
+        assertThat(sep.get("clientsFound").asInt()).isEqualTo(3);
+        assertThat(sep.get("clientsNotFound").asInt()).isEqualTo(1);
+        assertThat(sep.get("shareTotal").decimalValue()).isEqualByComparingTo("141");
+        JsonNode months = getJson("/api/equity?from=" + y + "-05&to=" + y + "-05", admin, 200);
+        assertThat(months).hasSize(4);
+        assertThat(months.toString()).contains("PARTY CLIENT " + tag).contains("NAMED CLIENT " + tag).contains("SHEET CLIENT " + tag);
+        assertThat(months.get(3).get("clientId").isNull()).isTrue();   // NOBODY: not a client, no PAN
+
+        // The month's check names it as the file has it; once a client of that exact name is added, it is found.
+        var check = equity.check(java.time.YearMonth.of(y, 5));
+        assertThat(check.missing()).singleElement().satisfies(m -> {
+            assertThat(m.partyCode()).isEqualTo("S" + tag);
+            assertThat(m.name()).isEqualTo("NOBODY " + tag);
+            assertThat(m.pan()).isNull();
+            assertThat(m.share()).isEqualByComparingTo("6");
+        });
+        postJson("/api/clients", Map.of("name", "NOBODY " + tag, "rmId", rm, "from", y + "-05-01"), admin, 201);
+        assertThat(equity.check(java.time.YearMonth.of(y, 5)).notInClients()).isZero();
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    money.epsilon.brokerage.equity.service.EquityService equity;
 }

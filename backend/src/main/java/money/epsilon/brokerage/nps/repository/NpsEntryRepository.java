@@ -12,6 +12,8 @@ public interface NpsEntryRepository extends JpaRepository<NpsEntry, Long> {
     /** Newest first: for suggestions (POPs). */
     List<NpsEntry> findTop500ByStatusOrderByIdDesc(NpsEntry.Status status);
 
+    List<NpsEntry> findByMonthOrderByIdAsc(LocalDate month);
+
     /** Every entry of these clients, all months, newest first (the client page's holdings). */
     List<NpsEntry> findByClientIdInOrderByMonthDescIdDesc(java.util.Collection<Long> clientIds);
 }

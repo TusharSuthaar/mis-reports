@@ -26,8 +26,10 @@ import money.epsilon.brokerage.partner.service.PartnerService;
 import money.epsilon.brokerage.partner.service.PartnerService.PartnerView;
 import money.epsilon.brokerage.platform.audit.AuditService;
 import money.epsilon.brokerage.platform.crypto.PanCipher;
+import money.epsilon.brokerage.platform.dated.ChangeWindow;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.text.Text;
+import money.epsilon.brokerage.platform.web.EditVersion;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
 import money.epsilon.brokerage.sharing.domain.Product;
@@ -53,9 +55,10 @@ public class BondService {
     private final IntermediaryService platforms;
     private final ProductTaxService taxes;
     private final AuditService audit;
+    private final ChangeWindow months;
 
     BondService(BondEntryRepository entries, ClientService clients, EmployeeService employees, OrgChartService org, PartnerService partners,
-                IntermediaryService platforms, ProductTaxService taxes, AuditService audit) {
+                IntermediaryService platforms, ProductTaxService taxes, AuditService audit, ChangeWindow months) {
         this.entries = entries;
         this.clients = clients;
         this.employees = employees;
@@ -64,6 +67,7 @@ public class BondService {
         this.platforms = platforms;
         this.taxes = taxes;
         this.audit = audit;
+        this.months = months;
     }
 
     @Transactional(readOnly = true)
@@ -173,6 +177,7 @@ public class BondService {
     @Transactional
     public BondView create(Long clientId, String newClientName, String newClientPan, Details d) {
         Details details = check(d);
+        months.beforeEntryChange(details.month());
         long client;
         if (clientId != null) {
             clients.requireExists(clientId);
@@ -190,10 +195,13 @@ public class BondService {
     }
 
     @Transactional
-    public BondView update(long id, Details d) {
+    public BondView update(long id, Details d, String ifMatch) {
         BondEntry e = find(id);
+        EditVersion.check(e.getUpdatedAt(), ifMatch);
         if (e.getStatus() == BondEntry.Status.CANCELLED) throw new RuleViolationException("This bond entry is cancelled");
         Details details = check(d);
+        months.beforeEntryChange(e.getMonth());
+        months.beforeEntryChange(details.month());
         BondView before = get(id);
         e.fill(details, terms(details));
         entries.saveAndFlush(e);
@@ -206,6 +214,7 @@ public class BondService {
     public void cancel(long id, String reason) {
         BondEntry e = find(id);
         if (e.getStatus() == BondEntry.Status.CANCELLED) return;
+        months.beforeEntryChange(e.getMonth());
         BondView before = get(id);
         e.cancel();
         entries.saveAndFlush(e);

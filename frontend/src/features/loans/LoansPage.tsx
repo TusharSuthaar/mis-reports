@@ -401,7 +401,7 @@ function LoanForm({ month: listMonth, entry, copyOf, onDone }: { month: string; 
       remarks,
       ...givenBody(given),
     };
-    const ok = await run(() => (entry ? api(`/api/loans/${entry.id}`, { method: 'PUT', body }) : api('/api/loans', { method: 'POST', body })));
+    const ok = await run(() => (entry ? api(`/api/loans/${entry.id}`, { method: 'PUT', body, ifMatch: entry.updatedAt }) : api('/api/loans', { method: 'POST', body })));
     if (ok) onDone();
   }
 

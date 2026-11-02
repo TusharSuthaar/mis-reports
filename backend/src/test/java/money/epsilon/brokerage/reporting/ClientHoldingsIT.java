@@ -67,6 +67,11 @@ class ClientHoldingsIT extends IntegrationTestBase {
         nps(duplicate, 2000);
         nps(minor, 3000);
         nps(stranger, 4000);
+        Map<String, Object> policy = new HashMap<>(Map.of("clientId", duplicate, "month", "2025-11-01", "insurer", "HL INSURER " + tag,
+                "category", "HEALTH", "productName", "HL OPTIMA", "policyNo", "HL-" + tag, "businessType", "NEW", "totalPremium", 11800,
+                "netPremium", 10000, "expectedPercent", 15));
+        policy.putAll(Map.of("subType", "Floater", "sumAssured", 500000, "ppt", "1"));
+        postJson("/api/insurance", policy, admin, 201);
 
         JsonNode h = getJson("/api/clients/" + client + "/holdings", admin, 200);
         List<String> members = new ArrayList<>();
@@ -74,7 +79,7 @@ class ClientHoldingsIT extends IntegrationTestBase {
         assertThat(members).containsExactly(client + ":THIS", duplicate + ":SAME_PAN", minor + ":MINOR");
         List<String> rows = new ArrayList<>();
         h.get("rows").forEach(r -> rows.add(r.get("product").asText() + ":" + r.get("amount").asText()));
-        assertThat(rows).containsExactlyInAnyOrder("Equity:null", "NPS:1000.0", "NPS:2000.0", "NPS:3000.0");
+        assertThat(rows).containsExactlyInAnyOrder("Equity:null", "NPS:1000.0", "NPS:2000.0", "NPS:3000.0", "Insurance:10000.0");
         JsonNode equity = h.get("rows").get(0);   // newest month first
         assertThat(equity.get("product").asText()).isEqualTo("Equity");
         assertThat(equity.get("gross").decimalValue()).isEqualByComparingTo("80");

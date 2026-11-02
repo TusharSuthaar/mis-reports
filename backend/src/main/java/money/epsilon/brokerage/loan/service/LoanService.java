@@ -24,8 +24,10 @@ import money.epsilon.brokerage.partner.service.PartnerService;
 import money.epsilon.brokerage.partner.service.PartnerService.PartnerView;
 import money.epsilon.brokerage.platform.audit.AuditService;
 import money.epsilon.brokerage.platform.crypto.PanCipher;
+import money.epsilon.brokerage.platform.dated.ChangeWindow;
 import money.epsilon.brokerage.platform.security.Roles;
 import money.epsilon.brokerage.platform.text.Text;
+import money.epsilon.brokerage.platform.web.EditVersion;
 import money.epsilon.brokerage.platform.web.NotFoundException;
 import money.epsilon.brokerage.platform.web.RuleViolationException;
 import money.epsilon.brokerage.sharing.domain.Product;
@@ -50,9 +52,10 @@ public class LoanService {
     private final PartnerService partners;
     private final ProductTaxService taxes;
     private final AuditService audit;
+    private final ChangeWindow months;
 
     LoanService(LoanEntryRepository entries, ClientService clients, EmployeeService employees, OrgChartService org, PartnerService partners,
-                ProductTaxService taxes, AuditService audit) {
+                ProductTaxService taxes, AuditService audit, ChangeWindow months) {
         this.entries = entries;
         this.clients = clients;
         this.employees = employees;
@@ -60,6 +63,7 @@ public class LoanService {
         this.partners = partners;
         this.taxes = taxes;
         this.audit = audit;
+        this.months = months;
     }
 
     /**
@@ -169,6 +173,7 @@ public class LoanService {
     @Transactional
     public LoanView create(Long clientId, String newClientName, String newClientPan, Details d) {
         Details details = check(d);
+        months.beforeEntryChange(details.month());
         long client;
         if (clientId != null) {
             clients.requireExists(clientId);
@@ -186,10 +191,13 @@ public class LoanService {
     }
 
     @Transactional
-    public LoanView update(long id, Details d) {
+    public LoanView update(long id, Details d, String ifMatch) {
         LoanEntry e = find(id);
+        EditVersion.check(e.getUpdatedAt(), ifMatch);
         if (e.getStatus() == LoanEntry.Status.CANCELLED) throw new RuleViolationException("This loan entry is cancelled");
         Details details = check(d);
+        months.beforeEntryChange(e.getMonth());
+        months.beforeEntryChange(details.month());
         LoanView before = get(id);
         e.fill(details, gstPercent(details.month()));
         entries.saveAndFlush(e);
@@ -202,6 +210,7 @@ public class LoanService {
     public void cancel(long id, String reason) {
         LoanEntry e = find(id);
         if (e.getStatus() == LoanEntry.Status.CANCELLED) return;
+        months.beforeEntryChange(e.getMonth());
         LoanView before = get(id);
         e.cancel();
         entries.saveAndFlush(e);
